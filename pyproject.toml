@@ -1,0 +1,16 @@
+[project]
+name = "undergraduate-thesis"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = []
+
+[tool.uv]
+managed = true
+environments = [
+    "sys_platform == 'darwin' and platform_machine == 'x86_64'", # Your Intel Mac
+    "sys_platform == 'darwin' and platform_machine == 'arm64'",  # M1/M2/M3 Macs
+    "sys_platform == 'linux' and platform_machine == 'x86_64'",   # Linux
+    "sys_platform == 'win32' and platform_machine == 'AMD64'",   # Standard Windows (Intel/AMD)
+]

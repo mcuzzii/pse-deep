@@ -1,0 +1,16 @@
+# .gitignore
+# -- Environment --
+.venv
+*.egg-info/
+
+# -- Data --
+data/
+
+# -- Secrets --
+.env
+
+# -- Jupyter Notebooks --
+*.ipynb
+
+# -- Hidden files --
+.DS_Store
