@@ -4,7 +4,16 @@ version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.12"
-dependencies = []
+dependencies = [
+    "altair>=6.1.0",
+    "annoy>=1.17.3",
+    "cohere>=6.1.0",
+    "datasets<4.0.0",
+    "dotenv>=0.9.9",
+    "numpy>=2.4.4",
+    "scikit-learn>=1.8.0",
+    "tqdm>=4.67.3",
+]
 
 [tool.uv]
 managed = true

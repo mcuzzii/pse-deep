@@ -2,7 +2,6 @@ import pandas as pd
 from pathlib import Path
 import json
 
-
 # Import all social media data from a directory containing all social media
 def load_social(folder_path: str) -> pd.DataFrame:
 
