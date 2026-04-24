@@ -6,6 +6,9 @@
 # -- Data --
 data/
 
+# -- Cache --
+__pycache__/
+
 # -- Secrets --
 .env
 

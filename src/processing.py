@@ -6,6 +6,7 @@ USER_PATTERN = r'@\w+'
 HASHTAG_PATTERN = r'#(\w+)'
 CASHTAG_PATTERN = r'\$(\w+)'
 
+
 # Clean text data
 def clean_text(text_df, text_col, date_col):
     df = text_df.copy(deep=True)
@@ -32,4 +33,5 @@ def clean_text(text_df, text_col, date_col):
     df[text_col] = df[text_col].str.lower()
     
     return df
+
 
