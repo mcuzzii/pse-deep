@@ -7,11 +7,12 @@ from data_loader import load_json_folder
 import time
 from tqdm import tqdm
 from transformers import AutoTokenizer
+from cohere import Client, ClientV2
 
 load_dotenv()
 
 # Initialize Cohere client
-co = cohere.Client(os.getenv("COHERE_API_KEY"))
+co_v2 = ClientV2(os.getenv("COHERE_API_KEY"))
 
 # Regex patterns
 URL_PATTERN = r'(https?://[^\s<>"]+|www\.[^\s<>"]+|[a-zA-Z0-9.-]+\.[a-z]{2,6}/[^\s<>"]*)'
