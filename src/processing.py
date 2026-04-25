@@ -6,13 +6,14 @@ from pathlib import Path
 from data_loader import load_json_folder
 import time
 from tqdm import tqdm
-from transformers import AutoTokenizer
-from cohere import Client, ClientV2
+from tokenizers import Tokenizer
+import requests
+from cohere import ClientV2
 
 load_dotenv()
 
 # Initialize Cohere client
-co_v2 = ClientV2(os.getenv("COHERE_API_KEY"))
+co = ClientV2(os.getenv("COHERE_API_KEY"))
 
 # Regex patterns
 URL_PATTERN = r'(https?://[^\s<>"]+|www\.[^\s<>"]+|[a-zA-Z0-9.-]+\.[a-z]{2,6}/[^\s<>"]*)'
@@ -47,69 +48,65 @@ def clean_text(text_df, text_col, date_col):
     
     return df
 
-# Embeddings using cohere embed-v4.0
-def cohere_embed(text_df, text_col, tpm_limit=50000):
-    # 1. Download/Load the tokenizer locally
-    tokenizer = AutoTokenizer.from_pretrained("Xenova/c4ai-command-r-v01-tokenizer")
+# Embeddings using cohere embed-v4.0.
+def cohere_embed(text_df, text_col, max_batch_size=96, tpm_limit=95000):
     
-    df = text_df.copy(deep=True).fillna("")
+    # Creating a local tokenizer using the embed-v4.0 tokenizer from Cohere.
+    tokenizer = Tokenizer.from_str(requests.get(os.getenv("EMBED_V4_TOKENIZER_URL")).text)
+    
+    # Initializing data frame for embeddings capture.
+    df = text_df.copy(deep=True)
     texts = df[text_col].tolist()
     all_embeddings = []
     
-    tokens_in_current_minute = 0
-    window_start_time = time.time()
-    current_idx = 0
+    # Variables for rate limiting.
+    minute_tokens = 0
+    time_start = time.time()
     
+    # Progress bar
     pbar = tqdm(total=len(texts), desc="Embedding (Local Tokenizer)")
 
-    while current_idx < len(texts):
-        batch_texts = []
-        batch_token_count = 0
-        
-        # 2. Build the batch locally (Super fast, no API calls here)
-        while current_idx < len(texts) and len(batch_texts) < 96:
-            text_to_add = texts[current_idx]
-            
-            # Local token count
-            item_tokens = tokenizer.encode(text_to_add, add_special_tokens=False)
-            item_token_count = len(item_tokens)
-            
-            # Check if this single text is too big
-            if item_token_count > 512: # Cohere's per-row limit
-                 text_to_add = text_to_add[:2000] # Rough truncation
-                 item_token_count = len(tokenizer.encode(text_to_add))
+    # Batching for embeddings capture
+    batch_texts = []
 
-            # Check TPM window
-            if tokens_in_current_minute + batch_token_count + item_token_count > tpm_limit:
-                break
-                
-            batch_texts.append(text_to_add)
-            batch_token_count += item_token_count
-            current_idx += 1
+    for i, text in enumerate(texts):
 
-        # 3. Manage Timing
-        elapsed = time.time() - window_start_time
-        if (tokens_in_current_minute + batch_token_count) >= tpm_limit:
-            if elapsed < 60:
-                sleep_time = 60 - elapsed + 1
-                time.sleep(sleep_time)
-            window_start_time = time.time()
-            tokens_in_current_minute = 0
+        batch_texts.append(text)
+        minute_tokens += len(tokenizer.encode(text, add_special_tokens=False))
 
-        # 4. The ONLY API call: Embedding
-        if batch_texts:
+        # Rules for terminating the growth of a batch, and subsequently acquiring embeddings.
+        if (
+            len(batch_texts) == max_batch_size or
+            minute_tokens >= tpm_limit or
+            i == len(texts) - 1
+        ):
             response = co.embed(
-                model="embed-v4.0",
+                model='embed-v4.0',
                 texts=batch_texts,
-                input_type="classification",
-                embedding_types=["float"]
+                embedding_types=['float'],
+                input_type='classification',
+                output_dimension=1024
             )
-            all_embeddings.extend(response.embeddings.float)
-            tokens_in_current_minute += batch_token_count
-            pbar.update(len(batch_texts))
 
+            # Extend embeddings as list of lists and update progress bar.
+            all_embeddings.extend(response.embeddings.float)
+            pbar.update(len(batch_texts))
+            batch_texts = []
+
+            # Handling delays between requests.
+            if minute_tokens >= tpm_limit:
+                time_elapsed = time.time() - time_start
+
+                if time_elapsed < 60:
+                    # 10 second buffer for safety.
+                    time.sleep(60 - time_elapsed + 10)
+
+                minute_tokens = 0
+                time_start = time.time()
+
+    # Close the progress bar and add embeddings to the data frame.
     pbar.close()
-    df['embeddings'] = all_embeddings
+    df['embeddings'] = pd.Series(all_embeddings)
     return df
 
 # Social media data preprocessing pipeline
