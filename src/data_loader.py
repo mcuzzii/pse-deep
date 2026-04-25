@@ -2,14 +2,13 @@ import pandas as pd
 from pathlib import Path
 import json
 
-# Import all social media data from a directory containing all social media
-def load_social(folder_path: str) -> pd.DataFrame:
-
+# Import all json files from a directory containing all json files
+def load_json_folder(folder_path: str) -> pd.DataFrame:
     data_dir = Path(folder_path)
 
     dfs = []
     for file_path in data_dir.iterdir():
-        if file_path.is_file():  # Ensure it's a file, not a subfolder
+        if file_path.is_file():
             with open(file_path, 'r') as f:
                 data = json.load(f)
             

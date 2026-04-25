@@ -3,12 +3,14 @@ import cohere
 import os
 from dotenv import load_dotenv
 from pathlib import Path
-from data_loader import load_social
+from data_loader import load_json_folder
 import time
 from tqdm import tqdm
+from transformers import AutoTokenizer
 
 load_dotenv()
 
+# Initialize Cohere client
 co = cohere.Client(os.getenv("COHERE_API_KEY"))
 
 # Regex patterns
@@ -45,29 +47,68 @@ def clean_text(text_df, text_col, date_col):
     return df
 
 # Embeddings using cohere embed-v4.0
-def cohere_embed(text_df, text_col, batch_size=90, delay=2.8):
-    df = text_df.copy(deep=True)
+def cohere_embed(text_df, text_col, tpm_limit=50000):
+    # 1. Download/Load the tokenizer locally
+    tokenizer = AutoTokenizer.from_pretrained("Xenova/c4ai-command-r-v01-tokenizer")
+    
+    df = text_df.copy(deep=True).fillna("")
+    texts = df[text_col].tolist()
     all_embeddings = []
-    texts = list(df[text_col])
     
-    # Process text in batches
-
-    for i in tqdm(range(0, len(texts), batch_size)):
-        batch = texts[i : i + batch_size]
-        
-        response = co.embed(
-            model="embed-v4.0",
-            texts=batch,
-            input_type="classification",
-            embedding_types=["float"]
-        )
-
-        all_embeddings.extend(response.embeddings)
-        
-        time.sleep(delay)
+    tokens_in_current_minute = 0
+    window_start_time = time.time()
+    current_idx = 0
     
-    df['embeddings'] = pd.Series(all_embeddings)
+    pbar = tqdm(total=len(texts), desc="Embedding (Local Tokenizer)")
 
+    while current_idx < len(texts):
+        batch_texts = []
+        batch_token_count = 0
+        
+        # 2. Build the batch locally (Super fast, no API calls here)
+        while current_idx < len(texts) and len(batch_texts) < 96:
+            text_to_add = texts[current_idx]
+            
+            # Local token count
+            item_tokens = tokenizer.encode(text_to_add, add_special_tokens=False)
+            item_token_count = len(item_tokens)
+            
+            # Check if this single text is too big
+            if item_token_count > 512: # Cohere's per-row limit
+                 text_to_add = text_to_add[:2000] # Rough truncation
+                 item_token_count = len(tokenizer.encode(text_to_add))
+
+            # Check TPM window
+            if tokens_in_current_minute + batch_token_count + item_token_count > tpm_limit:
+                break
+                
+            batch_texts.append(text_to_add)
+            batch_token_count += item_token_count
+            current_idx += 1
+
+        # 3. Manage Timing
+        elapsed = time.time() - window_start_time
+        if (tokens_in_current_minute + batch_token_count) >= tpm_limit:
+            if elapsed < 60:
+                sleep_time = 60 - elapsed + 1
+                time.sleep(sleep_time)
+            window_start_time = time.time()
+            tokens_in_current_minute = 0
+
+        # 4. The ONLY API call: Embedding
+        if batch_texts:
+            response = co.embed(
+                model="embed-v4.0",
+                texts=batch_texts,
+                input_type="classification",
+                embedding_types=["float"]
+            )
+            all_embeddings.extend(response.embeddings.float)
+            tokens_in_current_minute += batch_token_count
+            pbar.update(len(batch_texts))
+
+    pbar.close()
+    df['embeddings'] = all_embeddings
     return df
 
 # Social media data preprocessing pipeline
@@ -80,7 +121,7 @@ def create_social_media_df(raw_path, text_col, date_col):
         df = pd.read_csv(processed_path)
 
     else:
-        df = load_social(raw_path)
+        df = load_json_folder(raw_path)
         df = clean_text(df, text_col, date_col)
         df = cohere_embed(df, text_col)
         df.to_csv(processed_path, index=False)
