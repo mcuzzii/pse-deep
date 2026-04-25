@@ -49,7 +49,7 @@ def clean_text(text_df, text_col, date_col):
     return df
 
 # Embeddings using cohere embed-v4.0.
-def cohere_embed(text_df, text_col, max_batch_size=96, tpm_limit=95000):
+def cohere_embed(text_df, text_col, max_batch_size=96, tpm_limit=95000, buffer_duration=10):
     
     # Creating a local tokenizer using the embed-v4.0 tokenizer from Cohere.
     tokenizer = Tokenizer.from_str(requests.get(os.getenv("EMBED_V4_TOKENIZER_URL")).text)
@@ -98,8 +98,8 @@ def cohere_embed(text_df, text_col, max_batch_size=96, tpm_limit=95000):
                 time_elapsed = time.time() - time_start
 
                 if time_elapsed < 60:
-                    # 10 second buffer for safety.
-                    time.sleep(60 - time_elapsed + 10)
+                    # Buffer period for safety.
+                    time.sleep(60 - time_elapsed + buffer_duration)
 
                 minute_tokens = 0
                 time_start = time.time()
