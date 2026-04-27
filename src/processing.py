@@ -183,10 +183,10 @@ class DataSource:
 
         if self.processed_path.exists():
             self = joblib.load(self.processed_path)
-            init_history = self._history
+            init_history = self._history.copy()
 
         else:
-            init_history = self._history
+            init_history = self._history.copy()
             self.load_json_folder(self.raw_path, ignore_history=ignore_history)
         
         self.clean_text(ignore_history=ignore_history)
