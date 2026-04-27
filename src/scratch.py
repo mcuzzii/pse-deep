@@ -1,8 +1,8 @@
-from tokenizers import Tokenizer
-import requests
+from processing import DataSource
+from pathlib import Path
 
-response = requests.get(os.getenv("EMBED_V4_TOKENIZER_URL"))
-tokenizer = Tokenizer.from_str(response.text)
+data = DataSource()
+data.load_json_folder(Path('../data/raw/social'), ignore_history=True)
 
-result = tokenizer.encode(sequence="nagpapababa ng kalidad ng edukasyon ang mga influencer", add_special_tokens=False)
-print(result.tokens)
+print(data._history)
+print(data.df.head(50)['text'])

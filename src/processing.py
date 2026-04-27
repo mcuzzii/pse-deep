@@ -9,6 +9,9 @@ from tqdm import tqdm
 from tokenizers import Tokenizer
 import requests
 from cohere import ClientV2
+import joblib
+import functools
+import json
 
 load_dotenv()
 
@@ -21,20 +24,62 @@ USER_PATTERN = r'@\w+'
 HASHTAG_PATTERN = r'#(\w+)'
 CASHTAG_PATTERN = r'\$(\w+)'
 
-class TextPreprocessor:
-    """A class for preprocessing text data."""
+# Decorator that records which methods have been called.
+def record_history(method):
 
-    def __init__(self, text_df, text_col, date_col):
+    @functools.wraps(method)
+    def wrapper(self, *args, **kwargs):
+        self._history.append(method.__qualname__)
+        return method(self, *args, **kwargs)
 
-        self.df = text_df.copy(deep=True)
-        self.text_col = text_col
-        self.date_col = date_col
+    return wrapper
+
+# Helper function for creating snake_case strings.
+def snake_case(text_string):
+    text_string = re.sub(r'[^A-Za-z0-9]', ' ', text_string)
+    text_string = re.sub(r'([a-z])([A-Z])', r'\1 \2', text_string)
+    text_string = re.sub(r'([A-Z])([A-Z][a-z])', r'\1 \2', text_string)
+    text_string = re.sub(r'([A-Za-z])([0-9])', r'\1 \2', text_string)
+    text_string = re.sub(r'([0-9])([A-Za-z])', r'\1 \2', text_string)
+    
+    text_string = re.sub(r'\s+', '_', text_string.strip()).lower()
+
+    return text_string
+
+class DataSource:
+    """A class for storing and processing a dataset."""
+
+    def __init__(self):
         
         # Flags for whether certain heavy tasks have already been performed.
-        self._cohere_embed = False
+        self._history = []
+
+    @record_history
+    def load_json_folder(self, raw_path, ignore_history=False):
+        """Loads JSON data from files in a folder."""
+
+        # If method has already been called, skip the task.
+        if 'DataSource.load_json_folder' in self._history and not ignore_history:
+            return
+
+        section_dfs = []
+        for file_path in raw_path.iterdir():
+            if file_path.is_file():
+                with open(file_path, 'r') as f:
+                    json_loaded = json.load(f)
+                
+                section_df = pd.DataFrame(json_loaded)
+                section_dfs.append(section_df)
+        
+        self.df = pd.concat(section_dfs)
     
-    def clean_text(self):
-        """Cleans the text data."""
+    @record_history
+    def clean_text(self, ignore_history=False):
+        """Cleans text data."""
+
+        # If method has already been called, skip the task.
+        if 'DataSource.clean_text' in self._history and not ignore_history:
+            return self.df
 
         # Convert to datetime and sort by date.
         self.df[self.date_col] = pd.to_datetime(self.df[self.date_col])
@@ -56,10 +101,16 @@ class TextPreprocessor:
 
         # Lowercase.
         self.df[self.text_col] = self.df[self.text_col].str.lower()
-        
-        return self.df
     
-    def cohere_embed(self, max_batch_size=96, tpm_limit=95000, buffer_duration=10):
+    # Embeddings using cohere embed-v4.0.
+    @record_history
+    def cohere_embed(self, max_batch_size=96, tpm_limit=95000, buffer_duration=10, ignore_history=False):
+        """ Creates text embeddings using Cohere Embed V4.0"""
+
+        # If method has already been called, skip the task.
+        if 'DataSource.cohere_embed' in self._history and not ignore_history:
+            return self.df
+
         # Creating a local tokenizer using the embed-v4.0 tokenizer from Cohere.
         tokenizer = Tokenizer.from_str(requests.get(os.getenv("EMBED_V4_TOKENIZER_URL")).text)
         
@@ -115,85 +166,28 @@ class TextPreprocessor:
         # Close the progress bar and add embeddings to the data frame.
         pbar.close()
         self.df['embeddings'] = pd.Series(all_embeddings)
-
-        self._cohere_embed = True
         
-        return df
+    # Processing pipeline for social media data.
+    @record_history
+    def create_social_media_df(self, raw_path, processed_path, file_name, text_col, date_col):
 
-# Embeddings using cohere embed-v4.0.
-def cohere_embed(text_df, text_col, max_batch_size=96, tpm_limit=95000, buffer_duration=10):
-    
-    # Creating a local tokenizer using the embed-v4.0 tokenizer from Cohere.
-    tokenizer = Tokenizer.from_str(requests.get(os.getenv("EMBED_V4_TOKENIZER_URL")).text)
-    
-    # Initializing data frame for embeddings capture.
-    df = text_df.copy(deep=True)
-    texts = df[text_col].tolist()
-    all_embeddings = []
-    
-    # Variables for rate limiting.
-    minute_tokens = 0
-    time_start = time.time()
-    
-    # Progress bar.
-    pbar = tqdm(total=len(texts), desc="Embedding (Local Tokenizer)")
+        self.raw_path = Path(raw_path)
+        self.processed_path = Path(processed_path) / (file_name + '.joblib')
+        self.text_col = text_col
+        self.date_col = date_col
 
-    # Batching for embeddings capture.
-    batch_texts = []
+        if self.processed_path.exists():
+            self = joblib.load(self.processed_path)
 
-    for i, text in enumerate(texts):
+        else:
+            self.load_json_folder(self.raw_path)
+        
+        init_history = self._history
+        
+        self.clean_text(self.text_col, self.date_col)
+        # self.cohere_embed(self.text_col)
+        print(self.df.loc[self.df['text'] == ''])
 
-        batch_texts.append(text)
-        minute_tokens += len(tokenizer.encode(text, add_special_tokens=False))
+        if self._history != init_history:
+            joblib.dump(self, self.processed_path)
 
-        # Rules for terminating the growth of a batch, and subsequently acquiring embeddings.
-        if (
-            len(batch_texts) == max_batch_size or
-            minute_tokens >= tpm_limit or
-            i == len(texts) - 1
-        ):
-            response = co.embed(
-                model='embed-v4.0',
-                texts=batch_texts,
-                embedding_types=['float'],
-                input_type='classification',
-                output_dimension=1024
-            )
-
-            # Extend embeddings as list of lists and update progress bar.
-            all_embeddings.extend(response.embeddings.float)
-            pbar.update(len(batch_texts))
-            batch_texts = []
-
-            # Handling delays between requests.
-            if minute_tokens >= tpm_limit:
-                time_elapsed = time.time() - time_start
-
-                if time_elapsed < 60:
-                    # Buffer period for safety.
-                    time.sleep(60 - time_elapsed + buffer_duration)
-
-                minute_tokens = 0
-                time_start = time.time()
-
-    # Close the progress bar and add embeddings to the data frame.
-    pbar.close()
-    df['embeddings'] = pd.Series(all_embeddings)
-    return df
-
-# Social media data preprocessing pipeline.
-def create_social_media_df(raw_path, text_col, date_col):
-    raw_path = Path(raw_path)
-
-    processed_path = raw_path.parent.parent / "processed" / "social_media.csv"
-
-    if processed_path.exists():
-        df = pd.read_csv(processed_path)
-
-    else:
-        df = load_json_folder(raw_path)
-        df = clean_text(df, text_col, date_col)
-        df = cohere_embed(df, text_col)
-        df.to_csv(processed_path, index=False)
-    
-    return df
