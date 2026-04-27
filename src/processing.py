@@ -30,8 +30,9 @@ def record_history(method):
 
     @functools.wraps(method)
     def wrapper(self, *args, **kwargs):
+        method_out = method(self, *args, **kwargs)
         self._history.append(method.__qualname__)
-        return method(self, *args, **kwargs)
+        return method_out
 
     return wrapper
 
@@ -56,8 +57,12 @@ class DataSource:
         self._history = []
 
     @record_history
-    def load_json_folder(self, raw_path, ignore_history=False):
-        """Loads JSON data from files in a folder."""
+    def load_json_folder(
+        self,
+        raw_path: Path,
+        ignore_history: bool = False
+    ):
+        """ Loads JSON data from files in a folder. """
 
         # If method has already been called, skip the task.
         if 'DataSource.load_json_folder' in self._history and not ignore_history:
@@ -77,8 +82,41 @@ class DataSource:
         self.df = df
     
     @record_history
-    def clean_text(self, ignore_history=False):
-        """Cleans text data."""
+    def load_lseg_news(
+        self,
+        raw_path: Path,
+        ignore_history: bool = False
+    ):
+        """ Loads LSEG news data from files in a folder. """
+
+        # If method has already been called, skip the task.
+        if 'DataSource.load_lseg_news' in self._history and not ignore_history:
+            return
+        
+        df = pd.read_excel(raw_path)
+
+        # Deal with the unique structure of the LSEG news dataset.
+        df.iloc[:, 0] = df.iloc[:, 0].ffill()
+        df = df.loc[df.iloc[:, 0].notna() & df.iloc[:, 1].notna()]
+        df = df.loc[df.iloc[:, 0] != 'Only Important']
+
+        # Create a date column.
+        df.iloc[:, 1] = pd.to_datetime(df.iloc[:, 0].astype(str) + ' ' + df.iloc[:, 1].astype(str))
+        
+        # Drop extraneous columns.
+        df = df.iloc[:, 1:5]
+
+        # Give column names.
+        df.columns = ['date_time', 'source', 'entities', 'text']
+
+        self.df = df
+    
+    @record_history
+    def clean_text(
+        self,
+        ignore_history: bool = False
+    ):
+        """ Cleans text data. """
 
         # If method has already been called, skip the task.
         if 'DataSource.clean_text' in self._history and not ignore_history:
@@ -108,10 +146,15 @@ class DataSource:
         # Remove rows with NaN text.
         self.df = self.df.loc[self.df[self.text_col].notna()]
     
-    # Embeddings using cohere embed-v4.0.
     @record_history
-    def cohere_embed(self, max_batch_size=96, tpm_limit=95000, buffer_duration=10, ignore_history=False):
-        """ Creates text embeddings using Cohere Embed V4.0"""
+    def cohere_embed(
+        self,
+        max_batch_size: int = 96,
+        tpm_limit: int = 90000,
+        buffer_duration: int = 10,
+        ignore_history: bool = False
+    ):
+        """ Creates text embeddings using Cohere Embed V4.0 """
 
         # If method has already been called, skip the task.
         if 'DataSource.cohere_embed' in self._history and not ignore_history:
@@ -173,13 +216,21 @@ class DataSource:
         pbar.close()
         self.df['embeddings'] = pd.Series(all_embeddings)
         
-    # Processing pipeline for social media data.
-    def create_social_media_df(self, raw_path, processed_path, file_name, text_col, date_col, ignore_history=False):
+    # Processing pipeline for text data.
+    def create_text_df(
+        self,
+        raw_path: str,
+        processed_path: str,
+        file_name: str,
+        type: ['lseg_news', 'x_posts'],
+        text_col: str | None = None,
+        date_col: str | None = None,
+        ignore_history: bool = False
+    ):
+        """ Pipeline for preprocessing text-based datasets. """
 
         self.raw_path = Path(raw_path)
         self.processed_path = Path(processed_path) / (file_name + '.joblib')
-        self.text_col = snake_case(text_col)
-        self.date_col = snake_case(date_col)
 
         if self.processed_path.exists():
             self = joblib.load(self.processed_path)
@@ -187,11 +238,20 @@ class DataSource:
 
         else:
             init_history = self._history.copy()
-            self.load_json_folder(self.raw_path, ignore_history=ignore_history)
+
+            # Processing text-based datasets.
+            if type == 'x_posts':
+                self.text_col = snake_case(text_col)
+                self.date_col = snake_case(date_col)
+                self.load_json_folder(self.raw_path, ignore_history=ignore_history)
+            
+            elif type == 'lseg_news':
+                self.load_lseg_news(self.raw_path, ignore_history=ignore_history)
+                self.text_col = 'text',
+                self.date_col = 'date_time'
         
         self.clean_text(ignore_history=ignore_history)
         self.cohere_embed(ignore_history=ignore_history)
 
         if self._history != init_history:
             joblib.dump(self, self.processed_path)
-

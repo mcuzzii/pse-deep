@@ -12,10 +12,11 @@ load_dotenv()
 def main():
 
     data = DataSource()
-    data.create_social_media_df(
+    data.create_text_df(
         raw_path='data/raw/social',
         processed_path='data/processed',
         file_name='social_media',
+        type='x_posts',
         text_col='text',
         date_col='createdAt',
         ignore_history=True
