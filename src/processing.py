@@ -12,6 +12,7 @@ from cohere import ClientV2
 import joblib
 import functools
 import json
+import re
 
 load_dotenv()
 
@@ -62,16 +63,18 @@ class DataSource:
         if 'DataSource.load_json_folder' in self._history and not ignore_history:
             return
 
-        section_dfs = []
+        master_json = []
         for file_path in raw_path.iterdir():
             if file_path.is_file():
                 with open(file_path, 'r') as f:
                     json_loaded = json.load(f)
                 
-                section_df = pd.DataFrame(json_loaded)
-                section_dfs.append(section_df)
+                master_json.extend(json_loaded)
         
-        self.df = pd.concat(section_dfs)
+        df = pd.json_normalize(master_json)
+        df.columns = [snake_case(col) for col in df.columns]
+
+        self.df = df
     
     @record_history
     def clean_text(self, ignore_history=False):
@@ -88,7 +91,7 @@ class DataSource:
         # Handle whitespaces.
         self.df[self.text_col] = self.df[self.text_col].str.strip()
         self.df[self.text_col] = self.df[self.text_col].str.replace(r'\s+', ' ', regex=True)
-        self.df = self.df[self.df[self.text_col] != ""]
+        self.df = self.df.loc[self.df[self.text_col] != ""]
 
         # Deduplicate, keeping only the earliest post.
         self.df.drop_duplicates(subset=[self.text_col], keep='first', inplace=True)
@@ -101,6 +104,9 @@ class DataSource:
 
         # Lowercase.
         self.df[self.text_col] = self.df[self.text_col].str.lower()
+
+        # Remove rows with NaN text.
+        self.df = self.df.loc[self.df[self.text_col].notna()]
     
     # Embeddings using cohere embed-v4.0.
     @record_history
@@ -168,25 +174,23 @@ class DataSource:
         self.df['embeddings'] = pd.Series(all_embeddings)
         
     # Processing pipeline for social media data.
-    @record_history
-    def create_social_media_df(self, raw_path, processed_path, file_name, text_col, date_col):
+    def create_social_media_df(self, raw_path, processed_path, file_name, text_col, date_col, ignore_history=False):
 
         self.raw_path = Path(raw_path)
         self.processed_path = Path(processed_path) / (file_name + '.joblib')
-        self.text_col = text_col
-        self.date_col = date_col
+        self.text_col = snake_case(text_col)
+        self.date_col = snake_case(date_col)
 
         if self.processed_path.exists():
             self = joblib.load(self.processed_path)
+            init_history = self._history
 
         else:
-            self.load_json_folder(self.raw_path)
+            init_history = self._history
+            self.load_json_folder(self.raw_path, ignore_history=ignore_history)
         
-        init_history = self._history
-        
-        self.clean_text(self.text_col, self.date_col)
-        # self.cohere_embed(self.text_col)
-        print(self.df.loc[self.df['text'] == ''])
+        self.clean_text(ignore_history=ignore_history)
+        self.cohere_embed(ignore_history=ignore_history)
 
         if self._history != init_history:
             joblib.dump(self, self.processed_path)

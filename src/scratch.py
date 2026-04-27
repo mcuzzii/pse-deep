@@ -1,8 +1,6 @@
 from processing import DataSource
 from pathlib import Path
+import joblib
 
-data = DataSource()
-data.load_json_folder(Path('../data/raw/social'), ignore_history=True)
-
-print(data._history)
+data = joblib.load('../data/processed/social_media.joblib')
 print(data.df.head(50)['text'])
