@@ -3,7 +3,6 @@ import cohere
 import os
 from dotenv import load_dotenv
 from pathlib import Path
-from data_loader import load_json_folder
 import time
 from tqdm import tqdm
 from tokenizers import Tokenizer
@@ -12,6 +11,7 @@ from cohere import ClientV2
 import joblib
 import functools
 import json
+import ast
 import re
 
 load_dotenv()
@@ -57,19 +57,18 @@ class DataSource:
         self._history = []
 
     @record_history
-    def load_json_folder(
+    def _load_json_folder(
         self,
-        raw_path: Path,
         ignore_history: bool = False
     ):
         """ Loads JSON data from files in a folder. """
 
         # If method has already been called, skip the task.
-        if 'DataSource.load_json_folder' in self._history and not ignore_history:
+        if 'DataSource._load_json_folder' in self._history and not ignore_history:
             return
 
         master_json = []
-        for file_path in raw_path.iterdir():
+        for file_path in self.raw_path.iterdir():
             if file_path.is_file():
                 with open(file_path, 'r') as f:
                     json_loaded = json.load(f)
@@ -82,18 +81,17 @@ class DataSource:
         self.df = df
     
     @record_history
-    def load_lseg_news(
+    def _load_lseg_news(
         self,
-        raw_path: Path,
         ignore_history: bool = False
     ):
         """ Loads LSEG news data from files in a folder. """
 
         # If method has already been called, skip the task.
-        if 'DataSource.load_lseg_news' in self._history and not ignore_history:
+        if 'DataSource._load_lseg_news' in self._history and not ignore_history:
             return
         
-        df = pd.read_excel(raw_path)
+        df = pd.read_excel(self.raw_path)
 
         # Deal with the unique structure of the LSEG news dataset.
         df.iloc[:, 0] = df.iloc[:, 0].ffill()
@@ -112,14 +110,14 @@ class DataSource:
         self.df = df
     
     @record_history
-    def clean_text(
+    def _clean_text(
         self,
         ignore_history: bool = False
     ):
         """ Cleans text data. """
 
         # If method has already been called, skip the task.
-        if 'DataSource.clean_text' in self._history and not ignore_history:
+        if 'DataSource._clean_text' in self._history and not ignore_history:
             return self.df
 
         # Convert to datetime and sort by date.
@@ -147,8 +145,9 @@ class DataSource:
         self.df = self.df.loc[self.df[self.text_col].notna()]
     
     @record_history
-    def cohere_embed(
+    def _cohere_embed(
         self,
+        cache_location: Path,
         max_batch_size: int = 96,
         tpm_limit: int = 90000,
         buffer_duration: int = 10,
@@ -157,14 +156,27 @@ class DataSource:
         """ Creates text embeddings using Cohere Embed V4.0 """
 
         # If method has already been called, skip the task.
-        if 'DataSource.cohere_embed' in self._history and not ignore_history:
+        if 'DataSource._cohere_embed' in self._history and not ignore_history:
             return self.df
+
+        # Handle cache location.
+        cache_location.parent.mkdir(parents=True, exist_ok=True)
+        
+        if cache_location.exists():
+            self.df = pd.read_csv(cache_location, index_col=0)
+            if 'embeddings' in self.df.columns:
+                self.df['embeddings'] = self.df['embeddings'].apply(
+                    lambda x: ast.literal_eval(x) if isinstance(x, str) else x
+                )
+        else:
+            self.df['embeddings'] = None
 
         # Creating a local tokenizer using the embed-v4.0 tokenizer from Cohere.
         tokenizer = Tokenizer.from_str(requests.get(os.getenv("EMBED_V4_TOKENIZER_URL")).text)
         
         # Initializing list for embeddings capture.
-        texts = self.df[self.text_col].tolist()
+        indices_to_embed = self.df.loc[self.df['embeddings'].isna()].index
+        texts = self.df.loc[indices_to_embed, self.text_col].tolist()
         all_embeddings = []
         
         # Variables for rate limiting.
@@ -188,18 +200,25 @@ class DataSource:
                 minute_tokens >= tpm_limit or
                 i == len(texts) - 1
             ):
-                response = co.embed(
-                    model='embed-v4.0',
-                    texts=batch_texts,
-                    embedding_types=['float'],
-                    input_type='classification',
-                    output_dimension=1024
-                )
+                try:
+                    response = co.embed(
+                        model='embed-v4.0',
+                        texts=batch_texts,
+                        embedding_types=['float'],
+                        input_type='classification',
+                        output_dimension=1024
+                    )
+                    all_embeddings.extend(response.embeddings.float)
+                    pbar.update(len(batch_texts))
+                    batch_texts = []
+                except Exception as e:
+                    print(f"Error at batch {i}: {e}")
+                    self.df.loc[indices_to_embed[:len(all_embeddings)], 'embeddings'] = all_embeddings
 
-                # Extend embeddings as list of lists and update progress bar.
-                all_embeddings.extend(response.embeddings.float)
-                pbar.update(len(batch_texts))
-                batch_texts = []
+                    self.df.to_csv(cache_location)
+                    print("Partial progress saved.")
+
+                    raise
 
                 # Handling delays between requests.
                 if minute_tokens >= tpm_limit:
@@ -214,7 +233,7 @@ class DataSource:
 
         # Close the progress bar and add embeddings to the data frame.
         pbar.close()
-        self.df['embeddings'] = pd.Series(all_embeddings)
+        self.df.loc[indices_to_embed, 'embeddings'] = all_embeddings
         
     # Processing pipeline for text data.
     def create_text_df(
@@ -230,10 +249,12 @@ class DataSource:
         """ Pipeline for preprocessing text-based datasets. """
 
         self.raw_path = Path(raw_path)
-        self.processed_path = Path(processed_path) / (file_name + '.joblib')
+        self.file_name = file_name
+        self.processed_path = Path(processed_path) / f'{self.file_name}.joblib'
 
         if self.processed_path.exists():
-            self = joblib.load(self.processed_path)
+            saved_data_source = joblib.load(self.processed_path)
+            self.__dict__.update(saved_data_source.__dict__)
             init_history = self._history.copy()
 
         else:
@@ -243,15 +264,18 @@ class DataSource:
             if type == 'x_posts':
                 self.text_col = snake_case(text_col)
                 self.date_col = snake_case(date_col)
-                self.load_json_folder(self.raw_path, ignore_history=ignore_history)
+                self._load_json_folder(ignore_history=ignore_history)
             
             elif type == 'lseg_news':
-                self.load_lseg_news(self.raw_path, ignore_history=ignore_history)
-                self.text_col = 'text',
+                self._load_lseg_news(ignore_history=ignore_history)
+                self.text_col = 'text'
                 self.date_col = 'date_time'
         
-        self.clean_text(ignore_history=ignore_history)
-        self.cohere_embed(ignore_history=ignore_history)
+        self._clean_text(ignore_history=ignore_history)
+        self._cohere_embed(
+            cache_location=self.processed_path / 'cache' / f'{self.file_name}_embeddings.csv',
+            ignore_history=ignore_history
+        )
 
         if self._history != init_history:
             joblib.dump(self, self.processed_path)
