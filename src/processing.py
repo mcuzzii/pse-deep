@@ -283,7 +283,7 @@ class DataSource:
         self._clean_text(ignore_history=ignore_history)
         self._cohere_embed(
             cache_location=Path(processed_path) / 'cache',
-            tpm_limit=95000,
+            tpm_limit=90000,
             ignore_history=ignore_history
         )
 
