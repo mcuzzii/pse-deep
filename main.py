@@ -11,8 +11,8 @@ load_dotenv()
 
 def main():
 
-    data = DataSource()
-    data.create_text_df(
+    social_media_data = DataSource()
+    social_media_data.create_text_df(
         raw_path='data/raw/social',
         processed_path='data/processed',
         file_name='social_media',
@@ -21,7 +21,17 @@ def main():
         date_col='createdAt',
         ignore_history=True
     )
-    print(data.df.head())
+    print(social_media_data.df.head())
+
+    lseg_news_data = DataSource()
+    lseg_news_data.create_text_df(
+        raw_path='data/raw/news/all_news.xlsx',
+        processed_path='data/processed',
+        file_name='news',
+        type='lseg_news',
+        ignore_history=True
+    )
+    print(lseg_news_data.df.head())
 
 if __name__ == '__main__':
     main()
