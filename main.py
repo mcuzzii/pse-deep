@@ -18,8 +18,7 @@ def main():
         file_name='social_media',
         medium='x_posts',
         text_col='text',
-        date_col='createdAt',
-        ignore_history=True
+        date_col='createdAt'
     )
     print(social_media_data.df.head())
 
@@ -28,8 +27,7 @@ def main():
         raw_path='data/raw/news/all_news.xlsx',
         processed_path='data/processed',
         file_name='news',
-        medium='lseg_news',
-        ignore_history=True
+        medium='lseg_news'
     )
     print(lseg_news_data.df.head())
 
