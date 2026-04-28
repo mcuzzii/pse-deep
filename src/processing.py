@@ -149,7 +149,7 @@ class DataSource:
         self,
         cache_location: Path,
         max_batch_size: int = 96,
-        tpm_limit: int = 90000,
+        tpm_limit: int = 95000,
         buffer_duration: int = 10,
         ignore_history: bool = False
     ):
@@ -157,13 +157,14 @@ class DataSource:
 
         # If method has already been called, skip the task.
         if 'DataSource._cohere_embed' in self._history and not ignore_history:
-            return self.df
+            return
 
         # Handle cache location.
-        cache_location.parent.mkdir(parents=True, exist_ok=True)
+        cache_location.mkdir(parents=True, exist_ok=True)
+        cache_file_path = cache_location / f'{self.file_name}.joblib'
         
-        if cache_location.exists():
-            self.df = pd.read_csv(cache_location, index_col=0)
+        if cache_file_path.exists():
+            self.df = joblib.load(cache_file_path)
             if 'embeddings' in self.df.columns:
                 self.df['embeddings'] = self.df['embeddings'].apply(
                     lambda x: ast.literal_eval(x) if isinstance(x, str) else x
@@ -213,9 +214,12 @@ class DataSource:
                     batch_texts = []
                 except Exception as e:
                     print(f"Error at batch {i}: {e}")
-                    self.df.loc[indices_to_embed[:len(all_embeddings)], 'embeddings'] = all_embeddings
 
-                    self.df.to_csv(cache_location)
+                    successful_embeddings_indices = indices_to_embed[:len(all_embeddings)]
+                    successful_embeddings = pd.Series(all_embeddings, index=successful_embeddings_indices)
+                    self.df.loc[successful_embeddings_indices, 'embeddings'] = successful_embeddings
+
+                    joblib.dump(self.df, cache_file_path)
                     print("Partial progress saved.")
 
                     raise
@@ -233,7 +237,11 @@ class DataSource:
 
         # Close the progress bar and add embeddings to the data frame.
         pbar.close()
-        self.df.loc[indices_to_embed, 'embeddings'] = all_embeddings
+        self.df.loc[indices_to_embed, 'embeddings'] = pd.Series(all_embeddings, index=indices_to_embed)
+
+        # Delete cache
+        if cache_file_path.exists():
+            cache_file_path.unlink()
         
     # Processing pipeline for text data.
     def create_text_df(
@@ -241,7 +249,7 @@ class DataSource:
         raw_path: str,
         processed_path: str,
         file_name: str,
-        type: ['lseg_news', 'x_posts'],
+        medium: ['lseg_news', 'x_posts'],
         text_col: str | None = None,
         date_col: str | None = None,
         ignore_history: bool = False
@@ -250,10 +258,11 @@ class DataSource:
 
         self.raw_path = Path(raw_path)
         self.file_name = file_name
-        self.processed_path = Path(processed_path) / f'{self.file_name}.joblib'
+        self.processed_path = Path(processed_path)
+        data_source_path = self.processed_path / f'{self.file_name}.joblib'
 
-        if self.processed_path.exists():
-            saved_data_source = joblib.load(self.processed_path)
+        if data_source_path.exists():
+            saved_data_source = joblib.load(data_source_path)
             self.__dict__.update(saved_data_source.__dict__)
             init_history = self._history.copy()
 
@@ -261,21 +270,22 @@ class DataSource:
             init_history = self._history.copy()
 
             # Processing text-based datasets.
-            if type == 'x_posts':
+            if medium == 'x_posts':
                 self.text_col = snake_case(text_col)
                 self.date_col = snake_case(date_col)
                 self._load_json_folder(ignore_history=ignore_history)
             
-            elif type == 'lseg_news':
+            elif medium == 'lseg_news':
                 self._load_lseg_news(ignore_history=ignore_history)
                 self.text_col = 'text'
                 self.date_col = 'date_time'
         
         self._clean_text(ignore_history=ignore_history)
         self._cohere_embed(
-            cache_location=self.processed_path / 'cache' / f'{self.file_name}_embeddings.csv',
+            cache_location=Path(processed_path) / 'cache',
+            tpm_limit=95000,
             ignore_history=ignore_history
         )
 
         if self._history != init_history:
-            joblib.dump(self, self.processed_path)
+            joblib.dump(self, data_source_path)

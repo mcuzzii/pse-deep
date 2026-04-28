@@ -16,7 +16,7 @@ def main():
         raw_path='data/raw/social',
         processed_path='data/processed',
         file_name='social_media',
-        type='x_posts',
+        medium='x_posts',
         text_col='text',
         date_col='createdAt',
         ignore_history=True
@@ -28,7 +28,7 @@ def main():
         raw_path='data/raw/news/all_news.xlsx',
         processed_path='data/processed',
         file_name='news',
-        type='lseg_news',
+        medium='lseg_news',
         ignore_history=True
     )
     print(lseg_news_data.df.head())
