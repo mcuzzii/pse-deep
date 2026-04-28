@@ -1,23 +1,17 @@
 import pandas as pd
 import cohere
 import os
-from dotenv import load_dotenv
 from pathlib import Path
 import time
 from tqdm import tqdm
 from tokenizers import Tokenizer
+from typing import Literal
 import requests
-from cohere import ClientV2
 import joblib
 import functools
 import json
 import ast
 import re
-
-load_dotenv()
-
-# Initialize Cohere client.
-co = ClientV2(os.getenv("COHERE_API_KEY"))
 
 # Regex patterns.
 URL_PATTERN = r'(https?://[^\s<>"]+|www\.[^\s<>"]+|[a-zA-Z0-9.-]+\.[a-z]{2,6}/[^\s<>"]*)'
@@ -144,12 +138,76 @@ class DataSource:
         # Remove rows with NaN text.
         self.df = self.df.loc[self.df[self.text_col].notna()]
     
-    @record_history
     def _cohere_embed(
         self,
+        texts: list[str],
+        output_dimension: int = 1024
+    ):
+        response = self._llm_client.embed(
+            model='embed-v4.0',
+            texts=texts,
+            embedding_types=['float'],
+            input_type='classification',
+            output_dimension=output_dimension
+        )
+
+        return response.embeddings.float
+
+    def _gemini_embed(
+        self,
+
+    )
+
+    def _batch_embed(
+        self,
+        model: ['embed-v4.0', 'gemini-embeddings-2'],
+        batch: list[str],
+        cache_location: Path,
+        buffer_duration: int = 10
+    ):
+        """ Embeds a batch of text data. """
+        try:
+            response = co.embed(
+                model='embed-v4.0',
+                texts=batch_texts,
+                embedding_types=['float'],
+                input_type='classification',
+                output_dimension=1024
+            )
+            all_embeddings.extend(response.embeddings.float)
+            pbar.update(len(batch_texts))
+            batch_texts = []
+        except Exception as e:
+            print(f"Error at batch {i}: {e}")
+
+            successful_embeddings_indices = indices_to_embed[:len(all_embeddings)]
+            successful_embeddings = pd.Series(all_embeddings, index=successful_embeddings_indices)
+            self.df.loc[successful_embeddings_indices, 'embeddings'] = successful_embeddings
+
+            joblib.dump(self.df, cache_file_path)
+            print("Partial progress saved.")
+
+            raise
+
+        # Handling delays between requests.
+        if minute_tokens >= tpm_limit:
+            time_elapsed = time.time() - time_start
+
+            if time_elapsed < 60:
+                # Buffer period for safety.
+                time.sleep(60 - time_elapsed + buffer_duration)
+
+            minute_tokens = 0
+            time_start = time.time()
+
+    
+    @record_history
+    def _get_embeddings(
+        self,
+        model: ['embed-v4.0', 'gemini-embeddings-2'],
         cache_location: Path,
         max_batch_size: int = 96,
-        tpm_limit: int = 95000,
+        tpm_limit: int = 30000,
         buffer_duration: int = 10,
         ignore_history: bool = False
     ):
@@ -173,7 +231,8 @@ class DataSource:
             self.df['embeddings'] = None
 
         # Creating a local tokenizer using the embed-v4.0 tokenizer from Cohere.
-        tokenizer = Tokenizer.from_str(requests.get(os.getenv("EMBED_V4_TOKENIZER_URL")).text)
+        if model == 'embed-v4.0':
+            tokenizer = Tokenizer.from_str(requests.get(os.getenv("EMBED_V4_TOKENIZER_URL")).text)
         
         # Initializing list for embeddings capture.
         indices_to_embed = self.df.loc[self.df['embeddings'].isna()].index
@@ -193,8 +252,14 @@ class DataSource:
         for i, text in enumerate(texts):
 
             batch_texts.append(text)
-            minute_tokens += len(tokenizer.encode(text, add_special_tokens=False))
-
+            if model == 'embed-v4.0':
+                minute_tokens += len(tokenizer.encode(text, add_special_tokens=False))
+            elif model == 'gemini-embeddings-2':
+                minute_tokens += client.models.count_tokens(
+                    model=model,
+                    contents=text
+                ).total_tokens
+            
             # Rules for terminating the growth of a batch, and subsequently acquiring embeddings.
             if (
                 len(batch_texts) == max_batch_size or
@@ -249,9 +314,12 @@ class DataSource:
         raw_path: str,
         processed_path: str,
         file_name: str,
-        medium: ['lseg_news', 'x_posts'],
+        medium: Literal['lseg_news', 'x_posts'],
         text_col: str | None = None,
         date_col: str | None = None,
+        llm_client: any = None,
+        provider: str | None = None,
+        embedding_dimension: int | None = 1024,
         ignore_history: bool = False
     ):
         """ Pipeline for preprocessing text-based datasets. """
