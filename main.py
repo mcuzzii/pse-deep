@@ -11,16 +11,15 @@ load_dotenv()
 
 def main():
 
-    #social_media_data = DataSource()
-    #social_media_data.create_text_df(
-    #    raw_path='data/raw/social',
-    #    processed_path='data/processed',
-    #    file_name='social_media',
-    #    medium='x_posts',
-    #    text_col='text',
-    #    date_col='createdAt'
-    #)
-    #print(social_media_data.df.head())
+    social_media_data = DataSource()
+    social_media_data.create_text_df(
+        raw_path='data/raw/social',
+        processed_path='data/processed',
+        file_name='social_media',
+        medium='x_posts',
+        text_col='text',
+        date_col='createdAt'
+    )
 
     lseg_news_data = DataSource()
     lseg_news_data.create_text_df(
@@ -29,7 +28,10 @@ def main():
         file_name='news',
         medium='lseg_news'
     )
-    print(lseg_news_data.df.head())
+    
+    for i in [52320, 47506, 32768]:
+        social_media_data.get_similar_embeddings(index=i, n_results=10)
+        lseg_news_data.get_similar_embeddings(index=i, n_results=10)
 
 if __name__ == '__main__':
     main()

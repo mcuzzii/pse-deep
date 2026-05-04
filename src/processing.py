@@ -1,4 +1,5 @@
 import pandas as pd
+import numpy as np
 import cohere
 import os
 from pathlib import Path
@@ -14,6 +15,7 @@ import json
 import ast
 import re
 from dotenv import load_dotenv
+from sklearn.metrics.pairwise import cosine_similarity
 
 load_dotenv()
 
@@ -137,7 +139,7 @@ class DataSource:
         self.df = self.df.loc[self.df[self.text_col].notna()]
     
     @record_history
-    def _get_embeddings(
+    def _cohere_embed(
         self,
         cache_location: Path,
         max_batch_size: int = 96,
@@ -230,6 +232,34 @@ class DataSource:
         # Delete cache
         if cache_file_path.exists():
             cache_file_path.unlink()
+    
+    def get_similar_embeddings(
+        self,
+        index: int,
+        n_results: int = 10
+    ):
+        file_path = self.processed_path / f'{self.file_name}_similar_to_{index}.json'
+        if file_path.exists():
+            return
+        
+        # Convert embeddings to numpy array
+        df = self.df[['text', 'embeddings']].copy()
+        embeddings_matrix = np.stack(df['embeddings'].values)
+
+        # Calculate similarities based on given reference index
+        int_loc = df.index.get_loc(index)
+        target_vector = embeddings_matrix[int_loc].reshape(1, -1)
+        similarities = cosine_similarity(target_vector, embeddings_matrix).flatten()
+
+        # Add similarity scores to the data frame and sort by similarity
+        df['similarity_score'] = similarities
+        results = df.sort_values(by='similarity_score', ascending=False)
+
+        results.head(n_results).to_json(
+            file_path,
+            orient='records',
+            indent=4
+        )
         
     # Processing pipeline for text data.
     def create_text_df(
@@ -270,7 +300,7 @@ class DataSource:
                 self.date_col = 'date_time'
         
         self._clean_text(ignore_history=ignore_history)
-        self._get_embeddings(
+        self._cohere_embed(
             cache_location=Path(processed_path) / 'cache',
             tpm_limit=90000,
             ignore_history=ignore_history
