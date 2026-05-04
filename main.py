@@ -28,7 +28,7 @@ def main():
         file_name='news',
         medium='lseg_news'
     )
-    
+
     for i in [52320, 47506, 32768]:
         social_media_data.get_similar_embeddings(index=i, n_results=10)
         lseg_news_data.get_similar_embeddings(index=i, n_results=10)
