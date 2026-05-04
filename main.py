@@ -11,16 +11,16 @@ load_dotenv()
 
 def main():
 
-    social_media_data = DataSource()
-    social_media_data.create_text_df(
-        raw_path='data/raw/social',
-        processed_path='data/processed',
-        file_name='social_media',
-        medium='x_posts',
-        text_col='text',
-        date_col='createdAt'
-    )
-    print(social_media_data.df.head())
+    #social_media_data = DataSource()
+    #social_media_data.create_text_df(
+    #    raw_path='data/raw/social',
+    #    processed_path='data/processed',
+    #    file_name='social_media',
+    #    medium='x_posts',
+    #    text_col='text',
+    #    date_col='createdAt'
+    #)
+    #print(social_media_data.df.head())
 
     lseg_news_data = DataSource()
     lseg_news_data.create_text_df(

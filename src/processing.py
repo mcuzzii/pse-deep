@@ -6,12 +6,19 @@ import time
 from tqdm import tqdm
 from tokenizers import Tokenizer
 from typing import Literal
+from cohere import ClientV2
 import requests
 import joblib
 import functools
 import json
 import ast
 import re
+from dotenv import load_dotenv
+
+load_dotenv()
+
+# Embedding client
+co = ClientV2(api_key=os.getenv('COHERE_API_KEY'))
 
 # Regex patterns.
 URL_PATTERN = r'(https?://[^\s<>"]+|www\.[^\s<>"]+|[a-zA-Z0-9.-]+\.[a-z]{2,6}/[^\s<>"]*)'
@@ -24,6 +31,9 @@ def record_history(method):
 
     @functools.wraps(method)
     def wrapper(self, *args, **kwargs):
+        if method.__qualname__ in self._history and not kwargs.get('ignore_history', False):
+            return
+        
         method_out = method(self, *args, **kwargs)
         self._history.append(method.__qualname__)
         return method_out
@@ -57,10 +67,6 @@ class DataSource:
     ):
         """ Loads JSON data from files in a folder. """
 
-        # If method has already been called, skip the task.
-        if 'DataSource._load_json_folder' in self._history and not ignore_history:
-            return
-
         master_json = []
         for file_path in self.raw_path.iterdir():
             if file_path.is_file():
@@ -80,10 +86,6 @@ class DataSource:
         ignore_history: bool = False
     ):
         """ Loads LSEG news data from files in a folder. """
-
-        # If method has already been called, skip the task.
-        if 'DataSource._load_lseg_news' in self._history and not ignore_history:
-            return
         
         df = pd.read_excel(self.raw_path)
 
@@ -110,10 +112,6 @@ class DataSource:
     ):
         """ Cleans text data. """
 
-        # If method has already been called, skip the task.
-        if 'DataSource._clean_text' in self._history and not ignore_history:
-            return self.df
-
         # Convert to datetime and sort by date.
         self.df[self.date_col] = pd.to_datetime(self.df[self.date_col])
         self.df.sort_values(by=self.date_col, ascending=True, inplace=True)
@@ -138,73 +136,9 @@ class DataSource:
         # Remove rows with NaN text.
         self.df = self.df.loc[self.df[self.text_col].notna()]
     
-    def _cohere_embed(
-        self,
-        texts: list[str],
-        output_dimension: int = 1024
-    ):
-        response = self._llm_client.embed(
-            model='embed-v4.0',
-            texts=texts,
-            embedding_types=['float'],
-            input_type='classification',
-            output_dimension=output_dimension
-        )
-
-        return response.embeddings.float
-
-    def _gemini_embed(
-        self,
-
-    )
-
-    def _batch_embed(
-        self,
-        model: ['embed-v4.0', 'gemini-embeddings-2'],
-        batch: list[str],
-        cache_location: Path,
-        buffer_duration: int = 10
-    ):
-        """ Embeds a batch of text data. """
-        try:
-            response = co.embed(
-                model='embed-v4.0',
-                texts=batch_texts,
-                embedding_types=['float'],
-                input_type='classification',
-                output_dimension=1024
-            )
-            all_embeddings.extend(response.embeddings.float)
-            pbar.update(len(batch_texts))
-            batch_texts = []
-        except Exception as e:
-            print(f"Error at batch {i}: {e}")
-
-            successful_embeddings_indices = indices_to_embed[:len(all_embeddings)]
-            successful_embeddings = pd.Series(all_embeddings, index=successful_embeddings_indices)
-            self.df.loc[successful_embeddings_indices, 'embeddings'] = successful_embeddings
-
-            joblib.dump(self.df, cache_file_path)
-            print("Partial progress saved.")
-
-            raise
-
-        # Handling delays between requests.
-        if minute_tokens >= tpm_limit:
-            time_elapsed = time.time() - time_start
-
-            if time_elapsed < 60:
-                # Buffer period for safety.
-                time.sleep(60 - time_elapsed + buffer_duration)
-
-            minute_tokens = 0
-            time_start = time.time()
-
-    
     @record_history
     def _get_embeddings(
         self,
-        model: ['embed-v4.0', 'gemini-embeddings-2'],
         cache_location: Path,
         max_batch_size: int = 96,
         tpm_limit: int = 30000,
@@ -212,10 +146,6 @@ class DataSource:
         ignore_history: bool = False
     ):
         """ Creates text embeddings using Cohere Embed V4.0 """
-
-        # If method has already been called, skip the task.
-        if 'DataSource._cohere_embed' in self._history and not ignore_history:
-            return
 
         # Handle cache location.
         cache_location.mkdir(parents=True, exist_ok=True)
@@ -229,10 +159,9 @@ class DataSource:
                 )
         else:
             self.df['embeddings'] = None
-
+        
         # Creating a local tokenizer using the embed-v4.0 tokenizer from Cohere.
-        if model == 'embed-v4.0':
-            tokenizer = Tokenizer.from_str(requests.get(os.getenv("EMBED_V4_TOKENIZER_URL")).text)
+        tokenizer = Tokenizer.from_str(requests.get(os.getenv("EMBED_V4_TOKENIZER_URL")).text)
         
         # Initializing list for embeddings capture.
         indices_to_embed = self.df.loc[self.df['embeddings'].isna()].index
@@ -252,13 +181,7 @@ class DataSource:
         for i, text in enumerate(texts):
 
             batch_texts.append(text)
-            if model == 'embed-v4.0':
-                minute_tokens += len(tokenizer.encode(text, add_special_tokens=False))
-            elif model == 'gemini-embeddings-2':
-                minute_tokens += client.models.count_tokens(
-                    model=model,
-                    contents=text
-                ).total_tokens
+            minute_tokens += len(tokenizer.encode(text, add_special_tokens=False))
             
             # Rules for terminating the growth of a batch, and subsequently acquiring embeddings.
             if (
@@ -317,8 +240,6 @@ class DataSource:
         medium: Literal['lseg_news', 'x_posts'],
         text_col: str | None = None,
         date_col: str | None = None,
-        llm_client: any = None,
-        provider: str | None = None,
         embedding_dimension: int | None = 1024,
         ignore_history: bool = False
     ):
@@ -349,7 +270,7 @@ class DataSource:
                 self.date_col = 'date_time'
         
         self._clean_text(ignore_history=ignore_history)
-        self._cohere_embed(
+        self._get_embeddings(
             cache_location=Path(processed_path) / 'cache',
             tpm_limit=90000,
             ignore_history=ignore_history
