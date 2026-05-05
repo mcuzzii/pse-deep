@@ -17,7 +17,9 @@ import re
 from dotenv import load_dotenv
 from sklearn.metrics.pairwise import cosine_similarity
 import torch
-from transformers import pipeline
+from transformers import AutoModelForSeq2SeqLM, AutoTokenizer
+import torch
+import langid
 
 # Regex patterns.
 URL_PATTERN = r'(https?://[^\s<>"]+|www\.[^\s<>"]+|[a-zA-Z0-9.-]+\.[a-z]{2,6}/[^\s<>"]*)'
@@ -261,6 +263,68 @@ class DataSource:
             orient='records',
             indent=4
         )
+    
+    def batch_process_headlines(self, batch_size=16):
+
+        df = self.df.copy(deep=True)
+
+        model_name = "facebook/nllb-200-distilled-600M"
+        tokenizer = AutoTokenizer.from_pretrained(model_name)
+        model = AutoModelForSeq2SeqLM.from_pretrained(model_name)
+
+        # Move to GPU if available
+        device = "cuda" if torch.cuda.is_available() else "cpu"
+        model.to(device)
+
+        with open('data/raw/languages.json', 'r') as f:
+            LANG_MAP = json.load(f)
+
+        # Create a copy to store results
+        df['cleaned_headline'] = df['text']
+        
+        # Step 1: Fast Language Detection (Row by Row is okay here, langid is fast)
+        print("Detecting languages...")
+        df['detected_lang'] = df['text'].apply(lambda x: langid.classify(str(x))[0])
+        
+        # Step 2: Group by language to batch translate efficiently
+        # We ignore 'en' as it doesn't need translation
+        langs_to_translate = df[df['detected_lang'] != 'en']['detected_lang'].unique()
+        
+        for lang in langs_to_translate:
+            nllb_lang = LANG_MAP.get(lang)
+            if not nllb_lang:
+                continue
+                
+            # Get all rows for this specific language
+            mask = df['detected_lang'] == lang
+            texts_to_translate = df.loc[mask, 'text'].tolist()
+            indices = df.index[mask].tolist()
+            
+            print(f"Translating {len(texts_to_translate)} items for language: {lang} ({nllb_lang})")
+            
+            tokenizer.src_lang = nllb_lang
+            translated_results = []
+            
+            # Batch loop
+            for i in tqdm(range(0, len(texts_to_translate), batch_size)):
+                batch_texts = texts_to_translate[i : i + batch_size]
+                
+                inputs = tokenizer(batch_texts, return_tensors="pt", padding=True, truncation=True).to(device)
+                
+                with torch.no_grad():
+                    translated_tokens = model.generate(
+                        **inputs,
+                        forced_bos_token_id=tokenizer.convert_tokens_to_ids("eng_Latn"),
+                        max_length=100
+                    )
+                
+                batch_outputs = tokenizer.batch_decode(translated_tokens, skip_special_tokens=True)
+                translated_results.extend(batch_outputs)
+            
+            # Update the dataframe with translated text
+            df.loc[mask, 'cleaned_headline'] = translated_results
+        
+        return df
     
     def get_sentiment(self):
 
