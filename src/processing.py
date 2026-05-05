@@ -16,11 +16,8 @@ import ast
 import re
 from dotenv import load_dotenv
 from sklearn.metrics.pairwise import cosine_similarity
-
-load_dotenv()
-
-# Embedding client
-co = ClientV2(api_key=os.getenv('COHERE_API_KEY'))
+import torch
+from transformers import pipeline
 
 # Regex patterns.
 URL_PATTERN = r'(https?://[^\s<>"]+|www\.[^\s<>"]+|[a-zA-Z0-9.-]+\.[a-z]{2,6}/[^\s<>"]*)'
@@ -149,6 +146,10 @@ class DataSource:
     ):
         """ Creates text embeddings using Cohere Embed V4.0 """
 
+        load_dotenv()
+
+        co = ClientV2(api_key=os.getenv('COHERE_API_KEY'))
+
         # Handle cache location.
         cache_location.mkdir(parents=True, exist_ok=True)
         cache_file_path = cache_location / f'{self.file_name}.joblib'
@@ -260,6 +261,17 @@ class DataSource:
             orient='records',
             indent=4
         )
+    
+    def get_sentiment(self):
+
+        # FinBERT sentiment analysis
+        finbert = pipeline("sentiment-analysis", model="ProsusAI/finbert")
+
+        sentiment_data = []
+        for text in self.df['text']:
+            sentiment_data.append(finbert(text))
+        
+        self.df = self.df.join(pd.DataFrame(sentiment_data, index=self.df.index))
         
     # Processing pipeline for text data.
     def create_text_df(

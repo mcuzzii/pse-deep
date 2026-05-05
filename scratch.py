@@ -1,26 +1,32 @@
-import pandas as pd
-from transformers import pipeline
+import torch
+from transformers import AutoTokenizer, AutoModelForSequenceClassification
 
-# 1. Initialize the FinBERT sentiment pipeline
-# 'ProsusAI/finbert' is the most popular pre-trained version
-sentiment_analyzer = pipeline("sentiment-analysis", model="ProsusAI/finbert")
+# 1. Load the model and tokenizer
+model_name = "ProsusAI/finbert"
+tokenizer = AutoTokenizer.from_pretrained(model_name)
+model = AutoModelForSequenceClassification.from_pretrained(model_name)
 
-# 2. Sample Dataframe
-# Assuming your headlines are in a column named 'headline'
-df = pd.DataFrame({
-    'headline': [
-        "Stocks rally as inflation data shows cooling prices.",
-        "Company XYZ reports massive losses in Q3 earnings call.",
-        "Market remains steady despite global uncertainty."
-    ]
-})
+# 2. Prepare your financial text
+text = "The company's revenue grew by 20%, but net profit declined due to rising costs."
 
-# 3. Apply the model to your headlines
-# We use .tolist() because pipelines are faster when processing lists
-results = sentiment_analyzer(df['headline'].tolist())
+# 3. Tokenize and get model output
+inputs = tokenizer(text, return_tensors="pt", padding=True, truncation=True)
 
-# 4. Extract results back into the dataframe
-df['sentiment'] = [res['label'] for res in results]
-df['score'] = [res['score'] for res in results]
+with torch.no_grad():
+    outputs = model(**inputs)
+    # The raw scores are in 'logits'
+    logits = outputs.logits
 
-print(df)
+# 4. Apply Softmax to get probabilities
+# dim=-1 ensures we calculate softmax across the classes for each input
+probabilities = torch.nn.functional.softmax(logits, dim=-1)
+
+# 5. Map probabilities to labels
+# For ProsusAI/finbert, the order is [Positive, Negative, Neutral]
+labels = ["Positive", "Negative", "Neutral"]
+probs_list = probabilities[0].tolist()
+
+results = {label: round(prob, 4) for label, prob in zip(labels, probs_list)}
+
+print(f"Text: {text}")
+print(f"Probabilities: {results}")
