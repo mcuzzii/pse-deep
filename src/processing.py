@@ -408,6 +408,56 @@ class DataSource:
         sentiment_df.columns = [snake_case(col) for col in sentiment_df.columns]
         
         self.df = pd.concat([self.df, sentiment_df.set_index(self.df.index)], axis=1)
+
+    def _load_stock(
+        self,
+        ignore_history: bool = False
+    ):
+        folder_path = Path("raw")
+
+        master_df = pd.DataFrame(index = pd.Index([], dtype = 'object', name = 'local_time'))
+        for item in folder_path.glob('*.xlsx'):
+            sheet = pd.read_excel(item)
+            header = sheet.index[sheet.isin(["Exchange Date"]).any(axis=1)].tolist()[0]
+            cols = sheet.iloc[header, 3:].dropna().str.lower().str.replace(' ', '_').str.replace('%', 'perc_')
+            cols.iloc[1:] = item.name.split('.')[0].split('_')[0].lower() + '_' + cols.iloc[1:]
+            instrument_df = sheet.iloc[header + 1:, 3:3 + cols.shape[0]].copy()
+            instrument_df.columns = cols.tolist()
+            instrument_df['local_time'] = pd.to_datetime(instrument_df['local_time'])
+            instrument_df = instrument_df.set_index('local_time')
+            master_df = master_df.combine_first(instrument_df)
+            print(f"Added {item.name}")
+
+        print("Reindexing dates and times")
+
+        unique_dates = master_df.index.normalize().unique().sort_values()
+        trading_periods = []
+        for date in unique_dates:
+            am_start = date + pd.Timedelta(hours = 9, minutes = 31)
+            am_end = date + pd.Timedelta(hours = 12, minutes = 0)
+            am_period = pd.date_range(start = am_start, end = am_end, freq = '1min')
+            pm_start = date + pd.Timedelta(hours = 13, minutes = 1)
+            pm_end = date + pd.Timedelta(hours = 15, minutes = 0)
+            pm_period = pd.date_range(start = pm_start, end = pm_end, freq = '1min')
+            trading_periods.append(am_period)
+            trading_periods.append(pm_period)
+        datetime_index = pd.DatetimeIndex(np.concatenate(trading_periods)).sort_values()
+
+        master_df = master_df.reindex(datetime_index)
+
+        open_cols = master_df.columns[master_df.columns.str.endswith('open')]
+        close_cols = master_df.columns[master_df.columns.str.endswith('close')]
+        ohl_cols = master_df.columns[master_df.columns.str.endswith(('open', 'high', 'low'))]
+        hlc_cols = master_df.columns[master_df.columns.str.endswith(('high', 'low', 'close'))]
+
+        master_df[close_cols] = master_df[close_cols].ffill()
+        for item in ohl_cols:
+            master_df[item] = master_df[item].fillna(master_df[item.split('_')[0] + '_close'])
+        zero_cols = master_df.columns[master_df.columns.str.endswith(('net', 'perc_chg', 'volume'))]
+        master_df[zero_cols] = master_df[zero_cols].fillna(0)
+        master_df[open_cols] = master_df[open_cols].bfill()
+        for item in hlc_cols:
+            master_df[item] = master_df[item].fillna(master_df[item.split('_')[0] + '_open'])
         
     # Processing pipeline for text data.
     def create_text_df(
