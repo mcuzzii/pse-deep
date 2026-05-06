@@ -288,7 +288,11 @@ class DataSource:
         )
     
     @record_history
-    def _translate_headlines(self, batch_size=16):
+    def _translate_headlines(
+        self,
+        batch_size: int = 16,
+        ignore_history: bool = False
+    ):
 
         model_name = "facebook/nllb-200-distilled-600M"
         tokenizer = AutoTokenizer.from_pretrained(model_name)
@@ -347,7 +351,10 @@ class DataSource:
             # Update the dataframe with translated text
             self.df.loc[mask, 'cleaned_headline'] = translated_results
     
-    def _get_finbert_sentiment(self):
+    def _get_finbert_sentiment(
+        self,
+        ignore_history: bool = False
+    ):
         device = 0 if torch.cuda.is_available() else -1
 
         finbert = pipeline(
