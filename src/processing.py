@@ -16,8 +16,7 @@ import ast
 import re
 from dotenv import load_dotenv
 from sklearn.metrics.pairwise import cosine_similarity
-import torch
-from transformers import AutoModelForSeq2SeqLM, AutoTokenizer
+from transformers import AutoModelForSeq2SeqLM, AutoTokenizer, pipeline
 import torch
 import langid
 
@@ -358,14 +357,14 @@ class DataSource:
         device = 0 if torch.cuda.is_available() else -1
 
         finbert = pipeline(
-            "sentiment-analysis", 
-            model="ProsusAI/finbert", 
+            'text-classification', 
+            model='tabularisai/ModernFinBERT', 
             device=device,
             batch_size=16,
             top_k=None  # This ensures we get positive, negative, and neutral scores
         )
 
-        raw_results = finbert(self.df['text'].tolist())
+        raw_results = finbert(self.df['cleaned_headline'].tolist())
 
         parsed_results = []
         for row in raw_results:
@@ -373,10 +372,40 @@ class DataSource:
         
         sentiment_df = pd.DataFrame(parsed_results)
         
-        if 'positive' in sentiment_df.columns and 'negative' in sentiment_df.columns:
-            sentiment_df['finbert_combined_score'] = sentiment_df['positive'] - sentiment_df['negative']
+        if 'bullish' in sentiment_df.columns and 'bearish' in sentiment_df.columns:
+            sentiment_df['finbert_combined_score'] = sentiment_df['bullish'] - sentiment_df['bearish']
         
-        sentiment_df['sentiment'] = sentiment_df[['positive', 'negative', 'neutral']].idxmax(axis=1)
+        sentiment_df['sentiment'] = sentiment_df[['bullish', 'bearish', 'neutral']].idxmax(axis=1)
+        
+        self.df = pd.concat([self.df, sentiment_df.set_index(self.df.index)], axis=1)
+    
+    def _get_multilingual_sentiment(
+        self,
+        ignore_history: bool = False
+    ):
+        device = 0 if torch.cuda.is_available() else -1
+        multilingual_sentiment = pipeline(
+            'text-classification',
+            model='tabularisai/multilingual-sentiment-analysis',
+            device=device,
+            batch_size=16,
+            top_k=None
+        )
+
+        raw_results = multilingual_sentiment(self.df['text'].tolist())
+
+        parsed_results = []
+        for row in raw_results:
+            parsed_results.append({item['label']: item['score'] for item in row})
+        
+        sentiment_df = pd.DataFrame(parsed_results)
+        
+        probs = sentiment_df[['Very Negative', 'Negative', 'Neutral', 'Positive', 'Very Positive']].values
+        sentiment_df['sentiment_score'] = np.dot(probs, np.array([-1.0, -0.5, 0.0, 0.5, 1.0]))
+
+        sentiment_df['sentiment'] = sentiment_df[list(sentiment_df.columns)].idxmax(axis=1)
+
+        sentiment_df.columns = [snake_case(col) for col in sentiment_df.columns]
         
         self.df = pd.concat([self.df, sentiment_df.set_index(self.df.index)], axis=1)
         
@@ -427,6 +456,9 @@ class DataSource:
         if medium == 'lseg_news':
             self._translate_headlines(ignore_history=ignore_history)
             self._get_finbert_sentiment(ignore_history=ignore_history)
+        
+        elif medium == 'x_posts':
+            self._get_multilingual_sentiment(ignore_history=ignore_history)
 
         if self._history != init_history:
             joblib.dump(self, data_source_path)
