@@ -32,8 +32,6 @@ def main():
     for i in [52320, 47506, 32768]:
         social_media_data.get_similar_embeddings(index=i, n_results=10)
         lseg_news_data.get_similar_embeddings(index=i, n_results=10)
-    
-    lseg_news_data.batch_process_headlines().to_csv('data/processed/lseg_news_translated.csv')
 
 if __name__ == '__main__':
     main()

@@ -53,6 +53,29 @@ def snake_case(text_string):
 
     return text_string
 
+# Helper function for getting log softmax probabilities of the language of a text.
+def get_lang(text):
+    # Get all scores
+    ranks = langid.rank(str(text))
+    langs = [r[0] for r in ranks]
+    scores = np.array([r[1] for r in ranks])
+    
+    # Standard Softmax: exp(x) / sum(exp(x))
+    # We subtract np.max(scores) for numerical stability (prevents overflow)
+    shift_scores = scores - np.max(scores)
+    exp_scores = np.exp(shift_scores)
+    softmax = exp_scores / exp_scores.sum()
+
+    # Get log probabilities.
+    log_probabilities = [np.log(s) if s > 0 else -1000 for s in softmax]
+
+    lang_scores = dict(zip(langs, log_probabilities))
+    lang = list(lang_scores.keys())[0]
+    en_score = lang_scores['en']
+    
+    # Map back to languages
+    return lang, en_score
+
 class DataSource:
     """A class for storing and processing a dataset."""
 
@@ -264,9 +287,8 @@ class DataSource:
             indent=4
         )
     
-    def batch_process_headlines(self, batch_size=16):
-
-        df = self.df.copy(deep=True)
+    @record_history
+    def _translate_headlines(self, batch_size=16):
 
         model_name = "facebook/nllb-200-distilled-600M"
         tokenizer = AutoTokenizer.from_pretrained(model_name)
@@ -280,15 +302,16 @@ class DataSource:
             LANG_MAP = json.load(f)
 
         # Create a copy to store results
-        df['cleaned_headline'] = df['text']
+        self.df['cleaned_headline'] = self.df['text']
         
         # Step 1: Fast Language Detection (Row by Row is okay here, langid is fast)
         print("Detecting languages...")
-        df['detected_lang'] = df['text'].apply(lambda x: langid.classify(str(x))[0])
+        self.df[['detected_lang', 'en_score']] = self.df['text'].apply(get_lang).apply(pd.Series)
         
         # Step 2: Group by language to batch translate efficiently
         # We ignore 'en' as it doesn't need translation
-        langs_to_translate = df[df['detected_lang'] != 'en']['detected_lang'].unique()
+        non_english_mask = self.df['en_score'] < -30
+        langs_to_translate = self.df[non_english_mask]['detected_lang'].unique()
         
         for lang in langs_to_translate:
             nllb_lang = LANG_MAP.get(lang)
@@ -296,9 +319,9 @@ class DataSource:
                 continue
                 
             # Get all rows for this specific language
-            mask = df['detected_lang'] == lang
-            texts_to_translate = df.loc[mask, 'text'].tolist()
-            indices = df.index[mask].tolist()
+            mask = (self.df['detected_lang'] == lang) & non_english_mask
+            texts_to_translate = self.df.loc[mask, 'text'].tolist()
+            indices = self.df.index[mask].tolist()
             
             print(f"Translating {len(texts_to_translate)} items for language: {lang} ({nllb_lang})")
             
@@ -322,20 +345,33 @@ class DataSource:
                 translated_results.extend(batch_outputs)
             
             # Update the dataframe with translated text
-            df.loc[mask, 'cleaned_headline'] = translated_results
-        
-        return df
+            self.df.loc[mask, 'cleaned_headline'] = translated_results
     
-    def get_sentiment(self):
+    def _get_finbert_sentiment(self):
+        device = 0 if torch.cuda.is_available() else -1
 
-        # FinBERT sentiment analysis
-        finbert = pipeline("sentiment-analysis", model="ProsusAI/finbert")
+        finbert = pipeline(
+            "sentiment-analysis", 
+            model="ProsusAI/finbert", 
+            device=device,
+            batch_size=16,
+            top_k=None  # This ensures we get positive, negative, and neutral scores
+        )
 
-        sentiment_data = []
-        for text in self.df['text']:
-            sentiment_data.append(finbert(text))
+        raw_results = finbert(self.df['text'].tolist())
+
+        parsed_results = []
+        for row in raw_results:
+            parsed_results.append({item['label']: item['score'] for item in row})
         
-        self.df = self.df.join(pd.DataFrame(sentiment_data, index=self.df.index))
+        sentiment_df = pd.DataFrame(parsed_results)
+        
+        if 'positive' in sentiment_df.columns and 'negative' in sentiment_df.columns:
+            sentiment_df['finbert_combined_score'] = sentiment_df['positive'] - sentiment_df['negative']
+        
+        sentiment_df['sentiment'] = sentiment_df[['positive', 'negative', 'neutral']].idxmax(axis=1)
+        
+        self.df = pd.concat([self.df, sentiment_df.set_index(self.df.index)], axis=1)
         
     # Processing pipeline for text data.
     def create_text_df(
@@ -381,6 +417,9 @@ class DataSource:
             tpm_limit=90000,
             ignore_history=ignore_history
         )
+        if medium == 'lseg_news':
+            self._translate_headlines(ignore_history=ignore_history)
+            self._get_finbert_sentiment(ignore_history=ignore_history)
 
         if self._history != init_history:
             joblib.dump(self, data_source_path)
