@@ -1,9 +1,7 @@
-import joblib
 import sys
 from pathlib import Path
 # Add the 'src' directory to the path
 sys.path.append(str(Path.cwd() / 'src'))
+from processing import get_unique_tickers
 
-news_data = joblib.load('data/processed/news.joblib').df
-
-print(news_data.head(5))
+print(get_unique_tickers('data/raw/stock'))

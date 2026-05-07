@@ -41,7 +41,7 @@ def record_history(method):
     return wrapper
 
 # Helper function for creating snake_case strings.
-def snake_case(text_string):
+def snake_case(text_string: str):
     text_string = re.sub(r'[^A-Za-z0-9]', ' ', text_string)
     text_string = re.sub(r'([a-z])([A-Z])', r'\1 \2', text_string)
     text_string = re.sub(r'([A-Z])([A-Z][a-z])', r'\1 \2', text_string)
@@ -53,7 +53,7 @@ def snake_case(text_string):
     return text_string
 
 # Helper function for getting log softmax probabilities of the language of a text.
-def get_lang(text):
+def get_lang(text: str):
     # Get all scores
     ranks = langid.rank(str(text))
     langs = [r[0] for r in ranks]
@@ -74,6 +74,15 @@ def get_lang(text):
     
     # Map back to languages
     return lang, en_score
+
+# Helper function to get unique ticker names from a directory:
+def get_unique_tickers(dir_path: str):
+    ticker_set = set()
+
+    for item in Path(dir_path).glob('*.xlsx'):
+        ticker_set.add(item.name.split('.')[0].split('_')[0])
+    
+    return list(ticker_set)
 
 class DataSource:
     """A class for storing and processing a dataset."""
@@ -383,31 +392,52 @@ class DataSource:
         self,
         ignore_history: bool = False
     ):
+
         device = 0 if torch.cuda.is_available() else -1
+        batch_size = 128
+
+        # Initialize pipeline with FP16 for V100 speed
         multilingual_sentiment = pipeline(
             'text-classification',
             model='tabularisai/multilingual-sentiment-analysis',
             device=device,
-            batch_size=16,
             top_k=None
         )
 
-        raw_results = multilingual_sentiment(self.df['text'].tolist())
+        # 1. Clean and prepare the list
+        texts = self.df['text'].tolist()
+        raw_results = []
 
-        parsed_results = []
-        for row in raw_results:
-            parsed_results.append({item['label']: item['score'] for item in row})
-        
+        # 2. Manual Batching Loop
+        # We iterate in steps of 'batch_size'
+        for i in tqdm(range(0, len(texts), batch_size), desc="Sentiment Analysis"):
+            batch = texts[i : i + batch_size]
+            
+            # Call the pipeline on the chunk
+            # Note: We don't need batch_size=128 inside the call here 
+            # because we are physically handing it a list of 128.
+            batch_results = multilingual_sentiment(
+                batch, 
+                truncation=True, 
+                max_length=512
+            )
+            
+            raw_results.extend(batch_results)
+
+        # 3. Parse and Calculate (Same logic as before)
+        parsed_results = [{item['label']: item['score'] for item in row} for row in raw_results]
         sentiment_df = pd.DataFrame(parsed_results)
         
-        probs = sentiment_df[['Very Negative', 'Negative', 'Neutral', 'Positive', 'Very Positive']].values
-        sentiment_df['sentiment_score'] = np.dot(probs, np.array([-1.0, -0.5, 0.0, 0.5, 1.0]))
-
-        sentiment_df['sentiment'] = sentiment_df[list(sentiment_df.columns)].idxmax(axis=1)
-
-        sentiment_df.columns = [snake_case(col) for col in sentiment_df.columns]
+        categories = ['Very Negative', 'Negative', 'Neutral', 'Positive', 'Very Positive']
+        probs = sentiment_df[categories].values
+        weights = np.array([-1.0, -0.5, 0.0, 0.5, 1.0])
         
-        self.df = pd.concat([self.df, sentiment_df.set_index(self.df.index)], axis=1)
+        sentiment_df['sentiment_score'] = np.dot(probs, weights)
+        sentiment_df['sentiment'] = sentiment_df[categories].idxmax(axis=1)
+
+        # 4. Cleanup and Merge
+        sentiment_df.columns = [snake_case(col) for col in sentiment_df.columns]
+        self.df = pd.concat([self.df.reset_index(drop=True), sentiment_df], axis=1)
 
     def _load_stock(
         self,
