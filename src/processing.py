@@ -356,10 +356,13 @@ class DataSource:
                 batch_outputs = tokenizer.batch_decode(translated_tokens, skip_special_tokens=True)
                 translated_results.extend(batch_outputs)
             
-            self.text_col = 'cleaned_headline'
-            
             # Update the dataframe with translated text
-            self.df.loc[mask, self.text_col] = translated_results
+            self.df.loc[mask, 'cleaned_headline'] = translated_results
+
+        self.text_col = 'cleaned_headline'
+        
+        self.df[self.text_col] = self.df[self.text_col].str.strip().str.lower()
+        self.df[self.text_col] = self.df[self.text_col].str.replace(r'\s+', ' ', regex=True)
     
     def get_translated_examples(
         self,
@@ -372,7 +375,6 @@ class DataSource:
         sample_df = self.df.loc[self.df['en_score'] < -30].sample(n)
         sample_df = sample_df[['text', 'cleaned_headline']]
         sample_df.to_json(file_path, orient='records', indent=4)
-
     
     @record_history
     def _get_finbert_sentiment(
@@ -385,22 +387,34 @@ class DataSource:
             'text-classification', 
             model='tabularisai/ModernFinBERT', 
             device=device,
-            batch_size=16,
             top_k=None  # This ensures we get positive, negative, and neutral scores
         )
 
-        raw_results = finbert(self.df[self.text_col].tolist())
+        texts = self.df[self.text_col].tolist()
+        raw_results = []
+        batch_size = 128
+
+        for i in tqdm(range(0, len(texts), batch_size), desc="Sentiment Analysis"):
+            batch = texts[i : i + batch_size]
+            
+            # Call the pipeline on the chunk
+            batch_results = finbert(
+                batch,
+                truncation=True,
+                max_length=512
+            )
+            
+            raw_results.extend(batch_results)
 
         parsed_results = []
         for row in raw_results:
             parsed_results.append({item['label']: item['score'] for item in row})
         
         sentiment_df = pd.DataFrame(parsed_results)
-        
+        sentiment_df['sentiment'] = sentiment_df[list(sentiment_df.columns)].idxmax(axis=1).str.title()
+
         if 'bullish' in sentiment_df.columns and 'bearish' in sentiment_df.columns:
             sentiment_df['finbert_combined_score'] = sentiment_df['bullish'] - sentiment_df['bearish']
-        
-        sentiment_df['sentiment'] = sentiment_df[['bullish', 'bearish', 'neutral']].idxmax(axis=1)
         
         self.df = pd.concat([self.df, sentiment_df.set_index(self.df.index)], axis=1)
     
@@ -575,8 +589,8 @@ class DataSource:
             ignore_history=ignore_history
         )
         if self._medium == 'lseg_news':
-            self._translate_headlines(ignore_history=ignore_history)
-            self._get_finbert_sentiment(ignore_history=ignore_history)
+            self._translate_headlines(ignore_history=True)
+            self._get_finbert_sentiment(ignore_history=True)
         
         elif self._medium == 'x_posts':
             self._get_multilingual_sentiment(ignore_history=ignore_history)

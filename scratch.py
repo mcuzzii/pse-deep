@@ -4,5 +4,5 @@ from pathlib import Path
 sys.path.append(str(Path.cwd() / 'src'))
 import joblib
 
-datasource = joblib.load('data/processed/social_media.joblib')
-print(datasource.df.columns)
+datasource = joblib.load('data/processed/news.joblib')
+print(datasource._history)
