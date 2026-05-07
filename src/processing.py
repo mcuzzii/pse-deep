@@ -443,20 +443,21 @@ class DataSource:
         self,
         ignore_history: bool = False
     ):
-        folder_path = Path("raw")
-
-        master_df = pd.DataFrame(index = pd.Index([], dtype = 'object', name = 'local_time'))
-        for item in folder_path.glob('*.xlsx'):
+        for item in self.raw_stock.iterdir():
+            file_path = self.processed / f'{item.name}'
+            if file_path.exists():
+                continue
+            
             sheet = pd.read_excel(item)
             header = sheet.index[sheet.isin(["Exchange Date"]).any(axis=1)].tolist()[0]
             cols = sheet.iloc[header, 3:].dropna().str.lower().str.replace(' ', '_').str.replace('%', 'perc_')
             cols.iloc[1:] = item.name.split('.')[0].split('_')[0].lower() + '_' + cols.iloc[1:]
-            instrument_df = sheet.iloc[header + 1:, 3:3 + cols.shape[0]].copy()
-            instrument_df.columns = cols.tolist()
-            instrument_df['local_time'] = pd.to_datetime(instrument_df['local_time'])
-            instrument_df = instrument_df.set_index('local_time')
-            master_df = master_df.combine_first(instrument_df)
-            print(f"Added {item.name}")
+        instrument_df = sheet.iloc[header + 1:, 3:3 + cols.shape[0]].copy()
+        instrument_df.columns = cols.tolist()
+        instrument_df['local_time'] = pd.to_datetime(instrument_df['local_time'])
+        instrument_df = instrument_df.set_index('local_time')
+        master_df = master_df.combine_first(instrument_df)
+        print(f"Added {item.name}")
 
         print("Reindexing dates and times")
 
@@ -488,23 +489,41 @@ class DataSource:
         master_df[open_cols] = master_df[open_cols].bfill()
         for item in hlc_cols:
             master_df[item] = master_df[item].fillna(master_df[item.split('_')[0] + '_open'])
+    
+    def _text_preprocess(
+        self,
+        ignore_history: bool = False
+    ):
+        self._clean_text(ignore_history=ignore_history)
+        self._cohere_embed(
+            cache_location=Path(self.processed_path) / 'cache',
+            tpm_limit=90000,
+            ignore_history=ignore_history
+        )
+        if self._medium == 'lseg_news':
+            self._translate_headlines(ignore_history=ignore_history)
+            self._get_finbert_sentiment(ignore_history=ignore_history)
+        
+        elif self._medium == 'x_posts':
+            self._get_multilingual_sentiment(ignore_history=ignore_history)
         
     # Processing pipeline for text data.
-    def create_text_df(
+    def create_df(
         self,
         raw_path: str,
         processed_path: str,
         file_name: str,
-        medium: Literal['lseg_news', 'x_posts'],
+        medium: Literal['lseg_news', 'x_posts', 'stock'],
         text_col: str | None = None,
         date_col: str | None = None,
         embedding_dimension: int | None = 1024,
         ignore_history: bool = False
     ):
-        """ Pipeline for preprocessing text-based datasets. """
+        """ Pipeline for preprocessing datasets. """
 
         self.raw_path = Path(raw_path)
         self.file_name = file_name
+        self._medium = medium
         self.processed_path = Path(processed_path)
         data_source_path = self.processed_path / f'{self.file_name}.joblib'
 
@@ -517,28 +536,41 @@ class DataSource:
             init_history = self._history.copy()
 
             # Processing text-based datasets.
-            if medium == 'x_posts':
+            if self._medium == 'x_posts':
                 self.text_col = snake_case(text_col)
                 self.date_col = snake_case(date_col)
                 self._load_json_folder(ignore_history=ignore_history)
+                self._text_preprocess(ignore_history=ignore_history)
             
-            elif medium == 'lseg_news':
+            elif self._medium == 'lseg_news':
                 self._load_lseg_news(ignore_history=ignore_history)
                 self.text_col = 'text'
                 self.date_col = 'date_time'
-        
-        self._clean_text(ignore_history=ignore_history)
-        self._cohere_embed(
-            cache_location=Path(processed_path) / 'cache',
-            tpm_limit=90000,
-            ignore_history=ignore_history
-        )
-        if medium == 'lseg_news':
-            self._translate_headlines(ignore_history=ignore_history)
-            self._get_finbert_sentiment(ignore_history=ignore_history)
-        
-        elif medium == 'x_posts':
-            self._get_multilingual_sentiment(ignore_history=ignore_history)
+                self._text_preprocess(ignore_history=ignore_history)
+            
+            elif self._medium == 'stock':
+                self._load_stock(ignore_history=ignore_history)
 
         if self._history != init_history:
             joblib.dump(self, data_source_path)
+    
+    def create_ticker_df(
+        self,
+        raw_path: str,
+        processed_path: str,
+        ticker: str,
+        ignore_history: bool = False
+    ):
+        self.raw_path = Path(raw_path)
+        self.ticker = ticker
+        self.processed_path = Path(processed_path)
+        self.data_source_path = self.processed_path / f'{ticker}.joblib'
+
+        if self.data_source_path.exists():
+            saved_data_source = joblib.load(self.data_source_path)
+            self.__dict__.update(saved_data_source.__dict__)
+            init_history = self._history.copy()
+        
+        else:
+            init_history = self._history.copy()
+
