@@ -589,7 +589,7 @@ class DataSource:
             ignore_history=ignore_history
         )
         if self._medium == 'lseg_news':
-            self._translate_headlines(ignore_history=True)
+            self._translate_headlines(ignore_history=ignore_history)
             self._get_finbert_sentiment(ignore_history=True)
         
         elif self._medium == 'x_posts':
