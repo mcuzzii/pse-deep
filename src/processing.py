@@ -75,14 +75,14 @@ def get_lang(text: str):
     # Map back to languages
     return lang, en_score
 
-# Helper function to get unique ticker names from a directory:
-def get_unique_tickers(dir_path: str):
-    ticker_set = set()
+# Helper function to get unique instrument names from a directory:
+def get_unique_instruments(dir_path: str):
+    instruments = set()
 
     for item in Path(dir_path).glob('*.xlsx'):
-        ticker_set.add(item.name.split('.')[0].split('_')[0])
+        instruments.add(item.name.split('.')[0].split('_')[0])
     
-    return list(ticker_set)
+    return list(instruments)
 
 class DataSource:
     """A class for storing and processing a dataset."""
@@ -314,11 +314,11 @@ class DataSource:
             LANG_MAP = json.load(f)
 
         # Create a copy to store results
-        self.df['cleaned_headline'] = self.df['text']
+        self.df['cleaned_headline'] = self.df[self.text_col].copy()
         
         # Step 1: Fast Language Detection (Row by Row is okay here, langid is fast)
         print("Detecting languages...")
-        self.df[['detected_lang', 'en_score']] = self.df['text'].apply(get_lang).apply(pd.Series)
+        self.df[['detected_lang', 'en_score']] = self.df[self.text_col].apply(get_lang).apply(pd.Series)
         
         # Step 2: Group by language to batch translate efficiently
         # We ignore 'en' as it doesn't need translation
@@ -332,7 +332,7 @@ class DataSource:
                 
             # Get all rows for this specific language
             mask = (self.df['detected_lang'] == lang) & non_english_mask
-            texts_to_translate = self.df.loc[mask, 'text'].tolist()
+            texts_to_translate = self.df.loc[mask, self.text_col].tolist()
             indices = self.df.index[mask].tolist()
             
             print(f"Translating {len(texts_to_translate)} items for language: {lang} ({nllb_lang})")
@@ -356,9 +356,25 @@ class DataSource:
                 batch_outputs = tokenizer.batch_decode(translated_tokens, skip_special_tokens=True)
                 translated_results.extend(batch_outputs)
             
+            self.text_col = 'cleaned_headline'
+            
             # Update the dataframe with translated text
-            self.df.loc[mask, 'cleaned_headline'] = translated_results
+            self.df.loc[mask, self.text_col] = translated_results
     
+    def get_translated_examples(
+        self,
+        n: int = 10
+    ):
+        file_path = self.processed_path / f'{self.file_name}_translated_examples.json'
+        if file_path.exists():
+            return
+        
+        sample_df = self.df.loc[self.df['en_score'] < -30].sample(n)
+        sample_df = sample_df[['text', 'cleaned_headline']]
+        sample_df.to_json(file_path, orient='records', indent=4)
+
+    
+    @record_history
     def _get_finbert_sentiment(
         self,
         ignore_history: bool = False
@@ -373,7 +389,7 @@ class DataSource:
             top_k=None  # This ensures we get positive, negative, and neutral scores
         )
 
-        raw_results = finbert(self.df['cleaned_headline'].tolist())
+        raw_results = finbert(self.df[self.text_col].tolist())
 
         parsed_results = []
         for row in raw_results:
@@ -388,6 +404,27 @@ class DataSource:
         
         self.df = pd.concat([self.df, sentiment_df.set_index(self.df.index)], axis=1)
     
+    def get_headline_sentiment_examples(
+        self,
+        n: int = 15
+    ):
+        file_path = self.processed_path / f'{self.file_name}_headline_sentiment_examples.json'
+        if file_path.exists():
+            return
+        
+        num_positive = num_negative = n // 3
+        num_neutral = n - num_positive - num_negative
+
+        positive_examples = self.df[self.df['sentiment'] == 'bullish'].sample(num_positive)
+        negative_examples = self.df[self.df['sentiment'] == 'bearish'].sample(num_negative)
+        neutral_examples = self.df[self.df['sentiment'] == 'neutral'].sample(num_neutral)
+
+        combined_df = pd.concat([positive_examples, negative_examples, neutral_examples])
+        combined_df.reset_index()
+        combined_df = combined_df[[self.text_col, 'sentiment', 'finbert_combined_score', 'bullish', 'neutral', 'bearish']]
+        combined_df.to_json(file_path, orient='records', indent=4)
+    
+    @record_history
     def _get_multilingual_sentiment(
         self,
         ignore_history: bool = False
@@ -405,7 +442,7 @@ class DataSource:
         )
 
         # 1. Clean and prepare the list
-        texts = self.df['text'].tolist()
+        texts = self.df[self.text_col].tolist()
         raw_results = []
 
         # 2. Manual Batching Loop
@@ -438,28 +475,65 @@ class DataSource:
         # 4. Cleanup and Merge
         sentiment_df.columns = [snake_case(col) for col in sentiment_df.columns]
         self.df = pd.concat([self.df.reset_index(drop=True), sentiment_df], axis=1)
+    
+    def get_social_sentiment_examples(
+        self,
+        n: int = 15
+    ):
+        file_path = self.processed_path / f'{self.file_name}_social_sentiment_examples.json'
+        if file_path.exists():
+            return
+        
+        num_very_positive = num_positive = num_negative = num_very_negative = n // 5
+        num_neutral = n - num_very_positive - num_positive - num_negative - num_very_negative
 
+        very_positive_examples = self.df[self.df['sentiment'] == 'Very Positive'].sample(num_very_positive)
+        positive_examples = self.df[self.df['sentiment'] == 'Positive'].sample(num_positive)
+        neutral_examples = self.df[self.df['sentiment'] == 'Neutral'].sample(num_neutral)
+        negative_examples = self.df[self.df['sentiment'] == 'Negative'].sample(num_negative)
+        very_negative_examples = self.df[self.df['sentiment'] == 'Very Negative'].sample(num_very_negative)
+
+        sentiment_examples_df = pd.concat(
+            [very_positive_examples, positive_examples, neutral_examples, negative_examples, very_negative_examples]
+        )
+        sentiment_examples_df = sentiment_examples_df[
+            [self.text_col, 'sentiment_score', 'sentiment', 'very_negative', 'negative', 'neutral', 'positive', 'very_positive']
+        ]
+        sentiment_examples_df.to_json(file_path, orient='records', indent=4)
+    
+    @record_history
+    def _load_financial_instrument(
+        self,
+        ignore_history: bool = False
+    ):
+        # A single instrument can span multiple files
+        self.df = pd.DataFrame(index = pd.Index([], dtype = 'object', name = 'local_time'))
+
+        for item in self.raw_path.glob('*.xlsx'):
+            if item.name.startswith(self.file_name):
+                sheet = pd.read_excel(item)
+
+                # Get header row
+                header = sheet.index[sheet.isin(["Exchange Date"]).any(axis=1)].tolist()[0]
+
+                # Extract and define columns
+                cols = sheet.iloc[header, 3:].dropna().str.lower().str.replace(' ', '_').str.replace('%', 'perc_')
+                cols.iloc[1:] = item.name.split('.')[0].split('_')[0].lower() + '_' + cols.iloc[1:]
+
+                # Extract data
+                partial_df = sheet.iloc[header + 1:, 3:3 + cols.shape[0]].copy()
+                partial_df.columns = cols.tolist()
+                partial_df['local_time'] = pd.to_datetime(partial_df['local_time'])
+                partial_df = partial_df.set_index('local_time')
+                
+                # Merge with the master dataframe
+                self.df = self.df.combine_first(partial_df)
+            
+    @record_history
     def _load_stock(
         self,
         ignore_history: bool = False
     ):
-        for item in self.raw_stock.iterdir():
-            file_path = self.processed / f'{item.name}'
-            if file_path.exists():
-                continue
-            
-            sheet = pd.read_excel(item)
-            header = sheet.index[sheet.isin(["Exchange Date"]).any(axis=1)].tolist()[0]
-            cols = sheet.iloc[header, 3:].dropna().str.lower().str.replace(' ', '_').str.replace('%', 'perc_')
-            cols.iloc[1:] = item.name.split('.')[0].split('_')[0].lower() + '_' + cols.iloc[1:]
-        instrument_df = sheet.iloc[header + 1:, 3:3 + cols.shape[0]].copy()
-        instrument_df.columns = cols.tolist()
-        instrument_df['local_time'] = pd.to_datetime(instrument_df['local_time'])
-        instrument_df = instrument_df.set_index('local_time')
-        master_df = master_df.combine_first(instrument_df)
-        print(f"Added {item.name}")
-
-        print("Reindexing dates and times")
 
         unique_dates = master_df.index.normalize().unique().sort_values()
         trading_periods = []
@@ -530,47 +604,25 @@ class DataSource:
         if data_source_path.exists():
             saved_data_source = joblib.load(data_source_path)
             self.__dict__.update(saved_data_source.__dict__)
-            init_history = self._history.copy()
 
-        else:
-            init_history = self._history.copy()
+        init_history = self._history.copy()
 
-            # Processing text-based datasets.
-            if self._medium == 'x_posts':
-                self.text_col = snake_case(text_col)
-                self.date_col = snake_case(date_col)
-                self._load_json_folder(ignore_history=ignore_history)
-                self._text_preprocess(ignore_history=ignore_history)
-            
-            elif self._medium == 'lseg_news':
-                self._load_lseg_news(ignore_history=ignore_history)
-                self.text_col = 'text'
-                self.date_col = 'date_time'
-                self._text_preprocess(ignore_history=ignore_history)
-            
-            elif self._medium == 'stock':
-                self._load_stock(ignore_history=ignore_history)
+        # Processing text-based datasets.
+        if self._medium == 'x_posts':
+            self.text_col = snake_case(text_col)
+            self.date_col = snake_case(date_col)
+            self._load_json_folder(ignore_history=ignore_history)
+            self._text_preprocess(ignore_history=ignore_history)
+        
+        elif self._medium == 'lseg_news':
+            self._load_lseg_news(ignore_history=ignore_history)
+            self.text_col = 'text'
+            self.date_col = 'date_time'
+            self._text_preprocess(ignore_history=ignore_history)
+        
+        elif self._medium == 'stock':
+            self._load_financial_instrument(ignore_history=ignore_history)
 
         if self._history != init_history:
             joblib.dump(self, data_source_path)
-    
-    def create_ticker_df(
-        self,
-        raw_path: str,
-        processed_path: str,
-        ticker: str,
-        ignore_history: bool = False
-    ):
-        self.raw_path = Path(raw_path)
-        self.ticker = ticker
-        self.processed_path = Path(processed_path)
-        self.data_source_path = self.processed_path / f'{ticker}.joblib'
-
-        if self.data_source_path.exists():
-            saved_data_source = joblib.load(self.data_source_path)
-            self.__dict__.update(saved_data_source.__dict__)
-            init_history = self._history.copy()
-        
-        else:
-            init_history = self._history.copy()
 
