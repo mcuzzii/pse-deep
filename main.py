@@ -41,7 +41,7 @@ def main():
     for stock in stocks:
         stock_data = DataSource()
         stock_data.create_df(
-            raw_path=Path('data/raw/stock') / f'{stock}.xlsx',
+            raw_path='data/raw/stock',
             processed_path='data/processed',
             file_name=stock,
             medium='stock'

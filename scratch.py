@@ -8,16 +8,17 @@ import pandas as pd
 import numpy as np
 import pandas_ta as ta
 
+stock_data = DataSource()
+stock_data.create_df(
+    processed_path='data/processed',
+    raw_path='data/raw/stock',
+    medium='stock',
+    file_name='ac'
+)
+print(stock_data.df.head())
+
+
 def stock_ta():
-
-    stock_data = DataSource()
-    stock_data.create_df(
-        processed_path='data/processed',
-        raw_path='data/raw/stock',
-        medium='stock',
-        file_name='acen'
-    )
-
     unique_dates = stock_data.df.index.normalize().unique().sort_values()
     trading_periods = []
     for date in unique_dates:
@@ -46,8 +47,6 @@ def stock_ta():
     stock_data.df[open_cols] = stock_data.df[open_cols].bfill()
     for item in hlc_cols:
         stock_data.df[item] = stock_data.df[item].fillna(stock_data.df[item.split('_')[0] + '_open'])
-    
+
     print(stock_data.df.head())
 
-
-stock_ta()
