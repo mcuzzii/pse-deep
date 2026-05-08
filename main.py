@@ -12,23 +12,11 @@ load_dotenv()
 def main():
 
     social_media_data = DataSource()
-    social_media_data.create_df(
-        raw_path='data/raw/social',
-        processed_path='data/processed',
-        file_name='social_media',
-        medium='x_posts',
-        text_col='text',
-        date_col='createdAt'
-    )
+    social_media_data.create_df(raw_folder_name='social', file_name='social_media', medium='x_posts', text_col='text', date_col='createdAt')
     social_media_data.get_social_sentiment_examples()
 
     lseg_news_data = DataSource()
-    lseg_news_data.create_df(
-        raw_path='data/raw/news/all_news.xlsx',
-        processed_path='data/processed',
-        file_name='news',
-        medium='lseg_news'
-    )
+    lseg_news_data.create_df(raw_folder_name='news', file_name='news', medium='lseg_news')
     lseg_news_data.get_translated_examples()
     lseg_news_data.get_headline_sentiment_examples()
 
@@ -40,13 +28,21 @@ def main():
     stock_dfs = []
     for stock in stocks:
         stock_data = DataSource()
-        stock_data.create_df(
-            raw_path='data/raw/stock',
-            processed_path='data/processed',
-            file_name=stock,
-            medium='stock'
-        )
+        stock_data.create_df(raw_folder_name='stock', file_name=stock, medium='stock')
         stock_dfs.append(stock_data.df)
+    
+    bonds = get_unique_instruments('data/raw/bond')
+    bond_dfs = []
+    for bond in bonds:
+        bond_data = DataSource()
+        bond_data.create_df(raw_folder_name='bond', file_name=bond, medium='bond')
+        bond_dfs.append(bond_data.df)
+    
+    copper = DataSource()
+    copper.create_df(raw_folder_name='copper', file_name='copper', medium='commodity')
+
+    oil = DataSource()
+    oil.create_df(raw_folder_name='crude', file_name='lcoc1', medium='commodity')
 
 if __name__ == '__main__':
     main()

@@ -118,8 +118,8 @@ class DataSource:
         ignore_history: bool = False
     ):
         """ Loads LSEG news data from files in a folder. """
-        
-        df = pd.read_excel(self.raw_path)
+
+        df = pd.read_excel(list(self.raw_path.glob('*.xlsx'))[0])
 
         # Deal with the unique structure of the LSEG news dataset.
         df.iloc[:, 0] = df.iloc[:, 0].ffill()
@@ -554,33 +554,59 @@ class DataSource:
     ):
 
         unique_dates = master_df.index.normalize().unique().sort_values()
-        self.trading_periods = []
-        for date in unique_dates:
-            am_start = date + pd.Timedelta(hours = 9, minutes = 31)
-            am_end = date + pd.Timedelta(hours = 12, minutes = 0)
-            am_period = pd.date_range(start = am_start, end = am_end, freq = '1min')
-            pm_start = date + pd.Timedelta(hours = 13, minutes = 1)
-            pm_end = date + pd.Timedelta(hours = 15, minutes = 0)
-            pm_period = pd.date_range(start = pm_start, end = pm_end, freq = '1min')
-            trading_periods.append(am_period)
-            trading_periods.append(pm_period)
+        trading_periods = []
+
+        if self.medium == 'stock':
+            for date in unique_dates:
+
+                # Define morning stock trading hours
+                am_start = date + pd.Timedelta(hours = 9, minutes = 31)
+                am_end = date + pd.Timedelta(hours = 12, minutes = 0)
+                am_period = pd.date_range(start = am_start, end = am_end, freq = '1min')
+
+                # Define afternoon trading hours
+                pm_start = date + pd.Timedelta(hours = 13, minutes = 1)
+                pm_end = date + pd.Timedelta(hours = 15, minutes = 0)
+                pm_period = pd.date_range(start = pm_start, end = pm_end, freq = '1min')
+
+                trading_periods.append(am_period)
+                trading_periods.append(pm_period)
+        else:
+            for date in unique_dates:
+
+                start = date + pd.Timedelta(hours = 0, minutes = 0)
+                end = date + pd.Timedelta(hours = 23, minutes = 59)
+                period = pd.date_range(start=start, end=end, freq='1min')
+
+                trading_periods.append(period)
+        
         datetime_index = pd.DatetimeIndex(np.concatenate(trading_periods)).sort_values()
 
-        master_df = master_df.reindex(datetime_index)
+        self.df = self.df.reindex(datetime_index)
 
-        open_cols = master_df.columns[master_df.columns.str.endswith('open')]
-        close_cols = master_df.columns[master_df.columns.str.endswith('close')]
-        ohl_cols = master_df.columns[master_df.columns.str.endswith(('open', 'high', 'low'))]
-        hlc_cols = master_df.columns[master_df.columns.str.endswith(('high', 'low', 'close'))]
+        self.df['no_activity'] = self.df.isna().all(axis=1).astype(int)
+        first_idx = self.df['no_activity'].idxmax()
+        last_idx = self.df['no_activity'][::-1].idxmax()
+        self.df = self.df.loc[first_idx:last_idx]
 
-        master_df[close_cols] = master_df[close_cols].ffill()
-        for item in ohl_cols:
-            master_df[item] = master_df[item].fillna(master_df[item.split('_')[0] + '_close'])
-        zero_cols = master_df.columns[master_df.columns.str.endswith(('net', 'perc_chg', 'volume'))]
-        master_df[zero_cols] = master_df[zero_cols].fillna(0)
-        master_df[open_cols] = master_df[open_cols].bfill()
-        for item in hlc_cols:
-            master_df[item] = master_df[item].fillna(master_df[item.split('_')[0] + '_open'])
+        open_col = self.df[f'{self.file_name}_open']
+        close_col = self.df[f'{self.file_name}_close']
+        high_col = self.df[f'{self.file_name}_high']
+        low_col = self.df[f'{self.file_name}_low']
+
+        zero_cols = self.df.columns[self.df.columns.str.endswith(('net', 'perc_chg', 'volume'))]
+
+        close_col.ffill(inplace=True)
+        open_col.fillna(close_col, inplace=True)
+        high_col.fillna(close_col, inplace=True)
+        low_col.fillna(close_col, inplace=True)
+
+        open_col.bfill(inplace=True)
+        close_col.fillna(open_col, inplace=True)
+        high_col.fillna(open_col, inplace=True)
+        low_col.fillna(open_col, inplace=True)
+
+        self.df[zero_cols].fillna(0, inplace=True)
     
     def _text_preprocess(
         self,
@@ -602,18 +628,19 @@ class DataSource:
     # Processing pipeline for text data.
     def create_df(
         self,
-        raw_path: str,
-        processed_path: str,
         file_name: str,
-        medium: Literal['lseg_news', 'x_posts', 'stock'],
+        raw_folder_name: str,
+        medium: Literal['lseg_news', 'x_posts', 'stock'] | None = None,
         text_col: str | None = None,
         date_col: str | None = None,
+        raw_path: str = 'data/raw',
+        processed_path: str = 'data/processed',
         embedding_dimension: int | None = 1024,
         ignore_history: bool = False
     ):
         """ Pipeline for preprocessing datasets. """
 
-        self.raw_path = Path(raw_path)
+        self.raw_path = Path(raw_path) / raw_folder_name
         self.file_name = file_name
         self._medium = medium
         self.processed_path = Path(processed_path)
@@ -638,7 +665,7 @@ class DataSource:
             self.date_col = 'date_time'
             self._text_preprocess(ignore_history=ignore_history)
         
-        elif self._medium == 'stock':
+        elif self._medium in ['stock', 'bond', 'commodity', 'fx']:
             self._load_financial_instrument(ignore_history=ignore_history)
 
         if self._history != init_history:
