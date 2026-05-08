@@ -167,6 +167,9 @@ class DataSource:
 
         # Remove rows with NaN text.
         self.df = self.df.loc[self.df[self.text_col].notna()]
+
+        # Set date_time as index
+        self.df = self.df.set_index(self.date_col)
     
     @record_history
     def _cohere_embed(
@@ -416,7 +419,7 @@ class DataSource:
         if 'bullish' in sentiment_df.columns and 'bearish' in sentiment_df.columns:
             sentiment_df['finbert_combined_score'] = sentiment_df['bullish'] - sentiment_df['bearish']
         
-        self.df = pd.concat([self.df, sentiment_df.set_index(self.df.index)], axis=1)
+        self.df[sentiment_df.columns] = sentiment_df.values
     
     def get_headline_sentiment_examples(
         self,
@@ -429,9 +432,9 @@ class DataSource:
         num_positive = num_negative = n // 3
         num_neutral = n - num_positive - num_negative
 
-        positive_examples = self.df[self.df['sentiment'] == 'bullish'].sample(num_positive)
-        negative_examples = self.df[self.df['sentiment'] == 'bearish'].sample(num_negative)
-        neutral_examples = self.df[self.df['sentiment'] == 'neutral'].sample(num_neutral)
+        positive_examples = self.df.loc[self.df['sentiment'] == 'bullish'].sample(num_positive)
+        negative_examples = self.df.loc[self.df['sentiment'] == 'bearish'].sample(num_negative)
+        neutral_examples = self.df.loc[self.df['sentiment'] == 'neutral'].sample(num_neutral)
 
         combined_df = pd.concat([positive_examples, negative_examples, neutral_examples])
         combined_df.reset_index()
@@ -488,7 +491,7 @@ class DataSource:
 
         # 4. Cleanup and Merge
         sentiment_df.columns = [snake_case(col) for col in sentiment_df.columns]
-        self.df = pd.concat([self.df.reset_index(drop=True), sentiment_df], axis=1)
+        self.df[sentiment_df.columns] = sentiment_df.values
     
     def get_social_sentiment_examples(
         self,
@@ -501,11 +504,11 @@ class DataSource:
         num_very_positive = num_positive = num_negative = num_very_negative = n // 5
         num_neutral = n - num_very_positive - num_positive - num_negative - num_very_negative
 
-        very_positive_examples = self.df[self.df['sentiment'] == 'Very Positive'].sample(num_very_positive)
-        positive_examples = self.df[self.df['sentiment'] == 'Positive'].sample(num_positive)
-        neutral_examples = self.df[self.df['sentiment'] == 'Neutral'].sample(num_neutral)
-        negative_examples = self.df[self.df['sentiment'] == 'Negative'].sample(num_negative)
-        very_negative_examples = self.df[self.df['sentiment'] == 'Very Negative'].sample(num_very_negative)
+        very_positive_examples = self.df.loc[self.df['sentiment'] == 'Very Positive'].sample(num_very_positive)
+        positive_examples = self.df.loc[self.df['sentiment'] == 'Positive'].sample(num_positive)
+        neutral_examples = self.df.loc[self.df['sentiment'] == 'Neutral'].sample(num_neutral)
+        negative_examples = self.df.loc[self.df['sentiment'] == 'Negative'].sample(num_negative)
+        very_negative_examples = self.df.loc[self.df['sentiment'] == 'Very Negative'].sample(num_very_negative)
 
         sentiment_examples_df = pd.concat(
             [very_positive_examples, positive_examples, neutral_examples, negative_examples, very_negative_examples]
@@ -524,7 +527,8 @@ class DataSource:
         self.df = pd.DataFrame(index = pd.Index([], dtype = 'object', name = 'local_time'))
 
         for item in self.raw_path.glob('*.xlsx'):
-            if item.name.startswith(self.file_name):
+            instrument_name = item.name.split('.')[0].split('_')[0].lower()
+            if self.file_name == instrument_name:
                 sheet = pd.read_excel(item)
 
                 # Get header row
@@ -532,7 +536,7 @@ class DataSource:
 
                 # Extract and define columns
                 cols = sheet.iloc[header, 3:].dropna().str.lower().str.replace(' ', '_').str.replace('%', 'perc_')
-                cols.iloc[1:] = item.name.split('.')[0].split('_')[0].lower() + '_' + cols.iloc[1:]
+                cols.iloc[1:] = instrument_name + '_' + cols.iloc[1:]
 
                 # Extract data
                 partial_df = sheet.iloc[header + 1:, 3:3 + cols.shape[0]].copy()
@@ -590,7 +594,7 @@ class DataSource:
         )
         if self._medium == 'lseg_news':
             self._translate_headlines(ignore_history=ignore_history)
-            self._get_finbert_sentiment(ignore_history=True)
+            self._get_finbert_sentiment(ignore_history=ignore_history)
         
         elif self._medium == 'x_posts':
             self._get_multilingual_sentiment(ignore_history=ignore_history)
