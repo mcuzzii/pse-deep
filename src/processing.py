@@ -432,9 +432,9 @@ class DataSource:
         num_positive = num_negative = n // 3
         num_neutral = n - num_positive - num_negative
 
-        positive_examples = self.df.loc[self.df['sentiment'] == 'bullish'].sample(num_positive)
-        negative_examples = self.df.loc[self.df['sentiment'] == 'bearish'].sample(num_negative)
-        neutral_examples = self.df.loc[self.df['sentiment'] == 'neutral'].sample(num_neutral)
+        positive_examples = self.df.loc[self.df['sentiment'] == 'Bullish'].sample(num_positive)
+        negative_examples = self.df.loc[self.df['sentiment'] == 'Bearish'].sample(num_negative)
+        neutral_examples = self.df.loc[self.df['sentiment'] == 'Neutral'].sample(num_neutral)
 
         combined_df = pd.concat([positive_examples, negative_examples, neutral_examples])
         combined_df.reset_index()
@@ -524,7 +524,7 @@ class DataSource:
         ignore_history: bool = False
     ):
         # A single instrument can span multiple files
-        self.df = pd.DataFrame(index = pd.Index([], dtype = 'object', name = 'local_time'))
+        self.df = pd.DataFrame()
 
         for item in self.raw_path.glob('*.xlsx'):
             instrument_name = item.name.split('.')[0].split('_')[0].lower()
@@ -554,7 +554,7 @@ class DataSource:
     ):
 
         unique_dates = master_df.index.normalize().unique().sort_values()
-        trading_periods = []
+        self.trading_periods = []
         for date in unique_dates:
             am_start = date + pd.Timedelta(hours = 9, minutes = 31)
             am_end = date + pd.Timedelta(hours = 12, minutes = 0)
