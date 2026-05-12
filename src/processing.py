@@ -546,14 +546,76 @@ class DataSource:
                 
                 # Merge with the master dataframe
                 self.df = self.df.combine_first(partial_df)
-            
-    @record_history
-    def _load_stock(
+    
+    def _process_stock(self):
+
+        open_col = f'{self.file_name}_open'
+        high_col = f'{self.file_name}_high'
+        low_col = f'{self.file_name}_low'
+        close_col = f'{self.file_name}_close'
+        net_col = f'{self.file_name}_net'
+        vol_col = f'{self.file_name}_volume'
+        perc_chg_col = f'{self.file_name}_perc_chg'
+
+        close_col.ffill(inplace=True)
+        open_col.fillna(close_col, inplace=True)
+        high_col.fillna(close_col, inplace=True)
+        low_col.fillna(close_col, inplace=True)
+
+        open_col.bfill(inplace=True)
+        close_col.fillna(open_col, inplace=True)
+        high_col.fillna(open_col, inplace=True)
+        low_col.fillna(open_col, inplace=True)
+
+        self.df[[net_col, perc_chg_col, vol_col]].fillna(0, inplace=True)
+
+    def _process_copper(self):
+
+        bid_col = f'{self.file_name}_bid'
+        ask_col = f'{self.file_name}_ask'
+
+        self.df = self.df[[bid_col, ask_col]]
+
+    def _process_forex(self):
+
+        bid_col = f'{self.file_name}_bid'
+        ask_col = f'{self.file_name}_ask'
+        bid_net_col = f'{self.file_name}_bid_net'
+        open_col = f'{self.file_name}_open'
+        high_col = f'{self.file_name}_high'
+        low_col = f'{self.file_name}_low'
+        refresh_rate_col = f'{self.file_name}_refresh_rate'
+    
+    def _process_oil(self):
+
+        bid_col = f'{self.file_name}_bid'
+        ask_col = f'{self.file_name}_ask'
+        open_col = f'{self.file_name}_open'
+        high_col = f'{self.file_name}_high'
+        low_col = f'{self.file_name}_low'
+        close_col = f'{self.file_name}_close'
+        net_col = f'{self.file_name}_net'
+        vol_col = f'{self.file_name}_volume'
+        perc_chg_col = f'{self.file_name}_perc_chg'
+    
+    def _process_bond(
         self,
         ignore_history: bool = False
     ):
 
-        unique_dates = master_df.index.normalize().unique().sort_values()
+        bid_col = f'{self.file_name}_bid'
+        ask_col = f'{self.file_name}_ask'
+        askyld_col = f'{self.file_name}_askyld'
+        bid_yld_chg_col = f'{self.file_name}_bidychg'
+        bid_yld_col = f'{self.file_name}_bidyld'
+
+    @record_history
+    def _process_high_frequency_instruments(
+        self,
+        ignore_history: bool = False
+    ):
+
+        unique_dates = self.df.index.normalize().unique().sort_values()
         trading_periods = []
 
         if self.medium == 'stock':
@@ -571,6 +633,7 @@ class DataSource:
 
                 trading_periods.append(am_period)
                 trading_periods.append(pm_period)
+
         else:
             for date in unique_dates:
 
@@ -589,24 +652,14 @@ class DataSource:
         last_idx = self.df['no_activity'][::-1].idxmax()
         self.df = self.df.loc[first_idx:last_idx]
 
-        open_col = self.df[f'{self.file_name}_open']
-        close_col = self.df[f'{self.file_name}_close']
-        high_col = self.df[f'{self.file_name}_high']
-        low_col = self.df[f'{self.file_name}_low']
-
-        zero_cols = self.df.columns[self.df.columns.str.endswith(('net', 'perc_chg', 'volume'))]
-
-        close_col.ffill(inplace=True)
-        open_col.fillna(close_col, inplace=True)
-        high_col.fillna(close_col, inplace=True)
-        low_col.fillna(close_col, inplace=True)
-
-        open_col.bfill(inplace=True)
-        close_col.fillna(open_col, inplace=True)
-        high_col.fillna(open_col, inplace=True)
-        low_col.fillna(open_col, inplace=True)
-
-        self.df[zero_cols].fillna(0, inplace=True)
+        if self._medium == 'stock':
+            self._process_stock()
+        elif self._medium == 'copper':
+            self._process_copper()
+        elif self._medium == 'fx':
+            self._process_forex()
+        elif self._medium == 'oil':
+            self._process_oil()
     
     def _text_preprocess(
         self,
@@ -665,8 +718,12 @@ class DataSource:
             self.date_col = 'date_time'
             self._text_preprocess(ignore_history=ignore_history)
         
-        elif self._medium in ['stock', 'bond', 'commodity', 'fx']:
+        elif self._medium in ['stock', 'bond', 'copper', 'oil', 'fx']:
             self._load_financial_instrument(ignore_history=ignore_history)
+            if self._medium != 'bond':
+                self._process_high_frequency_instruments(ignore_history=ignore_history)
+            else:
+                self._process_bond(ignore_history=ignore_history)
 
         if self._history != init_history:
             joblib.dump(self, data_source_path)

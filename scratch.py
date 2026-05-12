@@ -8,6 +8,6 @@ import pandas as pd
 import numpy as np
 import pandas_ta as ta
 
-phgv = joblib.load('data/processed/phgv2.joblib')
+copper = joblib.load('data/processed/lcoc1.joblib')
 
-print(phgv.df.head())
+print(copper.df.columns)

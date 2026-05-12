@@ -39,10 +39,18 @@ def main():
         bond_dfs.append(bond_data.df)
     
     copper = DataSource()
-    copper.create_df(raw_folder_name='copper', file_name='copper', medium='commodity')
+    copper.create_df(raw_folder_name='copper', file_name='copper', medium='copper')
 
     oil = DataSource()
-    oil.create_df(raw_folder_name='crude', file_name='lcoc1', medium='commodity')
+    oil.create_df(raw_folder_name='crude', file_name='lcoc1', medium='oil')
+
+    usd = DataSource()
+    usd.create_df(raw_folder_name='forex', file_name='usd', medium='fx')
+
+    xau = DataSource()
+    xau.create_df(raw_folder_name='xau', file_name='xau', medium='fx')
+
+
 
 if __name__ == '__main__':
     main()
