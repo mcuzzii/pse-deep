@@ -8,6 +8,9 @@ import pandas as pd
 import numpy as np
 import pandas_ta as ta
 
-copper = joblib.load('data/processed/lcoc1.joblib')
+copper = joblib.load('data/processed/acen.joblib')
+import pandas as pd
+copper.df.to_csv('data/processed/acen.csv')
 
 print(copper.df.columns)
+

@@ -685,24 +685,27 @@ class DataSource:
 
         # Bollinger Band %B
         bb = ta.bbands(close, length=BB_PERIOD, std=BB_STD)
-        upper = bb[f'BBU_{BB_PERIOD}_{BB_STD}']
-        lower = bb[f'BBL_{BB_PERIOD}_{BB_STD}']
+        upper = bb.filter(like='BBU').iloc[:, 0]
+        lower = bb.filter(like='BBL').iloc[:, 0]
         df[f'{fn}_bb_pct_b'] = (close - lower) / (upper - lower)
 
         # Parabolic SAR
         psar = ta.psar(high, low, close)
         # pandas-TA returns the active SAR level in the 'long' or 'short' column;
         # coalesce both into a single series
-        df[f'{fn}_psar'] = psar[psar.columns[0]].combine_first(psar[psar.columns[1]])
+        psar_long = psar.filter(like='PSARl').iloc[:, 0]
+        psar_short = psar.filter(like='PSARs').iloc[:, 0]
+
+        df[f'{fn}_psar'] = psar_long.combine_first(psar_short)
 
         # Average True Range
         df[f'{fn}_atr'] = ta.atr(high, low, close, length=ATR_PERIOD)
 
         # ADX (+DI, −DI)
         adx = ta.adx(high, low, close, length=ADX_PERIOD)
-        df[f'{fn}_adx'] = adx[f'ADX_{ADX_PERIOD}']
-        df[f'{fn}_adx_di_pos'] = adx[f'DMP_{ADX_PERIOD}']
-        df[f'{fn}_adx_di_neg'] = adx[f'DMN_{ADX_PERIOD}']
+        df[f'{fn}_adx']  = adx.filter(like='ADX_').iloc[:, 0]
+        df[f'{fn}_adx_di_pos'] = adx.filter(like='DMP_').iloc[:, 0]
+        df[f'{fn}_adx_di_neg'] = adx.filter(like='DMN_').iloc[:, 0]
 
         self.df = df
 
