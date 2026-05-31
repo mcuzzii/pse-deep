@@ -50,6 +50,9 @@ def main():
     xau = DataSource()
     xau.create_df(raw_folder_name='xau', file_name='xau', medium='fx', ignore_history=True)
 
+    bond_master = DataSource()
+    bond_master.process_bond(bond_dfs)
+
 
 
 if __name__ == '__main__':
