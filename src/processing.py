@@ -526,7 +526,7 @@ class DataSource:
         ignore_history: bool = False
     ):
         # A single instrument can span multiple files
-        self.df = pd.DataFrame()
+        self.df = None
 
         for item in self.raw_path.glob('*.xlsx'):
             instrument_name = item.name.split('.')[0].split('_')[0].lower()
@@ -547,7 +547,10 @@ class DataSource:
                 partial_df = partial_df.set_index('local_time')
                 
                 # Merge with the master dataframe
-                self.df = self.df.combine_first(partial_df)
+                if self.df is None:
+                    self.df = partial_df
+                else:
+                    self.df = self.df.combine_first(partial_df)
     
     def _col(self, *suffixes):
         return {s: f'{self.file_name}_{s}' for s in suffixes}
