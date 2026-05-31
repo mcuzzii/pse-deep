@@ -492,7 +492,8 @@ class DataSource:
 
         # 4. Cleanup and Merge
         sentiment_df.columns = [snake_case(col) for col in sentiment_df.columns]
-        self.df[sentiment_df.columns] = sentiment_df.values
+        for col in sentiment_df.columns:
+            self.df[col] = sentiment_df[col].values
     
     def get_social_sentiment_examples(
         self,
