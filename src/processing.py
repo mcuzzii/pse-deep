@@ -554,7 +554,147 @@ class DataSource:
     
     def _col(self, *suffixes):
         return {s: f'{self.file_name}_{s}' for s in suffixes}
+    
+    def _close_indicators(self, c: dict, close_attr='close'):
+        fn = self.file_name
+        df = self.df
+        close = df[c[close_attr]].astype(float)
 
+        RSI_PERIOD = 14
+        PROC_PERIODS = [1, 5, 10, 20]
+        MACD_FAST = 12
+        MACD_SLOW = 26
+        MACD_SIGNAL = 9
+        MA_SHORT = 10
+        MA_LONG = 50
+        EMA_SHORT = 10
+        EMA_LONG = 50
+        PSY_PERIOD = 12
+        RCI_PERIOD = 9
+        BB_PERIOD = 20
+        BB_STD = 2.0
+
+        df[f'{fn}_rsi'] = ta.rsi(close, length=RSI_PERIOD)
+
+        df[f'{fn}_log_return'] = np.log(close / close.shift(1))
+
+        prev_day_close = (
+            close
+            .groupby(close.index.date)
+            .transform('first')
+            .shift(1)
+        )
+        df[f'{fn}_cum_log_return'] = np.log(close / prev_day_close)
+
+        for p in PROC_PERIODS:
+            df[f'{fn}_proc_{p}'] = close.diff(p)
+
+        macd = ta.macd(close, fast=MACD_FAST, slow=MACD_SLOW, signal=MACD_SIGNAL)
+        df[f'{fn}_macd'] = macd[f'MACD_{MACD_FAST}_{MACD_SLOW}_{MACD_SIGNAL}']
+        df[f'{fn}_macd_signal'] = macd[f'MACDs_{MACD_FAST}_{MACD_SLOW}_{MACD_SIGNAL}']
+        df[f'{fn}_macd_hist'] = macd[f'MACDh_{MACD_FAST}_{MACD_SLOW}_{MACD_SIGNAL}']
+
+        df[f'{fn}_ma_short'] = ta.sma(close, length=MA_SHORT)
+        df[f'{fn}_ma_long'] = ta.sma(close, length=MA_LONG)
+        df[f'{fn}_ema_short'] = ta.ema(close, length=EMA_SHORT)
+        df[f'{fn}_ema_long'] = ta.ema(close, length=EMA_LONG)
+
+        df[f'{fn}_oscp'] = df[f'{fn}_ma_short']  - df[f'{fn}_ma_long']
+        df[f'{fn}_eoscp'] = df[f'{fn}_ema_short'] - df[f'{fn}_ema_long']
+
+        up_close = (close.diff(1) > 0).astype(int)
+        df[f'{fn}_psy'] = up_close.rolling(PSY_PERIOD).sum() / PSY_PERIOD
+
+        def _rci(series, n):
+            time_ranks = np.arange(1, n + 1)
+            def _spearman(window):
+                price_ranks = pd.Series(window).rank().values
+                d_sq = ((time_ranks - price_ranks) ** 2).sum()
+                return 1 - (6 * d_sq) / (n * (n ** 2 - 1))
+            return series.rolling(n).apply(_spearman, raw=True)
+
+        df[f'{fn}_rci'] = _rci(close, RCI_PERIOD)
+
+        bb = ta.bbands(close, length=BB_PERIOD, std=BB_STD)
+        upper = bb.filter(like='BBU').iloc[:, 0]
+        lower = bb.filter(like='BBL').iloc[:, 0]
+        df[f'{fn}_bb_pct_b'] = (close - lower) / (upper - lower)
+
+        self.df = df
+    
+    def _hlc_indicators(self, c: dict, close_attr='close'):
+        fn = self.file_name
+        df = self.df
+        close = df[c[close_attr]].astype(float)
+        high = df[c['high']].astype(float)
+        low = df[c['low']].astype(float)
+
+        STOCH_K = 14
+        STOCH_FAST_D = 3
+        STOCH_SLOW_D = 3
+        ATR_PERIOD = 14
+        ADX_PERIOD = 14
+
+        stoch = ta.stoch(high, low, close,
+                        k=STOCH_K, d=STOCH_FAST_D, smooth_k=STOCH_SLOW_D)
+        df[f'{fn}_stoch_k']      = stoch[f'STOCHk_{STOCH_K}_{STOCH_FAST_D}_{STOCH_SLOW_D}']
+        df[f'{fn}_stoch_fast_d'] = stoch[f'STOCHd_{STOCH_K}_{STOCH_FAST_D}_{STOCH_SLOW_D}']
+        df[f'{fn}_stoch_slow_d'] = df[f'{fn}_stoch_fast_d'].rolling(STOCH_SLOW_D).mean()
+
+        psar = ta.psar(high, low, close)
+        psar_long = psar.filter(like='PSARl').iloc[:, 0]
+        psar_short = psar.filter(like='PSARs').iloc[:, 0]
+
+        df[f'{fn}_psar'] = psar_long.combine_first(psar_short)
+
+        df[f'{fn}_atr'] = ta.atr(high, low, close, length=ATR_PERIOD)
+
+        adx = ta.adx(high, low, close, length=ADX_PERIOD)
+        df[f'{fn}_adx']  = adx.filter(like='ADX_').iloc[:, 0]
+        df[f'{fn}_adx_di_pos'] = adx.filter(like='DMP_').iloc[:, 0]
+        df[f'{fn}_adx_di_neg'] = adx.filter(like='DMN_').iloc[:, 0]
+
+        self.df = df
+
+    def _hlcv_indicators(self, c: dict):
+        fn  = self.file_name
+        df  = self.df
+        close = df[c['close']].astype(float)
+        high = df[c['high']].astype(float)
+        low = df[c['low']].astype(float)
+        volume = df[c['volume']].astype(float)
+
+        RVOL_PERIOD = 20
+        VROC_PERIOD = 14 
+
+        df[f'{fn}_ad'] = ta.ad(high, low, close, volume)
+
+        df[f'{fn}_obv'] = ta.obv(close, volume)
+
+        rolling_avg_vol = volume.rolling(RVOL_PERIOD).mean()
+        df[f'{fn}_rvol'] = volume / rolling_avg_vol
+
+        df[f'{fn}_vroc'] = volume.pct_change(periods=VROC_PERIOD) * 100
+
+        self.df = df
+    
+    def _bid_ask_indicators(self, c: dict):
+        fn = self.file_name
+        df = self.df
+        ask = df[c['ask']].astype(float)
+        bid = df[c['bid']].astype(float)
+
+        SPREAD_MA_PERIODS = [10, 30, 50]
+
+        df[f'{fn}_spread'] = ask - bid
+        df[f'{fn}_midprice'] = (ask + bid) / 2
+        df[f'{fn}_rel_spread'] = (ask - bid) / (df[f'{fn}_midprice'] * 100)
+
+        for l in SPREAD_MA_PERIODS:
+            df[f'{fn}_spread_ma_{l}'] = ta.sma(df[f'{fn}_spread'], length=l)
+        
+        self.df = df
+    
     def _process_stock(self):
         c = self._col('open', 'high', 'low', 'close', 'net', 'volume', 'perc_chg')
 
@@ -568,162 +708,63 @@ class DataSource:
 
         self.df[[c['net'], c['perc_chg'], c['volume']]] = self.df[[c['net'], c['perc_chg'], c['volume']]].fillna(0)
 
-        self._generate_indicators(c)
-
-    def _generate_indicators(self, c: dict):
-        fn  = self.file_name
-        df  = self.df
-        close = df[c['close']].astype(float)
-        high = df[c['high']].astype(float)
-        low = df[c['low']].astype(float)
-        volume = df[c['volume']].astype(float)
-
-        # Periods
-        RSI_PERIOD = 14
-        STOCH_K = 14
-        STOCH_FAST_D = 3
-        STOCH_SLOW_D = 3
-        MACD_FAST = 12
-        MACD_SLOW = 26
-        MACD_SIGNAL = 9
-        MA_SHORT = 10
-        MA_LONG = 50
-        EMA_SHORT = 10
-        EMA_LONG = 50
-        BB_PERIOD = 20
-        BB_STD = 2.0
-        ATR_PERIOD = 14
-        ADX_PERIOD = 14
-        PROC_PERIODS = [1, 5, 10, 20] # price momentum look-backs
-        RVOL_PERIOD = 20 # rolling window for relative volume
-        VROC_PERIOD = 14 # volume rate of change look-back
-        PSY_PERIOD = 12 # psychological line window
-        RCI_PERIOD = 9 # rank correlation index window
-
-        # RSI
-        df[f'{fn}_rsi'] = ta.rsi(close, length=RSI_PERIOD)
-
-        # Stochastic Oscillator (%K, fast %D, slow %D)
-        stoch = ta.stoch(high, low, close,
-                        k=STOCH_K, d=STOCH_FAST_D, smooth_k=STOCH_SLOW_D)
-        df[f'{fn}_stoch_k']      = stoch[f'STOCHk_{STOCH_K}_{STOCH_FAST_D}_{STOCH_SLOW_D}']
-        df[f'{fn}_stoch_fast_d'] = stoch[f'STOCHd_{STOCH_K}_{STOCH_FAST_D}_{STOCH_SLOW_D}']
-        # Slow %D = SMA of fast %D
-        df[f'{fn}_stoch_slow_d'] = df[f'{fn}_stoch_fast_d'].rolling(STOCH_SLOW_D).mean()
-
-        # Log Returns
-        df[f'{fn}_log_return'] = np.log(close / close.shift(1))
-
-        # Cumulative Log Return vs. Previous Day's Close
-        # At 1-min frequency: group by date, use the last close of the prior date
-        prev_day_close = (
-            close
-            .groupby(close.index.date)
-            .transform('first')   # first bar of each day ≈ previous EOD reference
-            .shift(1)             # shift one bar so t=0 is the prior close
-        )
-        df[f'{fn}_cum_log_return'] = np.log(close / prev_day_close)
-
-        # Price Momentum / PROC
-        for p in PROC_PERIODS:
-            df[f'{fn}_proc_{p}'] = close.diff(p)
-
-        # MACD
-        macd = ta.macd(close, fast=MACD_FAST, slow=MACD_SLOW, signal=MACD_SIGNAL)
-        df[f'{fn}_macd'] = macd[f'MACD_{MACD_FAST}_{MACD_SLOW}_{MACD_SIGNAL}']
-        df[f'{fn}_macd_signal'] = macd[f'MACDs_{MACD_FAST}_{MACD_SLOW}_{MACD_SIGNAL}']
-        df[f'{fn}_macd_hist'] = macd[f'MACDh_{MACD_FAST}_{MACD_SLOW}_{MACD_SIGNAL}']
-
-        # Moving Averages
-        df[f'{fn}_ma_short'] = ta.sma(close, length=MA_SHORT)
-        df[f'{fn}_ma_long'] = ta.sma(close, length=MA_LONG)
-        df[f'{fn}_ema_short'] = ta.ema(close, length=EMA_SHORT)
-        df[f'{fn}_ema_long'] = ta.ema(close, length=EMA_LONG)
-
-        # OSCP / SLMA  &  EOSCP / SLEMA
-        # OSCP  = MA_short − MA_long          (Son, 2012)
-        # EOSCP = EMA_short − EMA_long
-        df[f'{fn}_oscp'] = df[f'{fn}_ma_short']  - df[f'{fn}_ma_long']
-        df[f'{fn}_eoscp'] = df[f'{fn}_ema_short'] - df[f'{fn}_ema_long']
-
-        # Price Disparity: DISP / EDISP
-        # DISP  = (close − MA)  / MA          (Son, 2012)
-        # EDISP = (close − EMA) / EMA
-        df[f'{fn}_disp'] = (close - df[f'{fn}_ma_long'])  / df[f'{fn}_ma_long']
-        df[f'{fn}_edisp'] = (close - df[f'{fn}_ema_long']) / df[f'{fn}_ema_long']
-
-        # Psychological Line
-        # Proportion of up-closes in the last N bars (Tanaka-Yamawaki & Tokuoka, 2007)
-        up_close = (close.diff(1) > 0).astype(int)
-        df[f'{fn}_psy'] = up_close.rolling(PSY_PERIOD).sum() / PSY_PERIOD
-
-        # Rank Correlation Index
-        # Spearman ρ between price ranks and time ranks over N bars
-        # (Tanaka-Yamawaki & Tokuoka, 2007)
-        def _rci(series, n):
-            time_ranks = np.arange(1, n + 1)           # fixed time rank
-            def _spearman(window):
-                price_ranks = pd.Series(window).rank().values
-                d_sq = ((time_ranks - price_ranks) ** 2).sum()
-                return 1 - (6 * d_sq) / (n * (n ** 2 - 1))
-            return series.rolling(n).apply(_spearman, raw=True)
-
-        df[f'{fn}_rci'] = _rci(close, RCI_PERIOD)
-
-        # Accumulation / Distribution Oscillator
-        # AD = sum of ((close−low)−(high−close)) / (high−low) × volume
-        # (Kong & Azencott, 2020) — pandas-TA exposes this as `ad`
-        df[f'{fn}_ad'] = ta.ad(high, low, close, volume)
-
-        # On-Balance Volume
-        df[f'{fn}_obv'] = ta.obv(close, volume)
-
-        # Relative Volume
-        # Current volume vs. rolling average volume (conviction proxy)
-        rolling_avg_vol = volume.rolling(RVOL_PERIOD).mean()
-        df[f'{fn}_rvol'] = volume / rolling_avg_vol
-
-        # Volume Rate of Change
-        # (Kong & Azencott, 2020)
-        df[f'{fn}_vroc'] = volume.pct_change(periods=VROC_PERIOD) * 100
-
-        # Bollinger Band %B
-        bb = ta.bbands(close, length=BB_PERIOD, std=BB_STD)
-        upper = bb.filter(like='BBU').iloc[:, 0]
-        lower = bb.filter(like='BBL').iloc[:, 0]
-        df[f'{fn}_bb_pct_b'] = (close - lower) / (upper - lower)
-
-        # Parabolic SAR
-        psar = ta.psar(high, low, close)
-        # pandas-TA returns the active SAR level in the 'long' or 'short' column;
-        # coalesce both into a single series
-        psar_long = psar.filter(like='PSARl').iloc[:, 0]
-        psar_short = psar.filter(like='PSARs').iloc[:, 0]
-
-        df[f'{fn}_psar'] = psar_long.combine_first(psar_short)
-
-        # Average True Range
-        df[f'{fn}_atr'] = ta.atr(high, low, close, length=ATR_PERIOD)
-
-        # ADX (+DI, −DI)
-        adx = ta.adx(high, low, close, length=ADX_PERIOD)
-        df[f'{fn}_adx']  = adx.filter(like='ADX_').iloc[:, 0]
-        df[f'{fn}_adx_di_pos'] = adx.filter(like='DMP_').iloc[:, 0]
-        df[f'{fn}_adx_di_neg'] = adx.filter(like='DMN_').iloc[:, 0]
-
-        self.df = df
+        self._close_indicators(c)
+        self._hlc_indicators(c)
+        self._hlcv_indicators(c)
 
     def _process_copper(self):
         c = self._col('bid', 'ask')
         self.df = self.df[[c['bid'], c['ask']]]
+        
+        self._bid_ask_indicators(c)
+        self._close_indicators(c, close_attr=f'{self.file_name}_midprice')
 
     def _process_forex(self):
         c = self._col('bid', 'ask', 'bid_net', 'open', 'high', 'low', 'refresh_rate')
 
+        self.bid_ask_indicators(c)
+
+        close_attr = f'{self.file_name}_midprice'
+
+        self._close_indicators(c, close_attr=close_attr)
+        self._hlc_indicators(c, close_attr=close_attr)
+
     def _process_oil(self):
         c = self._col('bid', 'ask', 'open', 'high', 'low', 'close', 'net', 'volume', 'perc_chg')
 
-    def _process_bond(self, ignore_history: bool = False):
+        self._bid_ask_indicators(c)
+
+        self._close_indicators(c)
+        self._hlc_indicators(c)
+        self._hlcv_indicators(c)
+    
+    def _within_bond_indicators(self, c: dict):
+        fn = self.file_name
+        df = self.df
+        bid = df[c['bid']].astype(float)
+        ask = df[c['ask']].astype(float)
+        bidyld = df[c['bidyld']].astype(float)
+        askyld = df[c['askyld']].astype(float)
+        
+        df[f'{fn}_spread'] = ask - bid
+        df[f'{fn}_midprice'] = (ask + bid) / 2
+        df[f'{fn}_yld_spread'] = askyld - bidyld
+        df[f'{fn}_mdyld'] = (askyld + bidyld) / 2
+
+        self.df = df
+
+    def process_bond(self, bond_dfs, ignore_history: bool = False):
+        bond_master = None
+        for bond_df in bond_dfs:
+            c = bond_df._col('bid', 'ask', 'askyld', 'bidychg', 'bidyld')
+            
+            bond_df._within_bond_indicators(c)
+
+            if bond_master is None:
+                bond_master = bond_df
+            else:
+                bond_master.combine_first(bond_df)
+        
         c = self._col('bid', 'ask', 'askyld', 'bidychg', 'bidyld')
 
     @record_history
@@ -839,8 +880,6 @@ class DataSource:
             self._load_financial_instrument(ignore_history=ignore_history)
             if self._medium != 'bond':
                 self._process_high_frequency_instruments(ignore_history=ignore_history)
-            else:
-                self._process_bond(ignore_history=ignore_history)
 
         if self._history != init_history:
             joblib.dump(self, data_source_path)

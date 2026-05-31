@@ -8,9 +8,9 @@ import pandas as pd
 import numpy as np
 import pandas_ta as ta
 
-copper = joblib.load('data/processed/acen.joblib')
+ac = joblib.load('data/processed/ac.joblib')
 import pandas as pd
-copper.df.to_csv('data/processed/acen.csv')
+ac.df.to_csv('data/processed/ac.csv')
 
-print(copper.df.columns)
+print(ac.df.columns)
 
