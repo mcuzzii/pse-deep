@@ -28,18 +28,18 @@ def main():
     stock_dfs = []
     for stock in stocks:
         stock_data = DataSource()
-        stock_data.create_df(raw_folder_name='stock', file_name=stock, medium='stock', ignore_history=True)
+        stock_data.create_df(raw_folder_name='stock', file_name=stock, medium='stock')
         stock_dfs.append(stock_data.df)
     
     bonds = get_unique_instruments('data/raw/bond')
     bond_dfs = []
     for bond in bonds:
         bond_data = DataSource()
-        bond_data.create_df(raw_folder_name='bond', file_name=bond, medium='bond', ignore_history=True)
+        bond_data.create_df(raw_folder_name='bond', file_name=bond, medium='bond')
         bond_dfs.append(bond_data.df)
     
     copper = DataSource()
-    copper.create_df(raw_folder_name='copper', file_name='copper', medium='copper', ignore_history=True)
+    copper.create_df(raw_folder_name='copper', file_name='copper', medium='copper')
 
     oil = DataSource()
     oil.create_df(raw_folder_name='crude', file_name='lcoc1', medium='oil', ignore_history=True)
