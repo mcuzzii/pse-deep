@@ -28,7 +28,7 @@ def main():
     stock_dfs = dict()
     for stock in stocks:
         stock_data = DataSource()
-        stock_data.create_df(raw_folder_name='stock', file_name=stock, medium='stock', ignore_history=True)
+        stock_data.create_df(raw_folder_name='stock', file_name=stock, medium='stock')
         stock_dfs[stock_data.file_name] = stock_data
     
     bonds = get_unique_instruments('data/raw/bond')
@@ -54,7 +54,7 @@ def main():
     bond_master.create_df(file_name='bond_master', bonds=bond_dfs)
     
     for fn in stock_dfs:
-        stock_dfs[fn].combine_data(stock_dfs, copper, oil, usd, xau, ignore_history=True)
+        stock_dfs[fn].combine_data(stock_dfs, copper, oil, usd, xau)
 
 
 
