@@ -25,18 +25,18 @@ def main():
         lseg_news_data.get_similar_embeddings(index=i, n_results=10)
     
     stocks = get_unique_instruments('data/raw/stock')
-    stock_dfs = []
+    stock_dfs = dict()
     for stock in stocks:
         stock_data = DataSource()
-        stock_data.create_df(raw_folder_name='stock', file_name=stock, medium='stock', ignore_history=True)
-        stock_dfs.append(stock_data.df)
+        stock_data.create_df(raw_folder_name='stock', file_name=stock, medium='stock')
+        stock_dfs[stock_data.file_name] = stock_data.df
     
     bonds = get_unique_instruments('data/raw/bond')
-    bond_dfs = []
+    bond_dfs = dict()
     for bond in bonds:
         bond_data = DataSource()
-        bond_data.create_df(raw_folder_name='bond', file_name=bond, medium='bond', ignore_history=True)
-        bond_dfs.append(bond_data.df)
+        bond_data.create_df(raw_folder_name='bond', file_name=bond, medium='bond')
+        bond_dfs[bond_data.file_name] = bond_data.df
     
     copper = DataSource()
     copper.create_df(raw_folder_name='copper', file_name='copper', medium='copper', ignore_history=True)
@@ -53,8 +53,8 @@ def main():
     bond_master = DataSource()
     bond_master.process_bonds(bond_dfs, ignore_history=True)
 
-    for stock_df in stock_dfs:
-        stock_df.combine_data(copper, oil, usd, xau, ignore_history=True)
+    for fn in stock_dfs:
+        stock_dfs[fn].combine_data(copper, oil, usd, xau, ignore_history=True)
 
 
 

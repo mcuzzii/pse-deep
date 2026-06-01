@@ -769,7 +769,6 @@ class DataSource:
     @record_history
     def process_bonds(self, bond_dfs, ignore_history: bool = False):
         bond_master = None
-        bond_dfs = {bond_df.file_name: bond_df for bond_df in bond_dfs}
         for fn in bond_dfs:
             c = bond_dfs[fn]._col('bid', 'ask', 'askyld', 'bidyld')
             
@@ -798,13 +797,31 @@ class DataSource:
         self.df = bond_master
     
     @record_history
-    def combine_data(self, *dfs, ignore_history: bool = False):
-        for df in dfs:
-            self.df = self.df.join(df.df, how='left')
+    def combine_data(self, stock_indices, *dfs, ignore_history: bool = False):
+        if self.file_name not in {'psei', 'psho', 'psmo', 'psse', 'psin', 'pspr', 'psfi'}:
+            sectors = pd.read_excel(self.raw_path.parent / 'info' / 'sectors_and_subsectors.xlsx')
+            sectors.columns = [snake_case(col) for col in sectors.columns]
 
-            close = self.df[f'{self.file_name}_close']
-            self.df[f'{self.file_name}_10m_return'] = (close.shift(-10) > close).astype(int)
-            self.df[f'{self.file_name}_30m_return'] = (close.shift(-30) > close).astype(int)
+            sectors['sector'] = sectors['sector'].map({
+                'Holding Firms': 'psho',
+                'Mining and Oil': 'psmo',
+                'Services': 'psse',
+                'Property': 'pspr',
+                'Industrial': 'psin',
+                'Financials': 'psfi'
+            })
+            sectors['stock_symbol'] = sectors['stock_symbol'].str.lower()
+            mapping = sectors.set_index('stock_symbol')['sector'].to_dict()
+
+            self.df = self.df.join(stock_indices['psei'].df, how='left')
+            self.df = self.df.join(stock_indices[mapping[self.file_name]].df, how='left')
+
+            for df in dfs:
+                self.df = self.df.join(df.df, how='left')
+
+                close = self.df[f'{self.file_name}_close']
+                self.df[f'{self.file_name}_10m_return'] = (close.shift(-10) > close).astype(int)
+                self.df[f'{self.file_name}_30m_return'] = (close.shift(-30) > close).astype(int)
 
     @record_history
     def _process_high_frequency_instruments(
