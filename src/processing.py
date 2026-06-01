@@ -849,12 +849,8 @@ class DataSource:
         sectors['stock_symbol'] = sectors['stock_symbol'].str.lower()
         mapping = sectors.set_index('stock_symbol')['sector'].to_dict()
 
-        print(f"DEBUG: Before join, self.df shape: {self.df.shape}, Index type: {type(self.df.index)}")
-
         psei = joblib.load(self.processed_path / 'psei.joblib')
         sector_df = joblib.load(self.processed_path / f'{mapping[self.file_name]}.joblib')
-
-        print(f"DEBUG: After join, self.df shape: {self.df.shape}, Index type: {type(self.df.index)}")
 
         self.df = self.df.join(psei.df, how='left')
         self.df = self.df.join(sector_df.df, how='left')
@@ -954,15 +950,16 @@ class DataSource:
     ):
         """ Pipeline for preprocessing datasets. """
 
-        self.raw_path = Path(raw_path) / raw_folder_name if raw_folder_name else None
         self.file_name = file_name
-        self._medium = medium
         self.processed_path = Path(processed_path)
         self.data_source_path = self.processed_path / f'{self.file_name}.joblib'
 
         if self.data_source_path.exists():
             saved_data_source = joblib.load(self.data_source_path)
             self.__dict__.update(saved_data_source.__dict__)
+
+        self.raw_path = Path(raw_path) / raw_folder_name if raw_folder_name else None
+        self._medium = medium
 
         init_history = self._history.copy()
 
@@ -990,7 +987,6 @@ class DataSource:
             self._process_bonds(ignore_history=ignore_history)
         
         elif self._medium == 'combined':
-            print("reached here")
             self._combine_data(ignore_history=ignore_history)
 
         if self._history != init_history:
