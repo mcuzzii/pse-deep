@@ -634,10 +634,9 @@ class DataSource:
 
         self.df = df
     
-    def _ohlc_indicators(self, c: dict, close_attr='close'):
+    def _hlc_indicators(self, c: dict, close_attr='close'):
         fn = self.file_name
         df = self.df
-        open_ = df[c['open']].astype(float)
         close = df[c[close_attr]].astype(float)
         high = df[c['high']].astype(float)
         low = df[c['low']].astype(float)
@@ -647,9 +646,6 @@ class DataSource:
         STOCH_SLOW_D = 3
         ATR_PERIOD = 14
         ADX_PERIOD = 14
-
-        hl = (high - low).replace(0, np.nan)
-        df[f'{fn}_ad'] = ((high - open_) - (close - low)) / (2 * hl).fillna(0)
 
         stoch = ta.stoch(high, low, close,
                         k=STOCH_K, d=STOCH_FAST_D, smooth_k=1)
@@ -736,7 +732,7 @@ class DataSource:
         self._fill(c, 'net', 'perc_chg', 'volume', value=0)
 
         self._close_indicators(c)
-        self._ohlc_indicators(c)
+        self._hlc_indicators(c)
         self._cv_indicators(c)
 
     def _process_copper(self):
@@ -761,7 +757,7 @@ class DataSource:
         self._fill(c, 'bidnet', 'refresh_rate', value=0)
 
         self._close_indicators(c, close_attr='midprice')
-        self._ohlc_indicators(c, close_attr='midprice')
+        self._hlc_indicators(c, close_attr='midprice')
 
     def _process_oil(self):
         c = self._col('bid', 'ask', 'open', 'high', 'low', 'close', 'net', 'volume', 'perc_chg')
@@ -775,7 +771,7 @@ class DataSource:
         self._fill(c, 'net', 'perc_chg', 'volume', value=0)
 
         self._close_indicators(c)
-        self._ohlc_indicators(c)
+        self._hlc_indicators(c)
         self._cv_indicators(c)
     
     @record_history
