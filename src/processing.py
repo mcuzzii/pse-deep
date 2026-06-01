@@ -844,6 +844,8 @@ class DataSource:
             sectors['stock_symbol'] = sectors['stock_symbol'].str.lower()
             mapping = sectors.set_index('stock_symbol')['sector'].to_dict()
 
+            print(self.file_name)
+
             self.df = self.df.join(stock_indices['psei'].df, how='left')
             self.df = self.df.join(stock_indices[mapping[self.file_name]].df, how='left')
 
