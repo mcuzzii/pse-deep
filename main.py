@@ -86,7 +86,5 @@ def main():
         del stock_data
         gc.collect()
 
-
-
 if __name__ == '__main__':
     main()

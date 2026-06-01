@@ -833,6 +833,7 @@ class DataSource:
         
         self.df = bond_master
     
+    @record_history
     def _combine_data(self, ignore_history: bool = False):
         sectors = pd.read_excel(self.raw_path.parent / 'info' / 'sectors_and_subsectors.xlsx')
         sectors.columns = [snake_case(col) for col in sectors.columns]
@@ -989,6 +990,7 @@ class DataSource:
             self._process_bonds(ignore_history=ignore_history)
         
         elif self._medium == 'combined':
+            print("reached here")
             self._combine_data(ignore_history=ignore_history)
 
         if self._history != init_history:
