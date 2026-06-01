@@ -21,6 +21,6 @@ for item in Path('data/processed').glob('*.joblib'):
         if f'{fn}_no_activity' in columns and 'no_activity' not in columns:
             print(f"Successfully replaced column 'no_activity' with '{fn}_no_activity'.")
             print(f'Saving {fn}...')
-            joblib.dump(data.df, f'data/processed/{fn}.joblib')
+            joblib.dump(data, f'data/processed/{fn}.joblib')
     else:
         print(f"Found no 'no_activity' column; instead found {data.df.columns.tolist()}")
