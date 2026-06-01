@@ -11,16 +11,8 @@ import re
 
 for item in Path('data/processed').glob('*.joblib'):
     data = joblib.load(item)
-    print(f'Searching {data.file_name}...')
-    columns = data.df.columns
-    if 'no_activity' in columns:
-        fn = data.file_name
-        print(f"Found column 'no_activity' in {fn}.")
-        data.df.rename(columns={'no_activity': f'{fn}_no_activity'}, inplace=True)
-        columns = data.df.columns
-        if f'{fn}_no_activity' in columns and 'no_activity' not in columns:
-            print(f"Successfully replaced column 'no_activity' with '{fn}_no_activity'.")
-            print(f'Saving {fn}...')
-            joblib.dump(data, f'data/processed/{fn}.joblib')
-    else:
-        print(f"Found no 'no_activity' column; instead found {data.df.columns.tolist()}")
+    fn = data.file_name
+    print(f'Loading {fn}...')
+    Path('data/samples').mkdir(exist_ok=True)
+    data.df.head(2000).to_csv(f'data/samples/{fn}.csv')
+    print(f'Saved {fn}.csv in data/samples/')
