@@ -728,8 +728,8 @@ class DataSource:
         self._cv_indicators(c)
 
     def _process_copper(self):
-        c = self._col('bid', 'ask')
-        self.df = self.df[[c['bid'], c['ask']]]
+        c = self._col('bid', 'ask', 'no_activity')
+        self.df = self.df[[c['bid'], c['ask'], c['no_activity']]]
         
         self._bid_ask_indicators(c)
         self._close_indicators(c, close_attr='midprice')
