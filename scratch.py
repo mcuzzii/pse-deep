@@ -17,7 +17,7 @@ for item in Path('data/processed').glob('*.joblib'):
     targets = [s for s in columns if re.search(r'.+_ad$', s)]
     if targets:
         print(f"Found columns {targets} in {fn}.")
-        data.df.drop(columns=[targets], inplace=True)
+        data.df.drop(columns=targets, inplace=True)
         columns = data.df.columns
         if not [s for s in targets if s in columns]:
             print(f"Successfully removed columns {targets}.")
