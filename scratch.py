@@ -14,14 +14,14 @@ for item in Path('data/processed').glob('*.joblib'):
     data = joblib.load(item)
     fn = data.file_name
     columns = data.df.columns
-    target = f'{fn}_ad'
-    if target in columns:
-        print(f"Found column {target} in {fn}.")
-        data.df.drop(columns=[target], inplace=True)
+    targets = [s for s in columns if re.search(r'.+_ad$', s)]
+    if targets:
+        print(f"Found columns {targets} in {fn}.")
+        data.df.drop(columns=[targets], inplace=True)
         columns = data.df.columns
-        if target not in columns:
-            print(f"Successfully removed column {target}.")
+        if not [s for s in targets if s in columns]:
+            print(f"Successfully removed columns {targets}.")
             print(f'Saving {fn}...')
             joblib.dump(data, f'data/processed/{fn}.joblib')
     else:
-        print(f"Found no {target} column; instead found {data.df.columns.tolist()}")
+        print(f"Found no '_ad' columns; instead found {data.df.columns.tolist()}")
