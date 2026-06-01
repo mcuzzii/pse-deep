@@ -798,8 +798,14 @@ class DataSource:
         self.df = df
 
     @record_history
-    def _process_bonds(self, bond_dfs, ignore_history: bool = False):
+    def _process_bonds(self, ignore_history: bool = False):
         bond_master = None
+        
+        bond_dfs = dict()
+        for bond in self.processed_path.glob('phgv*.joblib'):
+            bond_df = joblib.load(bond)
+            bond_dfs[bond_df.file_name] = bond_df
+
         for fn in bond_dfs:
             c = bond_dfs[fn]._col('bid', 'ask', 'askyld', 'bidyld')
             
@@ -828,35 +834,38 @@ class DataSource:
         self.df = bond_master
     
     @record_history
-    def combine_data(self, stock_indices, *dfs, ignore_history: bool = False):
-        if self.file_name not in {'psei', 'psho', 'psmo', 'psse', 'psin', 'pspr', 'psfi'}:
-            sectors = pd.read_excel(self.raw_path.parent / 'info' / 'sectors_and_subsectors.xlsx')
-            sectors.columns = [snake_case(col) for col in sectors.columns]
+    def _combine_data(self, ignore_history: bool = False):
+        sectors = pd.read_excel(self.raw_path.parent / 'info' / 'sectors_and_subsectors.xlsx')
+        sectors.columns = [snake_case(col) for col in sectors.columns]
 
-            sectors['sector'] = sectors['sector'].map({
-                'Holding Firms': 'psho',
-                'Mining and Oil': 'psmo',
-                'Services': 'psse',
-                'Property': 'pspr',
-                'Industrial': 'psin',
-                'Financials': 'psfi'
-            })
-            sectors['stock_symbol'] = sectors['stock_symbol'].str.lower()
-            mapping = sectors.set_index('stock_symbol')['sector'].to_dict()
+        sectors['sector'] = sectors['sector'].map({
+            'Holding Firms': 'psho',
+            'Mining and Oil': 'psmo',
+            'Services': 'psse',
+            'Property': 'pspr',
+            'Industrial': 'psin',
+            'Financials': 'psfi'
+        })
+        sectors['stock_symbol'] = sectors['stock_symbol'].str.lower()
+        mapping = sectors.set_index('stock_symbol')['sector'].to_dict()
 
-            print(self.file_name)
+        psei = joblib.load(self.processed_path / 'psei.joblib')
+        sector_df = joblib.load(self.processed_path / f'{mapping[self.file_name]}.joblib')
 
-            self.df = self.df.join(stock_indices['psei'].df, how='left')
-            self.df = self.df.join(stock_indices[mapping[self.file_name]].df, how='left')
+        try:
+            self.df = self.df.join(psei.df, how='left')
+            self.df = self.df.join(sector_df.df, how='left')
+        except Exception as _:
+            print(f"{self.file_name} already processed; skipping...")
+            return
 
-            for df in dfs:
-                self.df = self.df.join(df.df, how='left')
+        for instrument in ['copper', 'lcoc1', 'usd', 'xau']:
+            instrument_df = joblib.load(self.processed_path / f'{instrument}.joblib')
+            self.df = self.df.join(instrument_df.df, how='left')
 
-                close = self.df[f'{self.file_name}_close']
-                self.df[f'{self.file_name}_10m_return'] = (close.shift(-10) > close).astype(int)
-                self.df[f'{self.file_name}_30m_return'] = (close.shift(-30) > close).astype(int)
-            
-            joblib.dump(self, self.data_source_path)
+            close = self.df[f'{self.file_name}_close']
+            self.df[f'{self.file_name}_10m_return'] = (close.shift(-10) > close).astype(int)
+            self.df[f'{self.file_name}_30m_return'] = (close.shift(-30) > close).astype(int)
 
     @record_history
     def _process_high_frequency_instruments(
@@ -935,14 +944,13 @@ class DataSource:
         self,
         file_name: str,
         raw_folder_name: str | None = None,
-        medium: Literal['lseg_news', 'x_posts', 'stock'] | None = None,
+        medium: str | None = None,
         text_col: str | None = None,
         date_col: str | None = None,
         raw_path: str = 'data/raw',
         processed_path: str = 'data/processed',
         embedding_dimension: int | None = 1024,
-        ignore_history: bool = False,
-        bonds: dict | None = None
+        ignore_history: bool = False
     ):
         """ Pipeline for preprocessing datasets. """
 
@@ -978,8 +986,11 @@ class DataSource:
             else:
                 self._process_bond(ignore_history=ignore_history)
         
-        elif bonds:
-            self._process_bonds(bonds, ignore_history=ignore_history)
+        elif self._medium == 'bonds':
+            self._process_bonds(ignore_history=ignore_history)
+        
+        elif self._medium == 'combined':
+            self._combine_data(ignore_history=ignore_history)
 
         if self._history != init_history:
             joblib.dump(self, self.data_source_path)

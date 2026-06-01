@@ -29,39 +29,51 @@ def main():
     gc.collect()
     
     stocks = get_unique_instruments('data/raw/stock')
-    stock_dfs = dict()
     for stock in stocks:
         stock_data = DataSource()
         stock_data.create_df(raw_folder_name='stock', file_name=stock, medium='stock')
-        stock_dfs[stock_data.file_name] = stock_data
+        del stock_data
+        gc.collect()
     
     bonds = get_unique_instruments('data/raw/bond')
-    bond_dfs = dict()
     for bond in bonds:
         bond_data = DataSource()
         bond_data.create_df(raw_folder_name='bond', file_name=bond, medium='bond')
-        bond_dfs[bond_data.file_name] = bond_data
+        del bond_data
+        gc.collect()
     
     copper = DataSource()
     copper.create_df(raw_folder_name='copper', file_name='copper', medium='copper')
+    del copper
+    gc.collect()
 
     oil = DataSource()
     oil.create_df(raw_folder_name='crude', file_name='lcoc1', medium='oil')
+    del oil
+    gc.collect()
 
     usd = DataSource()
     usd.create_df(raw_folder_name='forex', file_name='usd', medium='fx')
+    del usd
+    gc.collect()
 
     xau = DataSource()
     xau.create_df(raw_folder_name='xau', file_name='xau', medium='fx')
+    del xau
+    gc.collect()
 
     bond_master = DataSource()
-    bond_master.create_df(file_name='bond_master', bonds=bond_dfs)
-
+    bond_master.create_df(file_name='bond_master', medium='bonds')
     del bond_master
     gc.collect()
+
+    stocks = list(set(stocks) - {'psei', 'psho', 'psse', 'psmo', 'psfi', 'pspr', 'psin'})
     
-    for fn in stock_dfs:
-        stock_dfs[fn].combine_data(stock_dfs, copper, oil, usd, xau)
+    for stock in stocks:
+        stock_data = DataSource()
+        stock_data.create_df(file_name=stock, medium='combined')
+        del stock_data
+        gc.collect()
 
 
 
