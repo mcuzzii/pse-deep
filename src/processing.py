@@ -703,6 +703,8 @@ class DataSource:
         df[f'{fn}_midprice'] = (ask + bid) / 2
         df[f'{fn}_rel_spread'] = (ask - bid) / df[f'{fn}_midprice']
 
+        c['midprice'] = f'{fn}_midprice'
+
         for l in SPREAD_MA_PERIODS:
             df[f'{fn}_spread_ma_{l}'] = ta.sma(df[f'{fn}_spread'], length=l)
         
@@ -730,17 +732,14 @@ class DataSource:
         self.df = self.df[[c['bid'], c['ask']]]
         
         self._bid_ask_indicators(c)
-        self._close_indicators(c, close_attr=f'{self.file_name}_midprice')
+        self._close_indicators(c, close_attr='midprice')
 
     def _process_forex(self):
         c = self._col('bid', 'ask', 'bid_net', 'open', 'high', 'low', 'refresh_rate')
 
-        self.bid_ask_indicators(c)
-
-        close_attr = f'{self.file_name}_midprice'
-
-        self._close_indicators(c, close_attr=close_attr)
-        self._ohlc_indicators(c, close_attr=close_attr)
+        self._bid_ask_indicators(c)
+        self._close_indicators(c, close_attr='midprice')
+        self._ohlc_indicators(c, close_attr='midprice')
 
     def _process_oil(self):
         c = self._col('bid', 'ask', 'open', 'high', 'low', 'close', 'net', 'volume', 'perc_chg')
