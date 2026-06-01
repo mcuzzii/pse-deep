@@ -54,7 +54,7 @@ def main():
     bond_master.create_df(file_name='bond_master', bonds=bond_dfs, ignore_history=True)
     
     for fn in stock_dfs:
-        stock_dfs[fn].combine_data(copper, oil, usd, xau, ignore_history=True)
+        stock_dfs[fn].combine_data(stock_dfs, copper, oil, usd, xau, ignore_history=True)
 
 
 
