@@ -766,7 +766,7 @@ class DataSource:
         self.df = df
 
     @record_history
-    def process_bonds(self, bond_dfs, ignore_history: bool = False):
+    def _process_bonds(self, bond_dfs, ignore_history: bool = False):
         bond_master = None
         for fn in bond_dfs:
             c = bond_dfs[fn]._col('bid', 'ask', 'askyld', 'bidyld')
@@ -896,18 +896,19 @@ class DataSource:
     def create_df(
         self,
         file_name: str,
-        raw_folder_name: str,
+        raw_folder_name: str | None = None,
         medium: Literal['lseg_news', 'x_posts', 'stock'] | None = None,
         text_col: str | None = None,
         date_col: str | None = None,
         raw_path: str = 'data/raw',
         processed_path: str = 'data/processed',
         embedding_dimension: int | None = 1024,
-        ignore_history: bool = False
+        ignore_history: bool = False,
+        bonds: dict | None = None
     ):
         """ Pipeline for preprocessing datasets. """
 
-        self.raw_path = Path(raw_path) / raw_folder_name
+        self.raw_path = Path(raw_path) / raw_folder_name if raw_folder_name else None
         self.file_name = file_name
         self._medium = medium
         self.processed_path = Path(processed_path)
@@ -936,6 +937,9 @@ class DataSource:
             self._load_financial_instrument(ignore_history=ignore_history)
             if self._medium != 'bond':
                 self._process_high_frequency_instruments(ignore_history=ignore_history)
+        
+        elif bonds:
+            self._process_bonds(bonds, ignore_history=ignore_history)
 
         if self._history != init_history:
             joblib.dump(self, data_source_path)

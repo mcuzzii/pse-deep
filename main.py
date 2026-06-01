@@ -29,30 +29,30 @@ def main():
     for stock in stocks:
         stock_data = DataSource()
         stock_data.create_df(raw_folder_name='stock', file_name=stock, medium='stock')
-        stock_dfs[stock_data.file_name] = stock_data.df
+        stock_dfs[stock_data.file_name] = stock_data
     
     bonds = get_unique_instruments('data/raw/bond')
     bond_dfs = dict()
     for bond in bonds:
         bond_data = DataSource()
         bond_data.create_df(raw_folder_name='bond', file_name=bond, medium='bond')
-        bond_dfs[bond_data.file_name] = bond_data.df
+        bond_dfs[bond_data.file_name] = bond_data
     
     copper = DataSource()
-    copper.create_df(raw_folder_name='copper', file_name='copper', medium='copper', ignore_history=True)
+    copper.create_df(raw_folder_name='copper', file_name='copper', medium='copper')
 
     oil = DataSource()
-    oil.create_df(raw_folder_name='crude', file_name='lcoc1', medium='oil', ignore_history=True)
+    oil.create_df(raw_folder_name='crude', file_name='lcoc1', medium='oil')
 
     usd = DataSource()
-    usd.create_df(raw_folder_name='forex', file_name='usd', medium='fx', ignore_history=True)
+    usd.create_df(raw_folder_name='forex', file_name='usd', medium='fx')
 
     xau = DataSource()
-    xau.create_df(raw_folder_name='xau', file_name='xau', medium='fx', ignore_history=True)
+    xau.create_df(raw_folder_name='xau', file_name='xau', medium='fx')
 
     bond_master = DataSource()
-    bond_master.process_bonds(bond_dfs, ignore_history=True)
-
+    bond_master.create_df(file_name='bond_master', bonds=bond_dfs, ignore_history=True)
+    
     for fn in stock_dfs:
         stock_dfs[fn].combine_data(copper, oil, usd, xau, ignore_history=True)
 
