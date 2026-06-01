@@ -750,7 +750,7 @@ class DataSource:
         self._close_indicators(c, close_attr='midprice')
 
     def _process_forex(self):
-        c = self._col('bid', 'ask', 'bid_net', 'open', 'high', 'low', 'refresh_rate')
+        c = self._col('bid', 'ask', 'bidnet', 'open', 'high', 'low', 'refresh_rate')
 
         self._fill(c, 'bid', 'ask', kind='forward')
         self._fill(c, 'bid', 'ask', kind='backward')
@@ -758,7 +758,7 @@ class DataSource:
         self._bid_ask_indicators(c)
 
         self._ohlc_fill(c, close_attr='midprice')
-        self._fill(c, 'bid_net', 'refresh_rate', value=0)
+        self._fill(c, 'bidnet', 'refresh_rate', value=0)
 
         self._close_indicators(c, close_attr='midprice')
         self._ohlc_indicators(c, close_attr='midprice')
@@ -857,6 +857,8 @@ class DataSource:
                 close = self.df[f'{self.file_name}_close']
                 self.df[f'{self.file_name}_10m_return'] = (close.shift(-10) > close).astype(int)
                 self.df[f'{self.file_name}_30m_return'] = (close.shift(-30) > close).astype(int)
+            
+            joblib.dump(self, self.data_source_path)
 
     @record_history
     def _process_high_frequency_instruments(
@@ -950,10 +952,10 @@ class DataSource:
         self.file_name = file_name
         self._medium = medium
         self.processed_path = Path(processed_path)
-        data_source_path = self.processed_path / f'{self.file_name}.joblib'
+        self.data_source_path = self.processed_path / f'{self.file_name}.joblib'
 
-        if data_source_path.exists():
-            saved_data_source = joblib.load(data_source_path)
+        if self.data_source_path.exists():
+            saved_data_source = joblib.load(self.data_source_path)
             self.__dict__.update(saved_data_source.__dict__)
 
         init_history = self._history.copy()
@@ -982,5 +984,5 @@ class DataSource:
             self._process_bonds(bonds, ignore_history=ignore_history)
 
         if self._history != init_history:
-            joblib.dump(self, data_source_path)
+            joblib.dump(self, self.data_source_path)
 
