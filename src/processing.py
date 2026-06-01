@@ -860,9 +860,11 @@ class DataSource:
 
         self.df = self.df.reindex(datetime_index)
 
-        self.df['no_activity'] = self.df.isna().all(axis=1).astype(int)
-        first_idx = self.df['no_activity'].idxmax()
-        last_idx = self.df['no_activity'][::-1].idxmax()
+        fn = self.file_name
+
+        self.df[f'{fn}_no_activity'] = self.df.isna().all(axis=1).astype(int)
+        first_idx = self.df[f'{fn}_no_activity'].idxmax()
+        last_idx = self.df[f'{fn}_no_activity'][::-1].idxmax()
         self.df = self.df.loc[first_idx:last_idx]
 
         if self._medium == 'stock':
