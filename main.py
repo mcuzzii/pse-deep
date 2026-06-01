@@ -6,6 +6,7 @@ sys.path.append(str(Path.cwd() / 'src'))
 
 from processing import DataSource, get_unique_instruments
 from dotenv import load_dotenv
+import gc
 
 load_dotenv()
 
@@ -23,6 +24,9 @@ def main():
     for i in [52320, 47506, 32768]:
         social_media_data.get_similar_embeddings(index=i, n_results=10)
         lseg_news_data.get_similar_embeddings(index=i, n_results=10)
+    
+    del social_media_data, lseg_news_data
+    gc.collect()
     
     stocks = get_unique_instruments('data/raw/stock')
     stock_dfs = dict()
@@ -52,6 +56,9 @@ def main():
 
     bond_master = DataSource()
     bond_master.create_df(file_name='bond_master', bonds=bond_dfs)
+
+    del bond_master
+    gc.collect()
     
     for fn in stock_dfs:
         stock_dfs[fn].combine_data(stock_dfs, copper, oil, usd, xau)
