@@ -852,12 +852,8 @@ class DataSource:
         psei = joblib.load(self.processed_path / 'psei.joblib')
         sector_df = joblib.load(self.processed_path / f'{mapping[self.file_name]}.joblib')
 
-        try:
-            self.df = self.df.join(psei.df, how='left')
-            self.df = self.df.join(sector_df.df, how='left')
-        except Exception as _:
-            print(f"{self.file_name} already processed; skipping...")
-            return
+        self.df = self.df.join(psei.df, how='left')
+        self.df = self.df.join(sector_df.df, how='left')
 
         for instrument in ['copper', 'lcoc1', 'usd', 'xau']:
             instrument_df = joblib.load(self.processed_path / f'{instrument}.joblib')
