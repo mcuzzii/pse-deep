@@ -560,8 +560,9 @@ class DataSource:
         df = self.df
         close = df[c[close_attr]].astype(float)
 
+        LOG_RETURN_PERIODS = [1, 5, 10, 30]
         RSI_PERIOD = 14
-        PROC_PERIODS = [1, 5, 10, 20]
+        PROC_PERIODS = [5, 10, 20]
         MACD_FAST = 12
         MACD_SLOW = 26
         MACD_SIGNAL = 9
@@ -576,18 +577,24 @@ class DataSource:
 
         df[f'{fn}_rsi'] = ta.rsi(close, length=RSI_PERIOD)
 
-        df[f'{fn}_log_return'] = np.log(close / close.shift(1))
+        for p in LOG_RETURN_PERIODS:
+            df[f'{fn}_log_return_{p}'] = np.log(close / close.shift(p))
 
-        prev_day_close = (
-            close
-            .groupby(close.index.date)
-            .transform('first')
-            .shift(1)
+        # Last close price per day
+        last_close_per_day = close.groupby(close.index.date).last()
+
+        # Shift by 1 day to get previous day's last close
+        prev_day_last_close = last_close_per_day.shift(1)
+
+        # Map back to every minute row
+        prev_day_close = close.index.to_series().apply(
+            lambda ts: prev_day_last_close.get(ts.date())
         )
-        df[f'{fn}_cum_log_return'] = np.log(close / prev_day_close)
+
+        df[f'{fn}_cum_log_return'] = np.log(close / prev_day_close.values)
 
         for p in PROC_PERIODS:
-            df[f'{fn}_proc_{p}'] = close.diff(p)
+            df[f'{fn}_proc_{p}'] = close.pct_change(p)
 
         macd = ta.macd(close, fast=MACD_FAST, slow=MACD_SLOW, signal=MACD_SIGNAL)
         df[f'{fn}_macd'] = macd[f'MACD_{MACD_FAST}_{MACD_SLOW}_{MACD_SIGNAL}']
@@ -599,8 +606,13 @@ class DataSource:
         df[f'{fn}_ema_short'] = ta.ema(close, length=EMA_SHORT)
         df[f'{fn}_ema_long'] = ta.ema(close, length=EMA_LONG)
 
-        df[f'{fn}_oscp'] = df[f'{fn}_ma_short']  - df[f'{fn}_ma_long']
-        df[f'{fn}_eoscp'] = df[f'{fn}_ema_short'] - df[f'{fn}_ema_long']
+        df[f'{fn}_oscp'] = (df[f'{fn}_ma_short']  - df[f'{fn}_ma_long']) / df[f'{fn}_ma_short']
+        df[f'{fn}_eoscp'] = (df[f'{fn}_ema_short'] - df[f'{fn}_ema_long']) / df[f'{fn}_ema_short']
+
+        df[f'{fn}_disp_short'] = (close - df[f'{fn}_ma_short']) / df[f'{fn}_ma_short']
+        df[f'{fn}_disp_long'] = (close - df[f'{fn}_ma_long']) / df[f'{fn}_ma_long']
+        df[f'{fn}_edisp_short'] = (close - df[f'{fn}_ema_short']) / df[f'{fn}_ema_short']
+        df[f'{fn}_edisp_long'] = (close - df[f'{fn}_ema_long']) / df[f'{fn}_ema_long']
 
         up_close = (close.diff(1) > 0).astype(int)
         df[f'{fn}_psy'] = up_close.rolling(PSY_PERIOD).sum() / PSY_PERIOD
@@ -622,9 +634,10 @@ class DataSource:
 
         self.df = df
     
-    def _hlc_indicators(self, c: dict, close_attr='close'):
+    def _ohlc_indicators(self, c: dict, close_attr='close'):
         fn = self.file_name
         df = self.df
+        open_ = df[c['open']].astype(float)
         close = df[c[close_attr]].astype(float)
         high = df[c['high']].astype(float)
         low = df[c['low']].astype(float)
@@ -635,46 +648,46 @@ class DataSource:
         ATR_PERIOD = 14
         ADX_PERIOD = 14
 
+        hl = (high - low).replace(0, np.nan)
+        df[f'{fn}_ad'] = ((high - open_) - (close - low)) / (2 * hl).fillna(0)
+
         stoch = ta.stoch(high, low, close,
-                        k=STOCH_K, d=STOCH_FAST_D, smooth_k=STOCH_SLOW_D)
-        df[f'{fn}_stoch_k']      = stoch[f'STOCHk_{STOCH_K}_{STOCH_FAST_D}_{STOCH_SLOW_D}']
-        df[f'{fn}_stoch_fast_d'] = stoch[f'STOCHd_{STOCH_K}_{STOCH_FAST_D}_{STOCH_SLOW_D}']
+                        k=STOCH_K, d=STOCH_FAST_D, smooth_k=1)
+        df[f'{fn}_stoch_k']      = stoch[f'STOCHk_{STOCH_K}_{STOCH_FAST_D}_1']
+        df[f'{fn}_stoch_fast_d'] = stoch[f'STOCHd_{STOCH_K}_{STOCH_FAST_D}_1']
         df[f'{fn}_stoch_slow_d'] = df[f'{fn}_stoch_fast_d'].rolling(STOCH_SLOW_D).mean()
 
         psar = ta.psar(high, low, close)
         psar_long = psar.filter(like='PSARl').iloc[:, 0]
         psar_short = psar.filter(like='PSARs').iloc[:, 0]
 
-        df[f'{fn}_psar'] = psar_long.combine_first(psar_short)
+        psar_value = psar_long.combine_first(psar_short)
+        df[f'{fn}_psar_dist'] = (close - psar_value) / close
+        df[f'{fn}_psar_dir'] = np.where(psar_long.notna(), 1, -1)
+        df[f'{fn}_psar_reversal'] = psar.filter(like='PSARr').iloc[:, 0]
 
         df[f'{fn}_atr'] = ta.atr(high, low, close, length=ATR_PERIOD)
 
         adx = ta.adx(high, low, close, length=ADX_PERIOD)
+        
         df[f'{fn}_adx']  = adx.filter(like='ADX_').iloc[:, 0]
         df[f'{fn}_adx_di_pos'] = adx.filter(like='DMP_').iloc[:, 0]
         df[f'{fn}_adx_di_neg'] = adx.filter(like='DMN_').iloc[:, 0]
 
         self.df = df
 
-    def _hlcv_indicators(self, c: dict):
+    def _cv_indicators(self, c: dict):
         fn  = self.file_name
         df  = self.df
         close = df[c['close']].astype(float)
-        high = df[c['high']].astype(float)
-        low = df[c['low']].astype(float)
         volume = df[c['volume']].astype(float)
 
         RVOL_PERIOD = 20
-        VROC_PERIOD = 14 
 
-        df[f'{fn}_ad'] = ta.ad(high, low, close, volume)
-
-        df[f'{fn}_obv'] = ta.obv(close, volume)
+        df[f'{fn}_obv_change'] = ta.obv(close, volume).pct_change(1)
 
         rolling_avg_vol = volume.rolling(RVOL_PERIOD).mean()
         df[f'{fn}_rvol'] = volume / rolling_avg_vol
-
-        df[f'{fn}_vroc'] = volume.pct_change(periods=VROC_PERIOD) * 100
 
         self.df = df
     
@@ -688,7 +701,7 @@ class DataSource:
 
         df[f'{fn}_spread'] = ask - bid
         df[f'{fn}_midprice'] = (ask + bid) / 2
-        df[f'{fn}_rel_spread'] = (ask - bid) / (df[f'{fn}_midprice'] * 100)
+        df[f'{fn}_rel_spread'] = (ask - bid) / df[f'{fn}_midprice']
 
         for l in SPREAD_MA_PERIODS:
             df[f'{fn}_spread_ma_{l}'] = ta.sma(df[f'{fn}_spread'], length=l)
@@ -709,8 +722,8 @@ class DataSource:
         self.df[[c['net'], c['perc_chg'], c['volume']]] = self.df[[c['net'], c['perc_chg'], c['volume']]].fillna(0)
 
         self._close_indicators(c)
-        self._hlc_indicators(c)
-        self._hlcv_indicators(c)
+        self._ohlc_indicators(c)
+        self._cv_indicators(c)
 
     def _process_copper(self):
         c = self._col('bid', 'ask')
@@ -727,7 +740,7 @@ class DataSource:
         close_attr = f'{self.file_name}_midprice'
 
         self._close_indicators(c, close_attr=close_attr)
-        self._hlc_indicators(c, close_attr=close_attr)
+        self._ohlc_indicators(c, close_attr=close_attr)
 
     def _process_oil(self):
         c = self._col('bid', 'ask', 'open', 'high', 'low', 'close', 'net', 'volume', 'perc_chg')
@@ -735,8 +748,8 @@ class DataSource:
         self._bid_ask_indicators(c)
 
         self._close_indicators(c)
-        self._hlc_indicators(c)
-        self._hlcv_indicators(c)
+        self._ohlc_indicators(c)
+        self._cv_indicators(c)
     
     def _within_bond_indicators(self, c: dict):
         fn = self.file_name
@@ -753,19 +766,45 @@ class DataSource:
 
         self.df = df
 
-    def process_bond(self, bond_dfs, ignore_history: bool = False):
+    @record_history
+    def process_bonds(self, bond_dfs, ignore_history: bool = False):
         bond_master = None
-        for bond_df in bond_dfs:
-            c = bond_df._col('bid', 'ask', 'askyld', 'bidychg', 'bidyld')
+        bond_dfs = {bond_df.file_name: bond_df for bond_df in bond_dfs}
+        for fn in bond_dfs:
+            c = bond_dfs[fn]._col('bid', 'ask', 'askyld', 'bidyld')
             
-            bond_df._within_bond_indicators(c)
+            bond_dfs[fn]._within_bond_indicators(c)
 
             if bond_master is None:
-                bond_master = bond_df
+                bond_master = bond_dfs[fn].df
             else:
-                bond_master.combine_first(bond_df)
+                bond_master = bond_master.combine_first(bond_dfs[fn].df)
         
-        c = self._col('bid', 'ask', 'askyld', 'bidychg', 'bidyld')
+        ordered_terms = sorted(
+            [int(fn[4:]) for fn in bond_dfs if 'm' not in fn],
+            reverse=True
+        ) + sorted(
+            [fn[4:] for fn in bond_dfs if 'm' in fn],
+            key=lambda x: int(x.replace('m', '')),
+            reverse=True
+        )
+
+        for i, long_term in enumerate(ordered_terms):
+            for short_term in ordered_terms[i + 1:]:
+                long_term_yld = bond_master[f'phgv{long_term}_mdyld']
+                short_term_yld = bond_master[f'phgv{short_term}_mdyld']
+                bond_master[f'phgv{long_term}_{short_term}_term_spread'] = long_term_yld - short_term_yld
+        
+        self.df = bond_master
+    
+    @record_history
+    def combine_data(self, *dfs, ignore_history: bool = False):
+        for df in dfs:
+            self.df = self.df.join(df.df, how='left')
+
+            close = self.df[f'{self.file_name}_close']
+            self.df[f'{self.file_name}_10m_return'] = (close.shift(-10) > close).astype(int)
+            self.df[f'{self.file_name}_30m_return'] = (close.shift(-30) > close).astype(int)
 
     @record_history
     def _process_high_frequency_instruments(
@@ -819,6 +858,7 @@ class DataSource:
         elif self._medium == 'oil':
             self._process_oil()
     
+    # Processing pipeline for text data
     def _text_preprocess(
         self,
         ignore_history: bool = False
@@ -836,7 +876,7 @@ class DataSource:
         elif self._medium == 'x_posts':
             self._get_multilingual_sentiment(ignore_history=ignore_history)
         
-    # Processing pipeline for text data.
+    # Processing pipeline for all data.
     def create_df(
         self,
         file_name: str,
