@@ -710,18 +710,30 @@ class DataSource:
         
         self.df = df
     
+    def _fill(self, c: dict, *attr_names, value=0, kind='value'):
+        if attr_names:
+            attrs = c[attr_names[0]] if len(attr_names) == 1 else [c[attr_name] for attr_name in attr_names]
+
+            self.df[attrs] = self.df[attrs].ffill() if kind == 'forward' else (
+                self.df[attrs].fillna(value) if kind == 'value' else (
+                    self.df[attrs].bfill() if kind == 'backward' else self.df[attrs]
+                )
+            )
+    
+    def _ohlc_fill(self, c: dict, close_attr='close'):
+        self._fill(c, close_attr, kind='forward')
+        for col in ('open', 'high', 'low'):
+            self._fill(c, col, value=self.df[c[close_attr]])
+        
+        self._fill(c, 'open', kind='backward')
+        for col in (close_attr, 'high', 'low'):
+            self._fill(c, col, value=self.df[c['open']])
+    
     def _process_stock(self):
         c = self._col('open', 'high', 'low', 'close', 'net', 'volume', 'perc_chg')
 
-        self.df[c['close']] = self.df[c['close']].ffill()
-        for col in ('open', 'high', 'low'):
-            self.df[c[col]] = self.df[c[col]].fillna(self.df[c['close']])
-
-        self.df[c['open']] = self.df[c['open']].bfill()
-        for col in ('close', 'high', 'low'):
-            self.df[c[col]] = self.df[c[col]].fillna(self.df[c['open']])
-
-        self.df[[c['net'], c['perc_chg'], c['volume']]] = self.df[[c['net'], c['perc_chg'], c['volume']]].fillna(0)
+        self._ohlc_fill(c)
+        self._fill(c, 'net', 'perc_chg', 'volume', value=0)
 
         self._close_indicators(c)
         self._ohlc_indicators(c)
@@ -730,6 +742,9 @@ class DataSource:
     def _process_copper(self):
         c = self._col('bid', 'ask', 'no_activity')
         self.df = self.df[[c['bid'], c['ask'], c['no_activity']]]
+
+        self._fill(c, 'bid', 'ask', kind='forward')
+        self._fill(c, 'bid', 'ask', kind='backward')
         
         self._bid_ask_indicators(c)
         self._close_indicators(c, close_attr='midprice')
@@ -737,18 +752,39 @@ class DataSource:
     def _process_forex(self):
         c = self._col('bid', 'ask', 'bid_net', 'open', 'high', 'low', 'refresh_rate')
 
+        self._fill(c, 'bid', 'ask', kind='forward')
+        self._fill(c, 'bid', 'ask', kind='backward')
+
         self._bid_ask_indicators(c)
+
+        self._ohlc_fill(c, close_attr='midprice')
+        self._fill(c, 'bid_net', 'refresh_rate', value=0)
+
         self._close_indicators(c, close_attr='midprice')
         self._ohlc_indicators(c, close_attr='midprice')
 
     def _process_oil(self):
         c = self._col('bid', 'ask', 'open', 'high', 'low', 'close', 'net', 'volume', 'perc_chg')
 
+        self._fill(c, 'bid', 'ask', kind='forward')
+        self._fill(c, 'bid', 'ask', kind='backward')
+
         self._bid_ask_indicators(c)
+
+        self._ohlc_fill(c)
+        self._fill(c, 'net', 'perc_chg', 'volume', value=0)
 
         self._close_indicators(c)
         self._ohlc_indicators(c)
         self._cv_indicators(c)
+    
+    @record_history
+    def _process_bond(self, ignore_history: bool = False):
+        c = self._col('bid', 'ask', 'askyld', 'bidyld', 'bidychg')
+
+        self._fill(c, 'bid', 'ask', 'askyld', 'bidyld', kind='forward')
+        self._fill(c, 'bid', 'ask', 'askyld', 'bidyld', kind='backward')
+        self._fill(c, 'bidychg', value=0)
     
     def _within_bond_indicators(self, c: dict):
         fn = self.file_name
@@ -939,6 +975,8 @@ class DataSource:
             self._load_financial_instrument(ignore_history=ignore_history)
             if self._medium != 'bond':
                 self._process_high_frequency_instruments(ignore_history=ignore_history)
+            else:
+                self._process_bond(ignore_history=ignore_history)
         
         elif bonds:
             self._process_bonds(bonds, ignore_history=ignore_history)
