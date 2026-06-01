@@ -71,7 +71,7 @@ def main():
     
     for stock in stocks:
         stock_data = DataSource()
-        stock_data.create_df(file_name=stock, medium='combined')
+        stock_data.create_df(file_name=stock, medium='combined', ignore_history=True)
         del stock_data
         gc.collect()
 
