@@ -14,4 +14,4 @@ for item in Path('data/processed').glob('*.joblib'):
     data = joblib.load(item)
     fn = data.file_name
     print(f'Saving {fn}.csv...')
-    data.df.head(2000).to_csv(f'data/samples/{fn}.csv')
+    pd.concat([data.df.head(1000), data.df.tail(1000)]).to_csv(f'data/samples/{fn}.csv')
