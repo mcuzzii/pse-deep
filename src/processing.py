@@ -995,19 +995,21 @@ class DataSource:
 
         pred_horizon = int(self._target.split('_')[1].replace('m', ''))
 
-        self.df = self.df.reset_index() 
+        stock_level_pos = self.df.index.names.index('stock')
+        time_level_pos = self.df.index.names.index('local_time')
 
         def remove_minutes(group):
-            max_time = group['local_time'].max()
+            max_time = group.index.get_level_values('local_time').max()
             cutoff = max_time - pd.Timedelta(minutes=pred_horizon)
-            return group.loc[group['local_time'] <= cutoff]
+            return group.loc[group.index.get_level_values('local_time') <= cutoff]
 
         self.df = self.df.groupby([
-            'stock', 
-            pd.Grouper(key='local_time', freq='D')
+            pd.Grouper(level=stock_level_pos),
+            pd.Grouper(level=time_level_pos, freq='D')
         ], group_keys=False).apply(remove_minutes)
 
-        self.df = self.df.set_index(['local_time', 'stock'])
+        if self.df.index.names[0] != 'local_time':
+            self.df = self.df.swaplevel('stock', 'local_time')
 
         self.df = self.df.between_time(
             start_time="12:01:00",
