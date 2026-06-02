@@ -1005,6 +1005,8 @@ class DataSource:
             pd.Grouper(level='local_time', freq='D')
         ], group_keys=False).apply(remove_minutes)
 
+        print("Current Index Levels:", self.df.index.names)
+
         self.df = self.df.swaplevel('stock', 'local_time').between_time(
             start_time="12:01:00",
             end_time=f"11:{60 - pred_horizon}:00",
