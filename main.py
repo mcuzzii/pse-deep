@@ -88,12 +88,12 @@ def main():
     
     print("Selecting features...")
     features_30 = DataSource()
-    features_30.create_df(file_name='features', medium='features', target=30, stocks=stocks, ignore_history=True)
+    features_30.create_df(file_name='features_30m', medium='features', target=30, stocks=stocks, ignore_history=True)
     del features_30
     gc.collect()
 
     features_10 = DataSource()
-    features_10.create_df(file_name='features', medium='features', target=10, stocks=stocks, ignore_history=True)
+    features_10.create_df(file_name='features_10m', medium='features', target=10, stocks=stocks, ignore_history=True)
     del features_10
     gc.collect()
 
