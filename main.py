@@ -72,7 +72,7 @@ def main():
 
     print("Combining government bonds...")
     bond_master = DataSource()
-    bond_master.create_df(file_name='bond_master', medium='bonds', ignore_history=True)
+    bond_master.create_df(file_name='bond_master', medium='bonds')
     del bond_master
     gc.collect()
 
@@ -82,14 +82,19 @@ def main():
     for stock in stocks:
         print(f"Combining instruments for {stock}...")
         stock_data = DataSource()
-        stock_data.create_df(file_name=stock, medium='combined', ignore_history=True)
+        stock_data.create_df(file_name=stock, medium='combined')
         del stock_data
         gc.collect()
     
     print("Selecting features...")
-    features = DataSource()
-    features.create_df(file_name='features', medium='features', ignore_history=True)
-    del features
+    features_30 = DataSource()
+    features_30.create_df(file_name='features', medium='features', target=30, ignore_history=True)
+    del features_30
+    gc.collect()
+
+    features_10 = DataSource()
+    features_10.create_df(file_name='features', medium='features', target=10, ignore_history=True)
+    del features_10
     gc.collect()
 
 if __name__ == '__main__':
