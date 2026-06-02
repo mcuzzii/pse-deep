@@ -21,6 +21,8 @@ import torch
 import langid
 import pandas_ta as ta
 from mrmr import mrmr_classif
+from sklearn.compose import ColumnTransformer
+from sklearn.preprocessing import StandardScaler
 
 # Regex patterns.
 URL_PATTERN = r'(https?://[^\s<>"]+|www\.[^\s<>"]+|[a-zA-Z0-9.-]+\.[a-z]{2,6}/[^\s<>"]*)'
@@ -954,7 +956,7 @@ class DataSource:
     ):
 
         stacked_df = None
-        for stock in self.stocks:
+        for stock in self._stocks:
             stock_df = joblib.load(self.processed_path / f'{stock}.joblib')
 
             for col in stock_df.df.columns:
@@ -979,12 +981,14 @@ class DataSource:
     
     @record_history
     def _feature_select(self, ignore_history: bool = False):
-        features = [col for col in self.df.columns if col not in ('stock_10m_return', 'stock_30m_return')]
+        features = [
+            col
+            for col in self.df.columns
+            if col not in ('stock_10m_return', 'stock_30m_return') and
+            not col.endswith('_no_activity')
+        ]
 
         pred_horizon = int(self._target.split('_')[1].replace('m', ''))
-
-        timestamps = self.df.index.get_level_values('local_time').unique().sort_values()
-        cutoff = timestamps[int(0.8 * len(timestamps))]
 
         def remove_minutes(group):
             max_time = group.index.get_level_values('local_time').max()
@@ -994,17 +998,47 @@ class DataSource:
         self.df = self.df.groupby([
             pd.Grouper(level='stock'),
             pd.Grouper(level='local_time', freq='D')
-        ]).apply(remove_minutes).droplevel([0, 1])
+        ], group_keys=False).apply(remove_minutes)
 
-        self.df = self.df.between_time(
+        self.df = self.df.swaplevel('stock', 'local_time').between_time(
             start_time="12:01:00",
             end_time=f"11:{60 - pred_horizon}:00",
             include_start=True,
             include_end=True
-        ).loc[self.df.index.get_level_values('local_time') <= cutoff]
+        ).swaplevel('stock', 'local_time')
+
+        timestamps = self.df.index.get_level_values('local_time').unique().sort_values()
+        train_cutoff = timestamps[int(0.8 * len(timestamps))]
+
+        self.df = self.df.loc[self.df.index.get_level_values('local_time') <= train_cutoff]
+
+        self.transformers = dict()
+
+        binary_cols = [col for col in features if self.df[col].nunique() <= 2]
+        continuous_cols = [col for col in features if col not in binary_cols]
+
+        def standardize(group):
+
+            ct = ColumnTransformer(
+                transformers=[
+                    ('scaler', StandardScaler(), continuous_cols)
+                ],
+                remainder='passthrough'
+            )
+
+            stock_name = group.index.get_level_values('stock')[0]
+            self.transformers[stock_name] = ct
+
+            transformed_data = ct.fit_transform(group[features])
+            all_cols = continuous_cols + binary_cols
+            new_group_df = pd.DataFrame(transformed_data, columns=all_cols, index=group.index)
+            new_group_df[self._target] = group[self._target]
+            return(new_group_df)
+
+        self.df = self.df.groupby(pd.Grouper(level='stock'), group_keys=False).apply(standardize)
 
         selected_features, relevance, redundancy = mrmr_classif(
-            X=self.df.loc[features],
+            X=self.df[features],
             y=self.df[self._target],
             K=self.df.shape[1] - 2,
             return_scores=True
@@ -1013,7 +1047,17 @@ class DataSource:
         self.selected_features = selected_features
         self.relevance = relevance
         self.redundancy = redundancy
-        self.cutoff = cutoff
+        self.train_cutoff = train_cutoff
+    
+    @record_history
+    def _finalized_stock(
+        self,
+        ignore_history: bool = False
+    ):
+        features = joblib.load(self.processed_path / 'features.joblib')
+        self.df = self.df[features.selected_features + [self._target]]
+
+
         
     # Processing pipeline for all data.
     def create_df(

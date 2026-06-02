@@ -34,7 +34,7 @@ def main():
     stocks = get_unique_instruments('data/raw/stock')
     for stock in stocks:
         stock_data = DataSource()
-        stock_data.create_df(raw_folder_name='stock', file_name=stock, medium='stock', ignore_history=True)
+        stock_data.create_df(raw_folder_name='stock', file_name=stock, medium='stock')
         del stock_data
         gc.collect()
     
@@ -42,37 +42,37 @@ def main():
     bonds = get_unique_instruments('data/raw/bond')
     for bond in bonds:
         bond_data = DataSource()
-        bond_data.create_df(raw_folder_name='bond', file_name=bond, medium='bond', ignore_history=True)
+        bond_data.create_df(raw_folder_name='bond', file_name=bond, medium='bond')
         del bond_data
         gc.collect()
     
     print("Creating copper price data...")
     copper = DataSource()
-    copper.create_df(raw_folder_name='copper', file_name='copper', medium='copper', ignore_history=True)
+    copper.create_df(raw_folder_name='copper', file_name='copper', medium='copper')
     del copper
     gc.collect()
 
     print("Creating oil price data...")
     oil = DataSource()
-    oil.create_df(raw_folder_name='crude', file_name='lcoc1', medium='oil', ignore_history=True)
+    oil.create_df(raw_folder_name='crude', file_name='lcoc1', medium='oil')
     del oil
     gc.collect()
 
     print("Creating USD price data...")
     usd = DataSource()
-    usd.create_df(raw_folder_name='forex', file_name='usd', medium='fx', ignore_history=True)
+    usd.create_df(raw_folder_name='forex', file_name='usd', medium='fx')
     del usd
     gc.collect()
 
     print("Creating XAU price data...")
     xau = DataSource()
-    xau.create_df(raw_folder_name='xau', file_name='xau', medium='fx', ignore_history=True)
+    xau.create_df(raw_folder_name='xau', file_name='xau', medium='fx')
     del xau
     gc.collect()
 
     print("Combining government bonds...")
     bond_master = DataSource()
-    bond_master.create_df(file_name='bond_master', medium='bonds', ignore_history=True)
+    bond_master.create_df(file_name='bond_master', medium='bonds')
     del bond_master
     gc.collect()
 
@@ -82,7 +82,7 @@ def main():
     for stock in stocks:
         print(f"Combining instruments for {stock}...")
         stock_data = DataSource()
-        stock_data.create_df(file_name=stock, medium='combined', ignore_history=True)
+        stock_data.create_df(file_name=stock, medium='combined')
         del stock_data
         gc.collect()
     
