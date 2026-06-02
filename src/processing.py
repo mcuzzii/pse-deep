@@ -814,6 +814,11 @@ class DataSource:
             
             bond_dfs[fn]._within_bond_indicators(c)
 
+            periods = pd.date_range(start = '2025-03-12', end = '2026-04-17', freq = '1min')
+            datetime_index = pd.DatetimeIndex(np.concatenate(periods)).sort_values()
+
+            bond_dfs[fn].df = bond_dfs[fn].df.reindex(datetime_index).ffill().bfill()
+
             if bond_master is None:
                 bond_master = bond_dfs[fn].df
             else:
@@ -871,7 +876,7 @@ class DataSource:
         bond_master = joblib.load(self.processed_path / 'bond_master.joblib')
         self.df = self.df.join(bond_master.df, how='left')
         bond_columns = bond_master.df.columns.tolist()
-        self.df[bond_columns] = self.df[bond_columns].ffill().bfill()
+        self.df[bond_columns] = self.df[bond_columns]
 
         self.df = self.df.sort_index()
 

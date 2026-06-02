@@ -72,7 +72,7 @@ def main():
 
     print("Combining government bonds...")
     bond_master = DataSource()
-    bond_master.create_df(file_name='bond_master', medium='bonds')
+    bond_master.create_df(file_name='bond_master', medium='bonds', ignore_history=True)
     del bond_master
     gc.collect()
 
@@ -82,7 +82,7 @@ def main():
     for stock in stocks:
         print(f"Combining instruments for {stock}...")
         stock_data = DataSource()
-        stock_data.create_df(file_name=stock, medium='combined')
+        stock_data.create_df(file_name=stock, medium='combined', ignore_history=True)
         del stock_data
         gc.collect()
     
