@@ -815,7 +815,7 @@ class DataSource:
             bond_dfs[fn]._within_bond_indicators(c)
 
             periods = pd.date_range(start = '2025-03-12', end = '2026-04-17', freq = '1min')
-            datetime_index = pd.DatetimeIndex(np.concatenate(periods)).sort_values()
+            datetime_index = pd.DatetimeIndex(periods).sort_values()
 
             bond_dfs[fn].df = bond_dfs[fn].df.reindex(datetime_index).ffill().bfill()
 

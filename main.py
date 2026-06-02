@@ -34,7 +34,7 @@ def main():
     stocks = get_unique_instruments('data/raw/stock')
     for stock in stocks:
         stock_data = DataSource()
-        stock_data.create_df(raw_folder_name='stock', file_name=stock, medium='stock', ignore_history=True)
+        stock_data.create_df(raw_folder_name='stock', file_name=stock, medium='stock')
         del stock_data
         gc.collect()
     
@@ -42,7 +42,7 @@ def main():
     bonds = get_unique_instruments('data/raw/bond')
     for bond in bonds:
         bond_data = DataSource()
-        bond_data.create_df(raw_folder_name='bond', file_name=bond, medium='bond', ignore_history=True)
+        bond_data.create_df(raw_folder_name='bond', file_name=bond, medium='bond')
         del bond_data
         gc.collect()
     
