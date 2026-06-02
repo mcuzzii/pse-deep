@@ -20,6 +20,7 @@ from transformers import AutoModelForSeq2SeqLM, AutoTokenizer, pipeline
 import torch
 import langid
 import pandas_ta as ta
+from mrmr import mrmr_classif
 
 # Regex patterns.
 URL_PATTERN = r'(https?://[^\s<>"]+|www\.[^\s<>"]+|[a-zA-Z0-9.-]+\.[a-z]{2,6}/[^\s<>"]*)'
@@ -830,6 +831,8 @@ class DataSource:
                 long_term_yld = bond_master[f'phgv{long_term}_mdyld']
                 short_term_yld = bond_master[f'phgv{short_term}_mdyld']
                 bond_master[f'phgv{long_term}_{short_term}_term_spread'] = long_term_yld - short_term_yld
+
+        bond_master = bond_master.dropna()
         
         self.df = bond_master
     
@@ -852,16 +855,23 @@ class DataSource:
         psei = joblib.load(self.processed_path / 'psei.joblib')
         sector_df = joblib.load(self.processed_path / f'{mapping[self.file_name]}.joblib')
 
-        self.df = self.df.join(psei.df, how='left')
-        self.df = self.df.join(sector_df.df, how='left')
+        self.df = self.df.join(psei.df, how='inner')
+        self.df = self.df.join(sector_df.df, how='inner')
 
         for instrument in ['copper', 'lcoc1', 'usd', 'xau']:
             instrument_df = joblib.load(self.processed_path / f'{instrument}.joblib')
-            self.df = self.df.join(instrument_df.df, how='left')
+            self.df = self.df.join(instrument_df.df, how='inner')
 
             close = self.df[f'{self.file_name}_close']
             self.df[f'{self.file_name}_10m_return'] = (close.shift(-10) > close).astype(int)
             self.df[f'{self.file_name}_30m_return'] = (close.shift(-30) > close).astype(int)
+        
+        bond_master = joblib.load(self.processed_path / 'bond_master.joblib')
+        self.df = self.df.join(bond_master.df, how='left')
+        bond_columns = bond_master.df.columns.tolist()
+        self.df[bond_columns] = self.df[bond_columns].ffill().bfill()
+
+        self.df = self.df.sort_index()
 
     @record_history
     def _process_high_frequency_instruments(
@@ -904,8 +914,8 @@ class DataSource:
         fn = self.file_name
 
         self.df[f'{fn}_no_activity'] = self.df.isna().all(axis=1).astype(int)
-        first_idx = self.df[f'{fn}_no_activity'].idxmax()
-        last_idx = self.df[f'{fn}_no_activity'][::-1].idxmax()
+        first_idx = (self.df[f'{fn}_no_activity'] == 0).idxmax()
+        last_idx = (self.df[f'{fn}_no_activity'] == 0)[::-1].idxmax()
         self.df = self.df.loc[first_idx:last_idx]
 
         if self._medium == 'stock':
@@ -916,6 +926,8 @@ class DataSource:
             self._process_forex()
         elif self._medium == 'oil':
             self._process_oil()
+        
+        self.df = self.df.dropna()
     
     # Processing pipeline for text data
     def _text_preprocess(
@@ -934,6 +946,74 @@ class DataSource:
         
         elif self._medium == 'x_posts':
             self._get_multilingual_sentiment(ignore_history=ignore_history)
+    
+    @record_history
+    def _stacked_abt(
+        self,
+        ignore_history: bool = False
+    ):
+
+        stacked_df = None
+        for stock in self.stocks:
+            stock_df = joblib.load(self.processed_path / f'{stock}.joblib')
+
+            for col in stock_df.df.columns:
+                prefix = col.split('_')[0]
+                if prefix in ('psfi', 'psin', 'psmo', 'pspr', 'psse', 'psho'):
+                    new_col_name = f'sector{col[len(prefix):]}'
+                elif prefix == stock:
+                    new_col_name = f'stock{col[len(prefix):]}'
+                else:
+                    new_col_name = col
+                stock_df.df.rename(columns={col: new_col_name}, inplace=True)
+            
+            stock_df.df.index = pd.MultiIndex.from_product([[stock], stock_df.df.index], names=['stock', 'local_time'])
+
+            if stacked_df is None:
+                stacked_df = stock_df.df
+            else:
+                common_indices = stacked_df.index.intersection(stock_df.df.index)
+                stacked_df = pd.concat([stacked_df, stock_df.df], axis=0).loc[common_indices]
+
+        self.df = stacked_df
+    
+    @record_history
+    def _feature_select(self, ignore_history: bool = False):
+        features = [col for col in self.df.columns if col not in ('stock_10m_return', 'stock_30m_return')]
+
+        pred_horizon = int(self._target.split('_')[1].replace('m', ''))
+
+        timestamps = self.df.index.get_level_values('local_time').unique().sort_values()
+        cutoff = timestamps[int(0.8 * len(timestamps))]
+
+        def remove_minutes(group):
+            max_time = group.index.get_level_values('local_time').max()
+            cutoff = max_time - pd.Timedelta(minutes=pred_horizon)
+            return group.loc[group.index.get_level_values('local_time') <= cutoff]
+
+        self.df = self.df.groupby([
+            pd.Grouper(level='stock'),
+            pd.Grouper(level='local_time', freq='D')
+        ]).apply(remove_minutes).droplevel([0, 1])
+
+        self.df = self.df.between_time(
+            start_time="12:01:00",
+            end_time=f"11:{60 - pred_horizon}:00",
+            include_start=True,
+            include_end=True
+        ).loc[self.df.index.get_level_values('local_time') <= cutoff]
+
+        selected_features, relevance, redundancy = mrmr_classif(
+            X=self.df.loc[features],
+            y=self.df[self._target],
+            K=self.df.shape[1] - 2,
+            return_scores=True
+        )
+
+        self.selected_features = selected_features
+        self.relevance = relevance
+        self.redundancy = redundancy
+        self.cutoff = cutoff
         
     # Processing pipeline for all data.
     def create_df(
@@ -946,6 +1026,8 @@ class DataSource:
         raw_path: str = 'data/raw',
         processed_path: str = 'data/processed',
         embedding_dimension: int | None = 1024,
+        stocks: list | None = None,
+        target: str | None = None,
         ignore_history: bool = False
     ):
         """ Pipeline for preprocessing datasets. """
@@ -960,6 +1042,8 @@ class DataSource:
 
         self.raw_path = Path(raw_path) / raw_folder_name if raw_folder_name else None
         self._medium = medium
+        self._stocks = stocks
+        self._target = target
 
         init_history = self._history.copy()
 
@@ -988,6 +1072,10 @@ class DataSource:
         
         elif self._medium == 'combined':
             self._combine_data(ignore_history=ignore_history)
+
+        elif self._medium == 'features':
+            self._stacked_abt(ignore_history=ignore_history)
+            self._feature_select(ignore_history=ignore_history)
 
         if self._history != init_history:
             joblib.dump(self, self.data_source_path)

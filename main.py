@@ -85,6 +85,12 @@ def main():
         stock_data.create_df(file_name=stock, medium='combined')
         del stock_data
         gc.collect()
+    
+    print("Selecting features...")
+    features = DataSource()
+    features.create_df(file_name='features', medium='features')
+    del features
+    gc.collect()
 
 if __name__ == '__main__':
     main()
