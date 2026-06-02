@@ -995,19 +995,21 @@ class DataSource:
 
         pred_horizon = int(self._target.split('_')[1].replace('m', ''))
 
+        self.df = self.df.reset_index() 
+
         def remove_minutes(group):
-            max_time = group.index.get_level_values('local_time').max()
+            max_time = group['local_time'].max()
             cutoff = max_time - pd.Timedelta(minutes=pred_horizon)
-            return group.loc[group.index.get_level_values('local_time') <= cutoff]
+            return group.loc[group['local_time'] <= cutoff]
 
         self.df = self.df.groupby([
-            pd.Grouper(level='stock'),
-            pd.Grouper(level='local_time', freq='D')
+            'stock', 
+            pd.Grouper(key='local_time', freq='D')
         ], group_keys=False).apply(remove_minutes)
 
-        print("Current Index Levels:", self.df.index.names)
+        self.df = self.df.set_index(['local_time', 'stock'])
 
-        self.df = self.df.swaplevel('stock', 'local_time').between_time(
+        self.df = self.df.between_time(
             start_time="12:01:00",
             end_time=f"11:{60 - pred_horizon}:00",
             include_start=True,
@@ -1019,7 +1021,7 @@ class DataSource:
 
         self.df = self.df.loc[self.df.index.get_level_values('local_time') <= train_cutoff]
 
-        self.transformers = dict()
+        self.scalers = dict()
 
         binary_cols = [col for col in features if self.df[col].nunique() <= 2]
         continuous_cols = [col for col in features if col not in binary_cols]
@@ -1034,7 +1036,7 @@ class DataSource:
             )
 
             stock_name = group.index.get_level_values('stock')[0]
-            self.transformers[stock_name] = ct
+            self.scalers[stock_name] = ct
 
             transformed_data = ct.fit_transform(group[features])
             all_cols = continuous_cols + binary_cols
