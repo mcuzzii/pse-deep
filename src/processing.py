@@ -1101,6 +1101,8 @@ class DataSource:
         self.filtered_date_times = features.filtered_date_times
         self.train_cutoff = features.train_cutoff
 
+        self.data_source_path = self.processed_path / f'{self.file_name}.joblib'
+
         
     # Processing pipeline for all data.
     def create_df(
