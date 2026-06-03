@@ -1047,14 +1047,14 @@ class DataSource:
             transformed_data = ct.fit_transform(group[features])
             all_cols = continuous_cols + binary_cols
             new_group_df = pd.DataFrame(transformed_data, columns=all_cols, index=group.index)
-            new_group_df[f'stock_{self._target}_return'] = group[f'stock_{self._target}_return']
+            new_group_df[f'stock_{self._target}m_return'] = group[f'stock_{self._target}m_return']
             return(new_group_df)
 
         self.df = self.df.groupby(pd.Grouper(level='stock'), group_keys=False).apply(standardize)
 
         selected_features, relevance, redundancy = mrmr_classif(
             X=self.df[features],
-            y=self.df[f'stock_{self._target}_return'],
+            y=self.df[f'stock_{self._target}m_return'],
             K=100,
             return_scores=True
         )
@@ -1070,7 +1070,7 @@ class DataSource:
         ignore_history: bool = False
     ):
         features = joblib.load(self.processed_path / 'features.joblib')
-        self.df = self.df[features.selected_features + [f'stock_{self._target}_return']]
+        self.df = self.df[features.selected_features + [f'stock_{self._target}m_return']]
 
 
         
