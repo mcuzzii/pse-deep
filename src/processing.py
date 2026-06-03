@@ -962,6 +962,7 @@ class DataSource:
 
         stacked_df = None
         for stock in self._stocks:
+            print(f"Processing stock: {stock}...")
             stock_df = joblib.load(self.processed_path / f'{stock}.joblib')
 
             for col in stock_df.df.columns:
@@ -979,8 +980,13 @@ class DataSource:
             if stacked_df is None:
                 stacked_df = stock_df.df
             else:
-                common_indices = stacked_df.index.intersection(stock_df.df.index)
-                stacked_df = pd.concat([stacked_df, stock_df.df], axis=0).loc[common_indices]
+                common_dates = stacked_df.index.get_level_values('local_time').intersection(
+                    stock_df.df.index.get_level_values('local_time')
+                )
+                stacked_df = pd.concat([
+                    stacked_df[stacked_df.index.get_level_values('local_time').isin(common_dates)],
+                    stock_df.df[stock_df.df.index.get_level_values('local_time').isin(common_dates)]
+                ], axis=0)
 
         self.df = stacked_df
     
