@@ -34,7 +34,7 @@ def main():
     stocks = get_unique_instruments('data/raw/stock')
     for stock in stocks:
         stock_data = DataSource()
-        stock_data.create_df(raw_folder_name='stock', file_name=stock, medium='stock')
+        stock_data.create_df(raw_folder_name='stock', file_name=stock, medium='stock', ignore_history=True)
         del stock_data
         gc.collect()
     
@@ -82,7 +82,7 @@ def main():
     for stock in stocks:
         print(f"Combining instruments for {stock}...")
         stock_data = DataSource()
-        stock_data.create_df(file_name=stock, medium='combined')
+        stock_data.create_df(file_name=stock, medium='combined', ignore_history=True)
         del stock_data
         gc.collect()
     
@@ -102,13 +102,13 @@ def main():
     print("Finalizing datasets...")
     for stock in stocks:
         stock_data = DataSource()
-        stock_data.create_df(file_name=stock, medium='final', target=30)
+        stock_data.create_df(file_name=stock, medium='final', target=30, ignore_history=True)
         del stock_data
         gc.collect()
     
     for stock in stocks:
         stock_data = DataSource()
-        stock_data.create_df(file_name=stock, medium='final', target=10)
+        stock_data.create_df(file_name=stock, medium='final', target=10, ignore_history=True)
         del stock_data
         gc.collect()
 
