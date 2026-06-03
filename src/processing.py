@@ -935,6 +935,11 @@ class DataSource:
             self._process_forex()
         elif self._medium == 'oil':
             self._process_oil()
+
+        na_counts = self.df.isna().sum()
+        na_cols = na_counts[na_counts > 0]
+        if not na_cols.empty:
+            print(f"WARNING: NaN values found in columns: {na_cols.to_dict()}")
         
         self.df = self.df.dropna()
 
