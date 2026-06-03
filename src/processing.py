@@ -1096,10 +1096,10 @@ class DataSource:
 
         print(f'Final dataframe for {self.file_name}; shape: {self.df.shape}.')
         
+        self.scaler = features.scalers[self.file_name]
         self.file_name = f'{self.file_name}_{self._target}m'
         self.filtered_date_times = features.filtered_date_times
         self.train_cutoff = features.train_cutoff
-        self.scaler = features.scalers[self.file_name]
 
         
     # Processing pipeline for all data.
