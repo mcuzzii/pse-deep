@@ -982,7 +982,7 @@ class DataSource:
             print(f"Processing stock: {stock}...")
             stock_df = joblib.load(self.processed_path / f'{stock}.joblib')
 
-            stock_df.df.drop(columns=[f'stock_{40 - self._target}m_return'], inplace=True)
+            stock_df.df.drop(columns=[f'{stock}_{40 - self._target}m_return'], inplace=True)
 
             for col in stock_df.df.columns:
                 prefix = col.split('_')[0]
