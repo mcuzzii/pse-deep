@@ -1065,6 +1065,19 @@ class DataSource:
         self.train_cutoff = train_cutoff
     
     @record_history
+    def save_selected_features(self, ignore_history: bool = False):
+        features = {
+            feature: {'relevance': relevance, 'redundancy': redundancy}
+            for feature, relevance, redundancy in zip(
+                self.selected_features,
+                self.relevance,
+                self.redundancy
+            )
+        }
+        with open(self.processed_path / '{self.file_name}.json', 'w', encoding='utf-8') as f:
+            json.dump(features, f, indent=4)
+    
+    @record_history
     def _finalized_stock(
         self,
         ignore_history: bool = False
