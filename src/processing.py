@@ -1080,9 +1080,26 @@ class DataSource:
         self,
         ignore_history: bool = False
     ):
-        features = joblib.load(self.processed_path / 'features.joblib')
-        self.df = self.df[features.selected_features + [f'stock_{self._target}m_return']]
+        features = joblib.load(self.processed_path / f'features_{self._target}.joblib')
+        sector = next(c.split('_')[0] for c in self.df.columns if c.startswith('ps') and c.split('_')[0] != 'psei')
 
+        selected_features = [
+            f'{self.file_name}{feature[5:]}'
+            if 'stock' in feature else (
+                f'{sector}{feature[6:]}'
+                if 'sector' in feature else feature
+            )
+            for feature in features.selected_features
+        ] + [f'{self.file_name}_no_activity', f'{self.file_name}_{self._target}m_return']
+
+        self.df = self.df.loc[features.filtered_date_times, selected_features]
+
+        print(f'Final dataframe for {self.file_name}; shape: {self.df.shape}.')
+        
+        self.file_name = f'{self.file_name}_{self._target}m'
+        self.filtered_date_times = features.filtered_date_times
+        self.train_cutoff = features.train_cutoff
+        self.scaler = features.scalers[self.file_name]
 
         
     # Processing pipeline for all data.
@@ -1146,6 +1163,9 @@ class DataSource:
         elif self._medium == 'features':
             self._create_feature_selection_data(ignore_history=ignore_history)
             self._feature_select(ignore_history=ignore_history)
+        
+        elif self._medium == 'final':
+            self._finalized_stock(ignore_history=ignore_history)
 
         if self._history != init_history:
             joblib.dump(self, self.data_source_path)

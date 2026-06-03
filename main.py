@@ -99,5 +99,18 @@ def main():
     del features_10
     gc.collect()
 
+    print("Finalizing datasets...")
+    for stock in stocks:
+        stock_data = DataSource()
+        stock_data.create_df(file_name=stock, medium='final', target=30)
+        del stock_data
+        gc.collect()
+    
+    for stock in stocks:
+        stock_data = DataSource()
+        stock_data.create_df(file_name=stock, medium='final', target=10)
+        del stock_data
+        gc.collect()
+
 if __name__ == '__main__':
     main()
