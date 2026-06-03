@@ -959,6 +959,7 @@ class DataSource:
         self,
         ignore_history: bool = False
     ):
+        print('Computing common dates and times...')
         common_date_times = None
         for stock in self._stocks:
             stock_df = joblib.load(self.processed_path / f'{stock}.joblib')
@@ -1095,7 +1096,7 @@ class DataSource:
         self.raw_path = Path(raw_path) / raw_folder_name if raw_folder_name else None
         self._medium = medium
         self._stocks = stocks
-        self._target = None if target is None else f'stock_{target}m_return'
+        self._target = target
 
         init_history = self._history.copy()
 
