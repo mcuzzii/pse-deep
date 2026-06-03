@@ -82,7 +82,7 @@ def main():
     for stock in stocks:
         print(f"Combining instruments for {stock}...")
         stock_data = DataSource()
-        stock_data.create_df(file_name=stock, medium='combined', ignore_history=True)
+        stock_data.create_df(file_name=stock, medium='combined')
         del stock_data
         gc.collect()
     
