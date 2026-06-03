@@ -974,7 +974,7 @@ class DataSource:
         daily_max = common_date_times.to_series().groupby(common_date_times.date).transform('max')
         last_mask = common_date_times.to_series() > daily_max - pd.Timedelta(minutes=10)
 
-        filtered_date_times = common_date_times[~lunch_mask & ~last_mask.values]
+        self.filtered_date_times = common_date_times[~lunch_mask & ~last_mask.values]
 
         stacked_df = None
         
@@ -996,7 +996,7 @@ class DataSource:
             
             stock_df.df.index = pd.MultiIndex.from_product([[stock], stock_df.df.index], names=['stock', 'local_time'])
             
-            filtered = stock_df.df[stock_df.df.index.get_level_values('local_time').isin(filtered_date_times)]
+            filtered = stock_df.df[stock_df.df.index.get_level_values('local_time').isin(self.filtered_date_times)]
             sampled = (
                 filtered
                 .groupby(pd.Grouper(level='local_time', freq='ME'), group_keys=False)
@@ -1016,8 +1016,7 @@ class DataSource:
             not col.endswith('_no_activity')
         ]
 
-        timestamps = self.df.index.get_level_values('local_time').unique().sort_values()
-        train_cutoff = timestamps[int(0.8 * len(timestamps))]
+        train_cutoff = self.filtered_date_times[int(0.8 * len(self.filtered_date_times))]
 
         self.df = self.df.loc[self.df.index.get_level_values('local_time') <= train_cutoff]
 
