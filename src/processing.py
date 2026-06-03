@@ -1068,7 +1068,10 @@ class DataSource:
     def save_selected_features(self, ignore_history: bool = False):
         features = self.relevance[self.selected_features].to_dict()
         for key in features:
-            features[key]['redundancy'] = self.redundancy[key].to_dict()
+            features[key] = {
+                'relevance': features[key],
+                'redundancy': self.redundancy[key].to_dict()
+            }
         with open(self.processed_path / f'{self.file_name}.json', 'w', encoding='utf-8') as f:
             json.dump(features, f, indent=4)
     
