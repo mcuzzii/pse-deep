@@ -1080,7 +1080,7 @@ class DataSource:
         self,
         ignore_history: bool = False
     ):
-        features = joblib.load(self.processed_path / f'features_{self._target}.joblib')
+        features = joblib.load(self.processed_path / f'features_{self._target}m.joblib')
         sector = next(c.split('_')[0] for c in self.df.columns if c.startswith('ps') and c.split('_')[0] != 'psei')
 
         selected_features = [
