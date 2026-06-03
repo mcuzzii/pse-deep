@@ -955,15 +955,33 @@ class DataSource:
             self._get_multilingual_sentiment(ignore_history=ignore_history)
     
     @record_history
-    def _stacked_abt(
+    def _create_feature_selection_data(
         self,
         ignore_history: bool = False
     ):
+        common_date_times = None
+        for stock in self._stocks:
+            stock_df = joblib.load(self.processed_path / f'{stock}.joblib')
+            dates = stock_df.df.index
+            common_date_times = dates if common_date_times is None else common_date_times.intersection(dates)
+        
+        lunch_mask = (
+            (common_date_times.time >= pd.Timestamp(f'11:{61 - self._target}').time()) &
+            (common_date_times.time <= pd.Timestamp('12:00').time())
+        )
+
+        daily_max = common_date_times.to_series().groupby(common_date_times.date).transform('max')
+        last_mask = common_date_times.to_series() > daily_max - pd.Timedelta(minutes=10)
+
+        filtered_date_times = common_date_times[~lunch_mask & ~last_mask.values]
 
         stacked_df = None
+        
         for stock in self._stocks:
             print(f"Processing stock: {stock}...")
             stock_df = joblib.load(self.processed_path / f'{stock}.joblib')
+
+            stock_df.df.drop(columns=[f'stock_{40 - self._target}m_return'], inplace=True)
 
             for col in stock_df.df.columns:
                 prefix = col.split('_')[0]
@@ -976,17 +994,15 @@ class DataSource:
                 stock_df.df.rename(columns={col: new_col_name}, inplace=True)
             
             stock_df.df.index = pd.MultiIndex.from_product([[stock], stock_df.df.index], names=['stock', 'local_time'])
+            
+            filtered = stock_df.df[stock_df.df.index.get_level_values('local_time').isin(filtered_date_times)]
+            sampled = (
+                filtered
+                .groupby(pd.Grouper(level='local_time', freq='ME'), group_keys=False)
+                .apply(lambda g: g.sample(min(len(g), 500)))
+            )
 
-            if stacked_df is None:
-                stacked_df = stock_df.df
-            else:
-                common_dates = stacked_df.index.get_level_values('local_time').intersection(
-                    stock_df.df.index.get_level_values('local_time')
-                )
-                stacked_df = pd.concat([
-                    stacked_df[stacked_df.index.get_level_values('local_time').isin(common_dates)],
-                    stock_df.df[stock_df.df.index.get_level_values('local_time').isin(common_dates)]
-                ], axis=0)
+            stacked_df = sampled if stacked_df is None else pd.concat([stacked_df, sampled], axis=0)
 
         self.df = stacked_df
     
@@ -995,35 +1011,9 @@ class DataSource:
         features = [
             col
             for col in self.df.columns
-            if col not in ('stock_10m_return', 'stock_30m_return') and
+            if not col.endswith('m_return') and
             not col.endswith('_no_activity')
         ]
-
-        pred_horizon = int(self._target.split('_')[1].replace('m', ''))
-
-        self.df = self.df.reset_index() 
-
-        def remove_minutes(group):
-            print(group.columns.tolist())
-            print(group.index.names)
-            print(group['local_time'])
-            max_time = group['local_time'].max()
-            cutoff = max_time - pd.Timedelta(minutes=pred_horizon)
-            return group.loc[group['local_time'] <= cutoff]
-
-        self.df = self.df.groupby([
-            'stock', 
-            pd.Grouper(key='local_time', freq='D')
-        ], group_keys=False).apply(remove_minutes)
-
-        self.df = self.df.set_index(['local_time', 'stock'])
-
-        self.df = self.df.between_time(
-            start_time="12:01:00",
-            end_time=f"11:{60 - pred_horizon}:00",
-            include_start=True,
-            include_end=True
-        ).swaplevel('stock', 'local_time')
 
         timestamps = self.df.index.get_level_values('local_time').unique().sort_values()
         train_cutoff = timestamps[int(0.8 * len(timestamps))]
@@ -1050,15 +1040,15 @@ class DataSource:
             transformed_data = ct.fit_transform(group[features])
             all_cols = continuous_cols + binary_cols
             new_group_df = pd.DataFrame(transformed_data, columns=all_cols, index=group.index)
-            new_group_df[self._target] = group[self._target]
+            new_group_df[f'stock_{self._target}_return'] = group[f'stock_{self._target}_return']
             return(new_group_df)
 
         self.df = self.df.groupby(pd.Grouper(level='stock'), group_keys=False).apply(standardize)
 
         selected_features, relevance, redundancy = mrmr_classif(
             X=self.df[features],
-            y=self.df[self._target],
-            K=self.df.shape[1] - 2,
+            y=self.df[f'stock_{self._target}_return'],
+            K=100,
             return_scores=True
         )
 
@@ -1073,7 +1063,7 @@ class DataSource:
         ignore_history: bool = False
     ):
         features = joblib.load(self.processed_path / 'features.joblib')
-        self.df = self.df[features.selected_features + [self._target]]
+        self.df = self.df[features.selected_features + [f'stock_{self._target}_return']]
 
 
         
@@ -1089,7 +1079,7 @@ class DataSource:
         processed_path: str = 'data/processed',
         embedding_dimension: int | None = 1024,
         stocks: list | None = None,
-        target: str | None = None,
+        target: int | None = None,
         ignore_history: bool = False
     ):
         """ Pipeline for preprocessing datasets. """
@@ -1136,7 +1126,7 @@ class DataSource:
             self._combine_data(ignore_history=ignore_history)
 
         elif self._medium == 'features':
-            self._stacked_abt(ignore_history=ignore_history)
+            self._create_feature_selection_data(ignore_history=ignore_history)
             self._feature_select(ignore_history=ignore_history)
 
         if self._history != init_history:
