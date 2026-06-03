@@ -575,7 +575,7 @@ class DataSource:
         EMA_LONG = 50
         PSY_PERIOD = 12
         RCI_PERIOD = 9
-        BB_PERIOD = 60
+        BB_PERIOD = 20
         BB_STD = 2.0
 
         df[f'{fn}_rsi'] = ta.rsi(close, length=RSI_PERIOD)
@@ -634,6 +634,7 @@ class DataSource:
         upper = bb.filter(like='BBU').iloc[:, 0]
         lower = bb.filter(like='BBL').iloc[:, 0]
         df[f'{fn}_bb_pct_b'] = (close - lower) / (upper - lower)
+        df[f'{fn}_bb_pct_b'] = df[f'{fn}_bb_pct_b'].fillna(0.5)
 
         self.df = df
     
@@ -683,7 +684,7 @@ class DataSource:
 
         RVOL_PERIOD = 20
 
-        df[f'{fn}_obv_change'] = ta.obv(close, volume).pct_change(1)
+        df[f'{fn}_obv_change'] = ta.obv(close, volume).diff(1)
 
         rolling_avg_vol = volume.rolling(RVOL_PERIOD).mean()
         df[f'{fn}_rvol'] = volume / rolling_avg_vol
