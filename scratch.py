@@ -12,5 +12,5 @@ stocks = list(set(stocks) - {'psei', 'psho', 'psse', 'psmo', 'psfi', 'pspr', 'ps
 
 for stock in stocks:
     print(f"Saving {stock}...")
-    data = joblib.load(f'{stock}.joblib')
+    data = joblib.load(f'data/processed/{stock}.joblib')
     data.df.to_csv(f'data/samples/{stock}.csv')
