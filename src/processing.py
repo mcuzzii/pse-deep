@@ -993,20 +993,17 @@ class DataSource:
             not col.endswith('_no_activity')
         ]
 
-        pred_horizon = int(self._target.split('_')[1].replace('m', ''))
-
-        stock_level_pos = self.df.index.names.index('stock')
-        time_level_pos = self.df.index.names.index('local_time')
-
-        def remove_minutes(group):
-            max_time = group.index.get_level_values('local_time').max()
-            cutoff = max_time - pd.Timedelta(minutes=pred_horizon)
-            return group.loc[group.index.get_level_values('local_time') <= cutoff]
-
-        self.df = self.df.groupby([
-            pd.Grouper(level=stock_level_pos),
-            pd.Grouper(level=time_level_pos, freq='D')
-        ], group_keys=False).apply(remove_minutes)
+        times = self.df.index.get_level_values('local_time')
+        stocks = self.df.index.get_level_values('stock')
+        
+        # Calculate the maximum timestamp for every stock on every day natively 
+        # without touching or destroying the main DataFrame structure
+        max_times = times.groupby([stocks, times.floor('D')]).transform('max')
+        cutoffs = max_times - pd.Timedelta(minutes=self._target)
+        
+        # Apply the filter instantly using a vectorized boolean mask.
+        # This executes in milliseconds and keeps your MultiIndex pristine!
+        self.df = self.df.loc[times <= cutoffs]
 
         if self.df.index.names[0] != 'local_time':
             self.df = self.df.swaplevel('stock', 'local_time')
