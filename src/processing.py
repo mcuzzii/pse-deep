@@ -1121,14 +1121,14 @@ class DataSource:
     ):
         """ Pipeline for preprocessing datasets. """
 
-        self.file_name = file_name
         self.processed_path = Path(processed_path)
-        self.data_source_path = self.processed_path / f'{self.file_name}.joblib'
 
-        if self.data_source_path.exists():
+        if (self.processed_path / f'{file_name}.joblib').exists():
             saved_data_source = joblib.load(self.data_source_path)
             self.__dict__.update(saved_data_source.__dict__)
-
+        
+        self.file_name = file_name
+        self.data_source_path = self.processed_path / f'{self.file_name}.joblib'
         self.raw_path = Path(raw_path) / raw_folder_name if raw_folder_name else None
         self._medium = medium
         self._stocks = stocks
