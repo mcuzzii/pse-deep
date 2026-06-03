@@ -9,9 +9,12 @@ import numpy as np
 import pandas_ta as ta
 import re
 
-for item in Path('data/processed').glob('*.joblib'):
-    print(f'Loading {item.name}...')
-    data = joblib.load(item)
-    fn = data.file_name
-    print(f'Saving {fn}.csv...')
-    pd.concat([data.df.head(1000), data.df.tail(1000)]).to_csv(f'data/samples/{fn}.csv')
+data = joblib.load('data/processed/ac.joblib')
+
+
+def remove_minutes(group):
+    max_time = group['local_time'].max()
+    cutoff = max_time - pd.Timedelta(minutes=10)
+    return group.loc[group['local_time'] <= cutoff]
+
+print(data.df.groupby(pd.Grouper(key='local_time', freq='D'), group_keys=False).apply(remove_minutes).columns)
