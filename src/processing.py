@@ -575,7 +575,7 @@ class DataSource:
         EMA_LONG = 50
         PSY_PERIOD = 12
         RCI_PERIOD = 9
-        BB_PERIOD = 20
+        BB_PERIOD = 60
         BB_STD = 2.0
 
         df[f'{fn}_rsi'] = ta.rsi(close, length=RSI_PERIOD)
@@ -917,6 +917,7 @@ class DataSource:
         datetime_index = pd.DatetimeIndex(np.concatenate(trading_periods)).sort_values()
 
         self.df = self.df.reindex(datetime_index)
+        self.df.index.name = 'local_time'
 
         fn = self.file_name
 
@@ -935,6 +936,11 @@ class DataSource:
             self._process_oil()
         
         self.df = self.df.dropna()
+
+        inf_counts = self.df.isin([float('inf'), float('-inf')]).sum()
+        inf_cols = inf_counts[inf_counts > 0]
+        if not inf_cols.empty:
+            print(f"WARNING: inf values found in columns: {inf_cols.to_dict()}")
     
     # Processing pipeline for text data
     def _text_preprocess(
