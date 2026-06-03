@@ -2,19 +2,13 @@ import sys
 from pathlib import Path
 # Add the 'src' directory to the path
 sys.path.append(str(Path.cwd() / 'src'))
-import joblib
-from processing import DataSource
-import pandas as pd
-import numpy as np
-import pandas_ta as ta
-import re
+from processing import DataSource, get_unique_instruments
+import gc
 
-data = joblib.load('data/processed/ac.joblib')
+stocks = get_unique_instruments('data/raw/stock')
+stocks = list(set(stocks) - {'psei', 'psho', 'psse', 'psmo', 'psfi', 'pspr', 'psin'})
 
-
-def remove_minutes(group):
-    max_time = group['local_time'].max()
-    cutoff = max_time - pd.Timedelta(minutes=10)
-    return group.loc[group['local_time'] <= cutoff]
-
-print(data.df.groupby(pd.Grouper(key='local_time', freq='D'), group_keys=False).apply(remove_minutes).columns)
+features_10 = DataSource()
+features_10.create_df(file_name='features_10m', medium='features', target=10, stocks=stocks, ignore_history=True)
+del features_10
+gc.collect()

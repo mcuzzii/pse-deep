@@ -998,6 +998,9 @@ class DataSource:
         self.df = self.df.reset_index() 
 
         def remove_minutes(group):
+            print(group.columns.tolist())
+            print(group.index.names)
+            print(group['local_time'])
             max_time = group['local_time'].max()
             cutoff = max_time - pd.Timedelta(minutes=pred_horizon)
             return group.loc[group['local_time'] <= cutoff]
