@@ -634,7 +634,7 @@ class DataSource:
         upper = bb.filter(like='BBU').iloc[:, 0]
         lower = bb.filter(like='BBL').iloc[:, 0]
         df[f'{fn}_bb_pct_b'] = (close - lower) / (upper - lower)
-        df[f'{fn}_bb_pct_b'] = df[f'{fn}_bb_pct_b'].fillna(0.5)
+        df[df[f'{fn}_bb_pct_b'].isin([float('inf'), float('-inf')]), f'{fn}_bb_pct_b'] = 0.5
 
         self.df = df
     
