@@ -979,7 +979,7 @@ class DataSource:
         )
 
         daily_max = common_date_times.to_series().groupby(common_date_times.date).transform('max')
-        last_mask = common_date_times.to_series() > daily_max - pd.Timedelta(minutes=10)
+        last_mask = common_date_times.to_series() > daily_max - pd.Timedelta(minutes=self._target)
 
         self.filtered_date_times = common_date_times[~lunch_mask & ~last_mask.values]
 
