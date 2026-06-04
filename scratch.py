@@ -9,7 +9,7 @@ import pandas_ta as ta
 import numpy as np
 import gc
 
-stock = 'pgold'
+stock = 'emi'
 
 data = joblib.load(f'data/processed/{stock}.joblib')
 close = data.df[f'{stock}_close'].astype(float)
