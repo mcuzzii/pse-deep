@@ -5,31 +5,19 @@ sys.path.append(str(Path.cwd() / 'src'))
 from processing import DataSource, get_unique_instruments
 import joblib
 import pandas as pd
+import pandas_ta as ta
 import gc
 
-stocks = get_unique_instruments('data/raw/stock')
-stocks = list(set(stocks) - {'psei', 'psho', 'psse', 'psmo', 'psfi', 'pspr', 'psin'})
+data = joblib.load('data/processed/emi.joblib')
+close = data.df['emi_bb_pct_b']
 
-target = 30
+BB_PERIOD=20
 
-print('Computing common dates and times...')
-common_date_times = None
-for stock in stocks:
-    stock_df = joblib.load(f'data/processed/{stock}.joblib')
-    dates = stock_df.df.index
-    print(f'Stock: {stock}; length: {len(dates.tolist())}')
-    common_date_times = dates if common_date_times is None else common_date_times.intersection(dates)
-    print(f'Common date and time: {len(common_date_times.tolist())}')
-
-
-lunch_mask = (
-    (common_date_times.time >= pd.Timestamp(f'11:{61 - target}').time()) &
-    (common_date_times.time <= pd.Timestamp('12:00').time())
-)
-
-daily_max = common_date_times.to_series().groupby(common_date_times.date).transform('max')
-last_mask = common_date_times.to_series() > daily_max - pd.Timedelta(minutes=target)
-
-filtered_date_times = common_date_times[~lunch_mask & ~last_mask.values]
-
-print(len(filtered_date_times.tolist()))
+bb = ta.bbands(close, length=BB_PERIOD)
+upper = bb.filter(like='BBU').iloc[:, 0]
+lower = bb.filter(like='BBL').iloc[:, 0]
+pct_b = (close - lower) / (upper - lower)
+inf_mask = pct_b.isin([float('inf'), float('-inf')])
+print(upper[inf_mask])
+print(lower[inf_mask])
+print(close[inf_mask])
