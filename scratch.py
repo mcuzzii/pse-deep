@@ -9,6 +9,11 @@ import pandas_ta as ta
 import numpy as np
 import gc
 
-
+stocks = ['acen', 'rcr', 'glo', 'tel', 'jfc']
 acen = DataSource()
-acen.create_df(file_name=stock, medium='combined', ignore_history=True)
+for stock in stocks:
+    print(f"Combining instruments for {stock}...")
+    stock_data = DataSource()
+    stock_data.create_df(file_name=stock, medium='combined', ignore_history=True)
+    del stock_data
+    gc.collect()
