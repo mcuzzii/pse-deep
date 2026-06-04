@@ -10,7 +10,7 @@ import numpy as np
 import json
 import gc
 
-data = joblib.load('data/processing/ac_10m.joblib')
+data = joblib.load('data/processed/ac_10m.joblib')
 
 with open('data/samples/dates', 'w', encoding='utf-8') as f:
     json.load(data.df.index.date.value_counts().to_dict(), f)
