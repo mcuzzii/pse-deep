@@ -10,11 +10,13 @@ import numpy as np
 import json
 import gc
 
-data = joblib.load('data/processed/ac_10m.joblib')
+data = joblib.load('data/processed/ac_30m.joblib')
 
 with open('data/samples/dates', 'w', encoding='utf-8') as f:
     counts = pd.Series(data.df.index.date).value_counts()
     counts_dict = {k.strftime('%Y-%m-%d'): v for k, v in counts.items()}
-    json.dump(counts_dict, f)
+    json.dump(counts_dict, f, indent=4)
 
-pd.concat([data.df.head(1000), data.df.tail(1000)], axis=0).to_csv('data/samples/ac_10m.csv')
+pd.concat([data.df.head(1000), data.df.tail(1000)], axis=0).to_csv('data/samples/ac_30m.csv')
+
+print(data.df.shape)
