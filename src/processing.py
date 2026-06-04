@@ -634,7 +634,7 @@ class DataSource:
         upper = bb.filter(like='BBU').iloc[:, 0]
         lower = bb.filter(like='BBL').iloc[:, 0]
         df[f'{fn}_bb_pct_b'] = (close - lower) / (upper - lower)
-        df.loc[(upper == lower) & (lower == close), f'{fn}_bb_pct_b'] = 0.5
+        df.loc[np.isclose(upper, lower) & np.isclose(lower, close), f'{fn}_bb_pct_b'] = 0.5
 
         self.df = df
     
