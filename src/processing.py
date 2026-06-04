@@ -634,7 +634,7 @@ class DataSource:
         upper = bb.filter(like='BBU').iloc[:, 0]
         lower = bb.filter(like='BBL').iloc[:, 0]
         df[f'{fn}_bb_pct_b'] = (close - lower) / (upper - lower)
-        df.loc[df[f'{fn}_bb_pct_b'].isin([float('inf'), float('-inf')]), f'{fn}_bb_pct_b'] = 0.5
+        df.loc[upper == lower == close, f'{fn}_bb_pct_b'] = 0.5
 
         self.df = df
     
@@ -688,6 +688,7 @@ class DataSource:
 
         rolling_avg_vol = volume.rolling(RVOL_PERIOD).mean()
         df[f'{fn}_rvol'] = volume / rolling_avg_vol
+        df.loc[rolling_avg_vol == 0, f'{fn}_rvol'] = 0
 
         self.df = df
     
@@ -936,7 +937,7 @@ class DataSource:
         elif self._medium == 'oil':
             self._process_oil()
 
-        na_counts = self.df.isna().sum()
+        na_counts = self.df.iloc[50:].isna().sum()
         na_cols = na_counts[na_counts > 0]
         if not na_cols.empty:
             print(f"WARNING: NaN values found in columns: {na_cols.to_dict()}")
