@@ -10,7 +10,11 @@ import numpy as np
 import gc
 
 stocks = ['acen', 'rcr', 'glo', 'tel', 'jfc']
-acen = DataSource()
+for stock in stocks:
+    stock_data = DataSource()
+    stock_data.create_df(raw_folder_name='stock', file_name=stock, medium='stock', ignore_history=True)
+    del stock_data
+    gc.collect()
 for stock in stocks:
     print(f"Combining instruments for {stock}...")
     stock_data = DataSource()
