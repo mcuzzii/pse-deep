@@ -17,7 +17,15 @@ bb = ta.bbands(close, length=BB_PERIOD)
 upper = bb.filter(like='BBU').iloc[:, 0]
 lower = bb.filter(like='BBL').iloc[:, 0]
 pct_b = (close - lower) / (upper - lower)
-inf_mask = pct_b.isin([float('inf'), float('-inf')])
-print(upper[inf_mask])
-print(lower[inf_mask])
-print(close[inf_mask])
+mask = pct_b.isin([float('inf'), float('-inf')]) | pct_b.isna()
+print(upper[mask])
+print(lower[mask])
+print(close[mask])
+
+df = pd.DataFrame()
+df['upper'] = upper[mask]
+df['lower'] = lower[mask]
+df['close'] = close[mask]
+df['pct_b'] = pct_b[mask]
+
+df.to_csv('data/samples/emi_debug.csv')
