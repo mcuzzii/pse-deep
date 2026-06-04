@@ -7,17 +7,12 @@ import joblib
 import pandas as pd
 import pandas_ta as ta
 import numpy as np
+import json
 import gc
 
-stocks = ['acen', 'rcr', 'glo', 'tel', 'jfc']
-for stock in stocks:
-    stock_data = DataSource()
-    stock_data.create_df(raw_folder_name='stock', file_name=stock, medium='stock', ignore_history=True)
-    del stock_data
-    gc.collect()
-for stock in stocks:
-    print(f"Combining instruments for {stock}...")
-    stock_data = DataSource()
-    stock_data.create_df(file_name=stock, medium='combined', ignore_history=True)
-    del stock_data
-    gc.collect()
+data = joblib.load('data/processing/ac_10m.joblib')
+
+with open('data/samples/dates', 'w', encoding='utf-8') as f:
+    json.load(data.df.index.date.value_counts().to_dict(), f)
+
+pd.concat([data.df.head(1000), data.df.tail(1000)], axis=0).to_csv('data/samples/ac_10m.csv')
