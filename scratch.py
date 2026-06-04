@@ -13,6 +13,6 @@ import gc
 data = joblib.load('data/processed/ac_10m.joblib')
 
 with open('data/samples/dates', 'w', encoding='utf-8') as f:
-    json.load(pd.Series(data.df.index.date).value_counts().to_dict(), f)
+    json.dump(pd.Series(data.df.index.date).value_counts().to_dict(), f)
 
 pd.concat([data.df.head(1000), data.df.tail(1000)], axis=0).to_csv('data/samples/ac_10m.csv')
