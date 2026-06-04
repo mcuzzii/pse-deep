@@ -9,7 +9,7 @@ import pandas_ta as ta
 import gc
 
 data = joblib.load('data/processed/emi.joblib')
-close = data.df['emi_close']
+close = data.df['emi_close'].astype(float)
 
 BB_PERIOD=20
 
