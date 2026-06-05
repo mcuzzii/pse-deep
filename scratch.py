@@ -13,12 +13,6 @@ import gc
 stocks = get_unique_instruments('data/raw/stock')
 stocks = list(set(stocks) - {'psei', 'psho', 'psse', 'psmo', 'psfi', 'pspr', 'psin'})
 
-features_10 = DataSource()
-features_10.create_df(file_name='features_10m', medium='features', target=10, stocks=stocks, ignore_history=True)
-features_10.save_selected_features()
-del features_10
-gc.collect()
-
 print("Finalizing datasets...")
 for stock in stocks:
     stock_data = DataSource()
