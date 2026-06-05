@@ -1732,6 +1732,11 @@ wheels = [
 ]
 
 [[package]]
+name = "perturbations-torch"
+version = "0.1"
+source = { git = "https://github.com/nlml/perturbations-torch.git#55a3c5ce0ec9c6ab3def4f015691f302a5dcd826" }
+
+[[package]]
 name = "pillow"
 version = "12.2.0"
 source = { registry = "https://pypi.org/simple" }
@@ -2807,6 +2812,7 @@ dependencies = [
     { name = "nvidia-nccl-cu12" },
     { name = "openpyxl" },
     { name = "pandas-ta" },
+    { name = "perturbations-torch" },
     { name = "plotext" },
     { name = "requests" },
     { name = "scikit-learn" },
@@ -2834,6 +2840,7 @@ requires-dist = [
     { name = "nvidia-nccl-cu12", specifier = ">=2.30.4" },
     { name = "openpyxl", specifier = ">=3.1.5" },
     { name = "pandas-ta", specifier = ">=0.4.71b0" },
+    { name = "perturbations-torch", git = "https://github.com/nlml/perturbations-torch.git" },
     { name = "plotext", specifier = ">=5.3.2" },
     { name = "requests", specifier = ">=2.33.1" },
     { name = "scikit-learn", specifier = ">=1.8.0" },

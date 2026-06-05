@@ -19,6 +19,7 @@ dependencies = [
     "nvidia-nccl-cu12>=2.30.4",
     "openpyxl>=3.1.5",
     "pandas-ta>=0.4.71b0",
+    "perturbations-torch",
     "plotext>=5.3.2",
     "requests>=2.33.1",
     "scikit-learn>=1.8.0",
@@ -32,3 +33,6 @@ dependencies = [
 
 [tool.uv]
 managed = true
+
+[tool.uv.sources]
+perturbations-torch = { git = "https://github.com/nlml/perturbations-torch.git" }
