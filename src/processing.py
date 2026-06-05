@@ -1040,7 +1040,7 @@ class DataSource:
             self.scalers[stock] = ct
 
             filtered = stock_df.df[stock_df.df.index.get_level_values('local_time').isin(self.filtered_date_times)]
-            sampled = filtered.sample(8120)
+            sampled = filtered.sample(10000)
 
             stacked_df = sampled if stacked_df is None else pd.concat([stacked_df, sampled], axis=0)
 
@@ -1064,6 +1064,8 @@ class DataSource:
             return(new_group_df)
 
         self.df = self.df.groupby(pd.Grouper(level='stock'), group_keys=False).apply(standardize)
+
+        self.df = self.df.astype('float32')
 
         selected_features, relevance, redundancy = mrmr_classif(
             X=self.df[features],
