@@ -1109,6 +1109,7 @@ class DataSource:
     ):
         from sklearn.compose import ColumnTransformer
         from sklearn.preprocessing import StandardScaler
+        from sklearn.preprocessing import FunctionTransformer
 
         features_df = joblib.load(self.processed_path / f'features_{self._target}m.joblib')
         sector = next(c.split('_')[0] for c in self.df.columns if c.startswith('ps') and c.split('_')[0] != 'psei')
@@ -1123,8 +1124,6 @@ class DataSource:
         ] + [f'{self.file_name}_no_activity', f'{self.file_name}_{self._target}m_return']
 
         self.df = self.df.loc[features_df.filtered_date_times, selected_features]
-
-        self.df["date_year"] = self.df.index.year.astype('float32')
 
         self.df["date_day_of_month_sin"] = np.sin(2 * np.pi * self.df.index.day / self.df.index.days_in_month)
         self.df["date_day_of_month_cos"] = np.cos(2 * np.pi * self.df.index.day / self.df.index.days_in_month)
@@ -1146,11 +1145,13 @@ class DataSource:
         
         features, continuous_cols, binary_cols = get_features(self.df)
 
+        binary_transformer = FunctionTransformer(lambda x: x * 2 - 1)
+
         ct = ColumnTransformer(
             transformers=[
-                ('scaler', StandardScaler(), continuous_cols)
-            ],
-            remainder='passthrough'
+                ('scaler', StandardScaler(), continuous_cols),
+                ('binary', binary_transformer, binary_cols)
+            ]
         )
 
         self.train_cutoff = features_df.train_cutoff
