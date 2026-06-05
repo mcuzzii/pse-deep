@@ -88,6 +88,20 @@ def get_unique_instruments(dir_path: str):
     
     return list(instruments)
 
+def get_features(df):
+
+    features = [
+        col
+        for col in self.df.columns
+        if not col.endswith('m_return') and
+        not col.endswith('_no_activity')
+    ]
+
+    binary_cols = [col for col in features if self.df[col].nunique() <= 2]
+    continuous_cols = [col for col in features if col not in binary_cols]
+
+    return features, continuous_cols, binary_cols
+
 class DataSource:
     """A class for storing and processing a dataset."""
 
@@ -988,8 +1002,10 @@ class DataSource:
         last_mask = common_date_times.to_series() > daily_max - pd.Timedelta(minutes=self._target)
 
         self.filtered_date_times = common_date_times[~lunch_mask & ~last_mask.values]
+        train_cutoff = self.filtered_date_times[int(0.8 * len(self.filtered_date_times))]
 
         stacked_df = None
+        self.scalers = dict()
         
         for stock in self._stocks:
             print(f"Processing stock: {stock}...")
@@ -1008,7 +1024,21 @@ class DataSource:
                 stock_df.df.rename(columns={col: new_col_name}, inplace=True)
             
             stock_df.df.index = pd.MultiIndex.from_product([[stock], stock_df.df.index], names=['stock', 'local_time'])
-            
+
+            stock_df.df = stock_df.df.loc[stock_df.df.index.get_level_values('local_time') <= train_cutoff]
+
+            features, continuous_cols, _ = get_features(stock_df.df)
+
+            ct = ColumnTransformer(
+                transformers=[
+                    ('scaler', StandardScaler(), continuous_cols)
+                ],
+                remainder='passthrough'
+            )
+
+            ct.fit(stock_df.df[features])
+            self.scalers[stock] = ct
+
             filtered = stock_df.df[stock_df.df.index.get_level_values('local_time').isin(self.filtered_date_times)]
             sampled = (
                 filtered
@@ -1019,38 +1049,19 @@ class DataSource:
             stacked_df = sampled if stacked_df is None else pd.concat([stacked_df, sampled], axis=0)
 
         self.df = stacked_df
-    
+        self.train_cutoff = train_cutoff
+
     @record_history
     def _feature_select(self, ignore_history: bool = False):
-        features = [
-            col
-            for col in self.df.columns
-            if not col.endswith('m_return') and
-            not col.endswith('_no_activity')
-        ]
 
-        train_cutoff = self.filtered_date_times[int(0.8 * len(self.filtered_date_times))]
-
-        self.df = self.df.loc[self.df.index.get_level_values('local_time') <= train_cutoff]
-
-        self.scalers = dict()
-
-        binary_cols = [col for col in features if self.df[col].nunique() <= 2]
-        continuous_cols = [col for col in features if col not in binary_cols]
+        features, continuous_cols, binary_cols = get_features(self.df)
 
         def standardize(group):
 
-            ct = ColumnTransformer(
-                transformers=[
-                    ('scaler', StandardScaler(), continuous_cols)
-                ],
-                remainder='passthrough'
-            )
-
             stock_name = group.index.get_level_values('stock')[0]
-            self.scalers[stock_name] = ct
+            ct = self.scalers[stock_name]
 
-            transformed_data = ct.fit_transform(group[features])
+            transformed_data = ct.transform(group[features])
             all_cols = continuous_cols + binary_cols
             new_group_df = pd.DataFrame(transformed_data, columns=all_cols, index=group.index)
             new_group_df[f'stock_{self._target}m_return'] = group[f'stock_{self._target}m_return']
@@ -1068,7 +1079,6 @@ class DataSource:
         self.selected_features = selected_features
         self.relevance = relevance
         self.redundancy = redundancy
-        self.train_cutoff = train_cutoff
     
     @record_history
     def save_selected_features(self, ignore_history: bool = False):
@@ -1086,7 +1096,7 @@ class DataSource:
         self,
         ignore_history: bool = False
     ):
-        features = joblib.load(self.processed_path / f'features_{self._target}m.joblib')
+        features_df = joblib.load(self.processed_path / f'features_{self._target}m.joblib')
         sector = next(c.split('_')[0] for c in self.df.columns if c.startswith('ps') and c.split('_')[0] != 'psei')
 
         selected_features = [
@@ -1095,17 +1105,33 @@ class DataSource:
                 f'{sector}{feature[6:]}'
                 if 'sector' in feature else feature
             )
-            for feature in features.selected_features
+            for feature in features_df.selected_features
         ] + [f'{self.file_name}_no_activity', f'{self.file_name}_{self._target}m_return']
 
-        self.df = self.df.loc[features.filtered_date_times, selected_features]
+        self.df = self.df.loc[features_df.filtered_date_times, selected_features]
+        
+        features, continuous_cols, binary_cols = get_features(self.df)
+
+        ct = ColumnTransformer(
+            transformers=[
+                ('scaler', StandardScaler(), continuous_cols)
+            ],
+            remainder='passthrough'
+        )
+
+        self.train_cutoff = features_df.train_cutoff
+        train_mask = self.df.index.get_level_values('local_time') <= self.train_cutoff
+
+        all_cols = continuous_cols + binary_cols
+        self.df.loc[train_mask, all_cols] = ct.fit_transform(self.df.loc[train_mask, features])
+        self.df.loc[~train_mask, all_cols] = ct.transform(self.df.loc[~train_mask, features])
+
+        self.scaler = ct
 
         print(f'Final dataframe for {self.file_name}; shape: {self.df.shape}.')
         
-        self.scaler = features.scalers[self.file_name]
         self.file_name = f'{self.file_name}_{self._target}m'
-        self.filtered_date_times = features.filtered_date_times
-        self.train_cutoff = features.train_cutoff
+        self.filtered_date_times = features_df.filtered_date_times
 
         self.data_source_path = self.processed_path / f'{self.file_name}.joblib'
 
