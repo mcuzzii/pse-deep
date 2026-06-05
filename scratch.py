@@ -10,13 +10,28 @@ import numpy as np
 import json
 import gc
 
-data = joblib.load('data/processed/ac_30m.joblib')
+print("Selecting features...")
+features_30 = DataSource()
+features_30.create_df(file_name='features_30m', medium='features', target=30, stocks=stocks, ignore_history=True)
+features_30.save_selected_features()
+del features_30
+gc.collect()
 
-with open('data/samples/dates', 'w', encoding='utf-8') as f:
-    counts = pd.Series(data.df.index.date).value_counts()
-    counts_dict = {k.strftime('%Y-%m-%d'): v for k, v in counts.items()}
-    json.dump(counts_dict, f, indent=4)
+features_10 = DataSource()
+features_10.create_df(file_name='features_10m', medium='features', target=10, stocks=stocks, ignore_history=True)
+features_10.save_selected_features()
+del features_10
+gc.collect()
 
-pd.concat([data.df.head(1000), data.df.tail(1000)], axis=0).to_csv('data/samples/ac_30m.csv')
+print("Finalizing datasets...")
+for stock in stocks:
+    stock_data = DataSource()
+    stock_data.create_df(file_name=stock, medium='final', target=30, ignore_history=True)
+    del stock_data
+    gc.collect()
 
-print(data.df.shape)
+for stock in stocks:
+    stock_data = DataSource()
+    stock_data.create_df(file_name=stock, medium='final', target=10, ignore_history=True)
+    del stock_data
+    gc.collect()
