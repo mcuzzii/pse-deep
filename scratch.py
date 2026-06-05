@@ -10,6 +10,9 @@ import numpy as np
 import json
 import gc
 
+stocks = get_unique_instruments('data/raw/stock')
+stocks = list(set(stocks) - {'psei', 'psho', 'psse', 'psmo', 'psfi', 'pspr', 'psin'})
+
 print("Selecting features...")
 features_30 = DataSource()
 features_30.create_df(file_name='features_30m', medium='features', target=30, stocks=stocks, ignore_history=True)
