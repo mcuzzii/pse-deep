@@ -97,7 +97,7 @@ def get_features(df):
         not col.endswith('_no_activity')
     ]
 
-    binary_cols = [col for col in features if self.df[col].nunique() <= 2]
+    binary_cols = [col for col in features if df[col].nunique() <= 2]
     continuous_cols = [col for col in features if col not in binary_cols]
 
     return features, continuous_cols, binary_cols
