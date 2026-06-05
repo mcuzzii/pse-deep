@@ -1,28 +1,15 @@
 import pandas as pd
 import numpy as np
-import cohere
 import os
 from pathlib import Path
 import time
 from tqdm import tqdm
-from tokenizers import Tokenizer
-from typing import Literal
-from cohere import ClientV2
 import requests
 import joblib
 import functools
 import json
-import ast
 import re
 from dotenv import load_dotenv
-from sklearn.metrics.pairwise import cosine_similarity
-from transformers import AutoModelForSeq2SeqLM, AutoTokenizer, pipeline
-import torch
-import langid
-import pandas_ta as ta
-from mrmr import mrmr_classif
-from sklearn.compose import ColumnTransformer
-from sklearn.preprocessing import StandardScaler
 
 # Regex patterns.
 URL_PATTERN = r'(https?://[^\s<>"]+|www\.[^\s<>"]+|[a-zA-Z0-9.-]+\.[a-z]{2,6}/[^\s<>"]*)'
@@ -58,6 +45,8 @@ def snake_case(text_string: str):
 
 # Helper function for getting log softmax probabilities of the language of a text.
 def get_lang(text: str):
+    import langid
+
     # Get all scores
     ranks = langid.rank(str(text))
     langs = [r[0] for r in ranks]
@@ -199,6 +188,9 @@ class DataSource:
         ignore_history: bool = False
     ):
         """ Creates text embeddings using Cohere Embed V4.0 """
+        from cohere import ClientV2
+        from tokenizers import Tokenizer
+        import ast
 
         load_dotenv()
 
@@ -293,6 +285,8 @@ class DataSource:
         index: int,
         n_results: int = 10
     ):
+        from sklearn.metrics.pairwise import cosine_similarity
+
         file_path = self.processed_path / f'{self.file_name}_similar_to_{index}.json'
         if file_path.exists():
             return
@@ -322,6 +316,8 @@ class DataSource:
         batch_size: int = 16,
         ignore_history: bool = False
     ):
+        import torch
+        from transformers import AutoModelForSeq2SeqLM, AutoTokenizer
 
         model_name = "facebook/nllb-200-distilled-600M"
         tokenizer = AutoTokenizer.from_pretrained(model_name)
@@ -402,6 +398,9 @@ class DataSource:
         self,
         ignore_history: bool = False
     ):
+        from transformers import pipeline
+        import torch
+
         device = 0 if torch.cuda.is_available() else -1
 
         finbert = pipeline(
@@ -464,6 +463,8 @@ class DataSource:
         self,
         ignore_history: bool = False
     ):
+        from transformers import pipeline
+        import torch
 
         device = 0 if torch.cuda.is_available() else -1
         batch_size = 128
@@ -573,6 +574,8 @@ class DataSource:
         return {s: f'{self.file_name}_{s}' for s in suffixes}
     
     def _close_indicators(self, c: dict, close_attr='close'):
+        import pandas_ta as ta
+
         fn = self.file_name
         df = self.df
         close = df[c[close_attr]].astype(float)
@@ -653,6 +656,8 @@ class DataSource:
         self.df = df
     
     def _hlc_indicators(self, c: dict, close_attr='close'):
+        import pandas_ta as ta
+
         fn = self.file_name
         df = self.df
         close = df[c[close_attr]].astype(float)
@@ -691,6 +696,8 @@ class DataSource:
         self.df = df
 
     def _cv_indicators(self, c: dict):
+        import pandas_ta as ta
+
         fn  = self.file_name
         df  = self.df
         close = df[c['close']].astype(float)
@@ -707,6 +714,8 @@ class DataSource:
         self.df = df
     
     def _bid_ask_indicators(self, c: dict):
+        import pandas_ta as ta
+
         fn = self.file_name
         df = self.df
         ask = df[c['ask']].astype(float)
@@ -986,6 +995,9 @@ class DataSource:
         self,
         ignore_history: bool = False
     ):
+        from sklearn.compose import ColumnTransformer
+        from sklearn.preprocessing import StandardScaler
+
         print('Computing common dates and times...')
         common_date_times = None
         for stock in self._stocks:
@@ -1050,6 +1062,7 @@ class DataSource:
 
     @record_history
     def _feature_select(self, ignore_history: bool = False):
+        from mrmr import mrmr_classif
 
         features, continuous_cols, binary_cols = get_features(self.df)
 
@@ -1093,6 +1106,9 @@ class DataSource:
         self,
         ignore_history: bool = False
     ):
+        from sklearn.compose import ColumnTransformer
+        from sklearn.preprocessing import StandardScaler
+
         features_df = joblib.load(self.processed_path / f'features_{self._target}m.joblib')
         sector = next(c.split('_')[0] for c in self.df.columns if c.startswith('ps') and c.split('_')[0] != 'psei')
 
