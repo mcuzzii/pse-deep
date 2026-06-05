@@ -994,7 +994,7 @@ class DataSource:
             common_date_times = dates if common_date_times is None else common_date_times.intersection(dates)
         
         lunch_mask = (
-            (common_date_times.time >= pd.Timestamp(f'11:{61 - self._target}').time()) &
+            (common_date_times.time >= pd.Timestamp(f'11:{60 - self._target}').time()) &
             (common_date_times.time <= pd.Timestamp('12:00').time())
         )
 
