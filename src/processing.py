@@ -1124,24 +1124,24 @@ class DataSource:
 
         self.df = self.df.loc[features_df.filtered_date_times, selected_features]
 
-        self.df["date_year"] = self.df.index.dt.year.astype('float32')
+        self.df["date_year"] = self.df.index.year.astype('float32')
 
-        self.df["date_day_of_month_sin"] = np.sin(2 * np.pi * self.df.index.dt.day / self.df.index.dt.days_in_month)
-        self.df["date_day_of_month_cos"] = np.cos(2 * np.pi * self.df.index.dt.day / self.df.index.dt.days_in_month)
+        self.df["date_day_of_month_sin"] = np.sin(2 * np.pi * self.df.index.day / self.df.index.days_in_month)
+        self.df["date_day_of_month_cos"] = np.cos(2 * np.pi * self.df.index.day / self.df.index.days_in_month)
 
-        days_in_year = self.df.index.dt.is_leap_year.map({True: 366, False: 365})
-        self.df["date_day_of_year_sin"] = np.sin(2 * np.pi * self.df.index.dt.dayofyear / days_in_year)
-        self.df["date_day_of_year_cos"] = np.cos(2 * np.pi * self.df.index.dt.dayofyear / days_in_year)
+        days_in_year = self.df.index.is_leap_year.map({True: 366, False: 365})
+        self.df["date_day_of_year_sin"] = np.sin(2 * np.pi * self.df.index.dayofyear / days_in_year)
+        self.df["date_day_of_year_cos"] = np.cos(2 * np.pi * self.df.index.dayofyear / days_in_year)
 
-        self.df["date_day_of_week"] = self.df.index.dt.dayofweek.astype('float32')
+        self.df["date_day_of_week"] = self.df.index.dayofweek.astype('float32')
 
-        self.df["date_quarter"] = self.df.index.dt.quarter.astype('float32')
+        self.df["date_quarter"] = self.df.index.quarter.astype('float32')
 
         self.df["date_minute_sin"] = np.sin(
-            2 * np.pi * (self.df.index.dt.hour * 60 + self.df.index.dt.minute) / 1440
+            2 * np.pi * (self.df.index.hour * 60 + self.df.index.minute) / 1440
         )
         self.df["date_minute_cos"] = np.cos(
-            2 * np.pi * (self.df.index.dt.hour * 60 + self.df.index.dt.minute) / 1440
+            2 * np.pi * (self.df.index.hour * 60 + self.df.index.minute) / 1440
         )
         
         features, continuous_cols, binary_cols = get_features(self.df)
