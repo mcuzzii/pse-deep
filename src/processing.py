@@ -994,7 +994,7 @@ class DataSource:
             common_date_times = dates if common_date_times is None else common_date_times.intersection(dates)
         
         lunch_mask = (
-            (common_date_times.time >= pd.Timestamp(f'11:{60 - self._target}').time()) &
+            (common_date_times.time >= pd.Timestamp(f'11:{61 - self._target}').time()) &
             (common_date_times.time <= pd.Timestamp('12:00').time())
         )
 
@@ -1043,7 +1043,7 @@ class DataSource:
             sampled = (
                 filtered
                 .groupby(pd.Grouper(level='local_time', freq='D'), group_keys=False)
-                .apply(lambda g: g.sample(min(len(g), 68)))
+                .apply(lambda g: g.sample(min(len(g), 51)))
             )
 
             stacked_df = sampled if stacked_df is None else pd.concat([stacked_df, sampled], axis=0)
