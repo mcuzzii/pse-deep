@@ -1129,7 +1129,7 @@ class DataSource:
         self.df["date_day_of_month_sin"] = np.sin(2 * np.pi * self.df.index.day / self.df.index.days_in_month)
         self.df["date_day_of_month_cos"] = np.cos(2 * np.pi * self.df.index.day / self.df.index.days_in_month)
 
-        days_in_year = self.df.index.is_leap_year.map({True: 366, False: 365})
+        days_in_year = np.where(self.df.index.is_leap_year, 366, 365)
         self.df["date_day_of_year_sin"] = np.sin(2 * np.pi * self.df.index.dayofyear / days_in_year)
         self.df["date_day_of_year_cos"] = np.cos(2 * np.pi * self.df.index.dayofyear / days_in_year)
 
