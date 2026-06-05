@@ -1157,8 +1157,8 @@ class DataSource:
         train_mask = self.df.index.get_level_values('local_time') <= self.train_cutoff
 
         all_cols = continuous_cols + binary_cols
-        self.df.loc[train_mask, all_cols] = ct.fit_transform(self.df.loc[train_mask, features])
-        self.df.loc[~train_mask, all_cols] = ct.transform(self.df.loc[~train_mask, features])
+        self.df.loc[train_mask, all_cols] = ct.fit_transform(self.df.loc[train_mask, features]).astype('float32')
+        self.df.loc[~train_mask, all_cols] = ct.transform(self.df.loc[~train_mask, features]).astype('float32')
 
         self.scaler = ct
 
