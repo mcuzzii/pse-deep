@@ -92,7 +92,7 @@ def get_features(df):
 
     features = [
         col
-        for col in self.df.columns
+        for col in df.columns
         if not col.endswith('m_return') and
         not col.endswith('_no_activity')
     ]
