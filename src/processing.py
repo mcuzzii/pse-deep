@@ -1109,7 +1109,6 @@ class DataSource:
     ):
         from sklearn.compose import ColumnTransformer
         from sklearn.preprocessing import StandardScaler
-        from sklearn.preprocessing import FunctionTransformer
 
         features_df = joblib.load(self.processed_path / f'features_{self._target}m.joblib')
         sector = next(c.split('_')[0] for c in self.df.columns if c.startswith('ps') and c.split('_')[0] != 'psei')
@@ -1145,13 +1144,11 @@ class DataSource:
         
         features, continuous_cols, binary_cols = get_features(self.df)
 
-        binary_transformer = FunctionTransformer(lambda x: x * 2 - 1)
-
         ct = ColumnTransformer(
             transformers=[
-                ('scaler', StandardScaler(), continuous_cols),
-                ('binary', binary_transformer, binary_cols)
-            ]
+                ('scaler', StandardScaler(), continuous_cols)
+            ],
+            remainder='passthrough'
         )
 
         self.train_cutoff = features_df.train_cutoff
