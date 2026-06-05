@@ -1054,7 +1054,7 @@ class DataSource:
             stock_df.df = stock_df.df.astype('float32')
 
             filtered = stock_df.df[stock_df.df.index.get_level_values('local_time').isin(self.filtered_date_times)]
-            sample = filtered.sample(54930)
+            sample = filtered.sample(43944)
 
             stacked_df = sample if stacked_df is None else pd.concat([stacked_df, sample], axis=0)
 
