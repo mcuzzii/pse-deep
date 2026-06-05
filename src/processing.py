@@ -1043,7 +1043,7 @@ class DataSource:
             sampled = (
                 filtered
                 .groupby(pd.Grouper(level='local_time', freq='D'), group_keys=False)
-                .apply(lambda g: g.sample(min(len(g), 17)))
+                .apply(lambda g: g.sample(min(len(g), 68)))
             )
 
             stacked_df = sampled if stacked_df is None else pd.concat([stacked_df, sampled], axis=0)
