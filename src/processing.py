@@ -1195,6 +1195,7 @@ class DataSource:
         self,
         ignore_history: bool = False
     ):
+        self.df = self.df.set_index('local_time')
         self._add_elapsed_time()
         
     # Processing pipeline for all data.
