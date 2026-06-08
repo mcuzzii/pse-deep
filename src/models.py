@@ -86,3 +86,13 @@ class FinEmbedding(nn.Module):
         time_vector = self.time_embed(t)
 
         return torch.cat([stock_vector, time_vector], dim=-1)
+
+class SelfAttention(nn.Module):
+    def __init__(self, embedding_dim, num_heads, dropout=0.1):
+        super().__init__()
+        self.attention = nn.MultiheadAttention(
+            embed_dim=embedding_dim,
+            num_heads=num_heads,
+            dropout=dropout,
+            batch_first=True
+        )
