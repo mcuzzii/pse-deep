@@ -55,7 +55,7 @@ class Time2Vec(nn.Module):
     def __init__(self, embedding_dim):
         super().__init__()
 
-        self.dim = embedding_dim
+        self.dim = embedding_dim + 32
 
         self.w0 = nn.Parameter(torch.randn(1, 1))
         self.b0 = nn.Parameter(torch.randn(1, 1))
@@ -71,3 +71,18 @@ class Time2Vec(nn.Module):
         
         return torch.cat([linear, periodic], dim=-1)
 
+class FinEmbedding(nn.Module):
+    def __init__(self, input_dim, embedding_dim):
+        super().__init__()
+
+        self.dim = embedding_dim
+
+        self.linear = nn.Linear(input_dim, self.dim)
+        self.time_embed = Time2Vec(32)
+    
+    def forward(self, x, t):
+        
+        stock_vector = self.linear(x)
+        time_vector = self.time_embed(t)
+
+        return torch.cat([stock_vector, time_vector], dim=-1)
