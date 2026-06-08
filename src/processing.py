@@ -1102,6 +1102,11 @@ class DataSource:
         with open(self.processed_path / f'{self.file_name}.json', 'w', encoding='utf-8') as f:
             json.dump(features, f, indent=4)
     
+    def _add_elapsed_time(self):
+        reference = pd.Timestamp('2025-03-12 00:00:00')
+        num_seconds = (pd.Timestamp('2026-04-17 00:00:00') - reference).total_seconds()
+        self.df['elapsed_time'] = ((self.df.index - reference).total_seconds() / num_seconds).astype('float32')
+    
     @record_history
     def _finalized_stock(
         self,
@@ -1142,7 +1147,6 @@ class DataSource:
             2 * np.pi * (self.df.index.hour * 60 + self.df.index.minute) / 1440
         )
 
-        self.df["elapsed_minutes"] = (self.df.index - self.df.index.min()).total_seconds() / 60
         t = self.df.index.time
         am_end = pd.Timestamp("12:00").time()
 
@@ -1178,13 +1182,20 @@ class DataSource:
 
         self.scaler = ct
 
+        self.add_elapsed_time()
+
         print(f'Final dataframe for {self.file_name}; shape: {self.df.shape}.')
         
         self.file_name = f'{self.file_name}_{self._target}m'
         self.filtered_date_times = features_df.filtered_date_times
 
         self.data_source_path = self.processed_path / f'{self.file_name}.joblib'
-
+    
+    def _finalized_text(
+        self,
+        ignore_history: bool = False
+    ):
+        self.add_elapsed_time()
         
     # Processing pipeline for all data.
     def create_df(
@@ -1251,7 +1262,9 @@ class DataSource:
         
         elif self._medium == 'final':
             self._finalized_stock(ignore_history=ignore_history)
+        
+        elif self._medium == 'final_text':
+            self._finalized_text(ignore_history=ignore_history)
 
         if self._history != init_history:
             joblib.dump(self, self.data_source_path)
-

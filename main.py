@@ -111,6 +111,17 @@ def main():
         stock_data.create_df(file_name=stock, medium='final', target=10, ignore_history=True)
         del stock_data
         gc.collect()
+    
+    lseg_news_data = DataSource()
+    lseg_news_data.create_df(file_name='news', medium='final_text', ignore_history=True)
+    del lseg_news_data
+    gc.collect()
+
+    social_media_data = DataSource()
+    social_media_data.create_df(file_name='social_media', medium='final_text', ignore_history=True)
+    del social_media_data
+    gc.collect()
+
 
 if __name__ == '__main__':
     main()
