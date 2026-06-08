@@ -1141,6 +1141,24 @@ class DataSource:
         self.df["date_minute_cos"] = np.cos(
             2 * np.pi * (self.df.index.hour * 60 + self.df.index.minute) / 1440
         )
+
+        self.df["elapsed_minutes"] = (self.df.index - self.df.index.min()).total_seconds() / 60
+        t = self.df.index.time
+        am_end = pd.Timestamp("12:00").time()
+
+        self.df["session_id"] = (t > am_end).astype('float32')
+
+        # Minutes to end of each session
+        am_end_minutes = 12 * 60
+        pm_end_minutes = 15 * 60
+
+        current_minutes = self.df.index.hour * 60 + self.df.index.minute
+
+        self.df["minutes_to_session_end"] = np.where(
+            self.df["session_id"] == 0,
+            am_end_minutes - current_minutes,
+            pm_end_minutes - current_minutes
+        ).astype('float32')
         
         features, continuous_cols, binary_cols = get_features(self.df)
 
