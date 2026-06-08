@@ -86,8 +86,8 @@ class FinEmbedding(nn.Module):
         stock_vector = self.linear(x) # [batch_size, 30, 60, embedding_dim]
         time_vector = self.time_embed(t) # [60, temporal_embedding_dim]
     
-        # [60, T_dim] -> [1, 60, T_dim] -> [1, 1, 60, T_dim]
-        time_vector = time_vector.unsqueeze(0).unsqueeze(0)
+        # [B, 60, T_dim] -> [B, 1, 60, T_dim]
+        time_vector = time_vector.unsqueeze(1)
             
         # Expand into [batch_size, 30, 60, temporal_embedding_dim]
         batch_size = x.size(0)
