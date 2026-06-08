@@ -1191,6 +1191,7 @@ class DataSource:
 
         self.data_source_path = self.processed_path / f'{self.file_name}.joblib'
     
+    @record_history
     def _finalized_text(
         self,
         ignore_history: bool = False
