@@ -1182,7 +1182,7 @@ class DataSource:
 
         self.scaler = ct
 
-        self.add_elapsed_time()
+        self._add_elapsed_time()
 
         print(f'Final dataframe for {self.file_name}; shape: {self.df.shape}.')
         
@@ -1195,7 +1195,7 @@ class DataSource:
         self,
         ignore_history: bool = False
     ):
-        self.add_elapsed_time()
+        self._add_elapsed_time()
         
     # Processing pipeline for all data.
     def create_df(
