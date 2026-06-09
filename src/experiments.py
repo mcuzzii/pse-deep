@@ -132,8 +132,7 @@ class Experiment:
 
             for path, size in zip([train_path, val_path, test_path], [train_size, val_size, test_size]):
 
-                store = zarr.DirectoryStore(path)
-                root = zarr.group(store=store, overwrite=True)
+                root = zarr.group(store=path, overwrite=True)
 
                 X_shape, y_shape, ts_shape = self._get_stock_shapes(size)
                 chunk_X_shape, chunk_y_shape, chunk_ts_shape = self._get_stock_shapes(chunk_size)
