@@ -96,6 +96,47 @@ def get_features(df):
 
     return features, continuous_cols, binary_cols
 
+def get_text_window(timestamp, T, min_hours=24, min_trading_minutes=270):
+
+    cutoff_24h = timestamp - pd.Timedelta(hours=min_hours)
+    past_trading_minutes = T[T <= timestamp]
+
+    window_24h = past_trading_minutes[past_trading_minutes > cutoff_24h]
+    
+    if len(window_24h) >= min_trading_minutes:
+        return cutoff_24h, window_24h
+    
+    else:
+        if len(past_trading_minutes) <= min_trading_minutes:
+            cutoff_270 = past_trading_minutes.min() - pd.Timedelta(minutes=1)
+        else:
+            cutoff_270 = past_trading_minutes.iloc[-min_trading_minutes]
+        
+        final_cutoff = min(cutoff_24h, cutoff_270)
+        window = past_trading_minutes[past_trading_minutes > final_cutoff]
+        return final_cutoff, window
+
+def _compute_news_stats(sentiment_df, cutoffs, news_ts):
+    cutoff = cutoffs[news_ts]
+    if cutoff is None:
+        return pd.Series({
+            'bearish_mean': np.nan,
+            'neutral_mean': np.nan,
+            'bullish_mean': np.nan,
+            'finbert_combined_score_mean': np.nan,
+            'bearish_std': np.nan,
+            'neutral_std': np.nan,
+            'bullish_std': np.nan,
+            'finbert_combined_score_std': np.nan,
+        })
+    
+    mask = (sentiment_df.index >= cutoff) & (sentiment_df.index < news_ts)
+    window_data = sentiment_df[mask]
+    
+    means = window_data.mean().add_suffix('_mean')
+    stds = window_data.std().add_suffix('_std')
+    return pd.concat([means, stds])
+
 class DataSource:
     """A class for storing and processing a dataset."""
 
@@ -1213,6 +1254,20 @@ class DataSource:
         self.filtered_date_times = features_df.filtered_date_times
 
         self.data_source_path = self.processed_path / f'{self.file_name}.joblib'
+    
+    def _news_sentiment_indicators(
+        self,
+        ignore_history: bool = False
+    ):
+        trading_minutes = joblib.load(self.processed_path / 'ac.joblib').df.index
+        news_timestamps = self.df.index
+
+        sentiment_df = self.df[['bearish', 'neutral', 'bullish', 'sentiment', 'finbert_combined_score']]
+
+        cutoffs = pd.Series(
+            [get_text_window(ts, trading_minutes)[0] for ts in news_timestamps],
+            index=news_timestamps
+        )
     
     @record_history
     def _finalized_text(
