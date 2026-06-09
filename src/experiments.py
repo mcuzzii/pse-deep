@@ -4,6 +4,7 @@ from torch.utils.data import Dataset
 import sys
 from pathlib import Path
 import zarr
+from zarr.storage import ZipStore
 
 # Add the 'src' directory to the path
 sys.path.append(str(Path.cwd() / 'src'))
@@ -133,7 +134,7 @@ class Experiment:
 
         for path, size in zip([train_path, val_path, test_path], [train_size, val_size, test_size]):
 
-            store = zarr.ZipStore(path, mode='w')
+            store = ZipStore(path, mode='w')
             root = zarr.open_group(store=store)
 
             X_shape, y_shape, ts_shape, m_shape = self._get_stock_shapes(size)
