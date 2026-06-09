@@ -194,9 +194,23 @@ class Experiment:
                 
                 print(f"Saved sequences {i} to {end_idx} safely to disk.")
     
+    def _build_news_transformer_data(self, force=False):
+
+        train_path = self.data_path / f'news_{self.pred_horizon}m_train.zarr.zip'
+        val_path = self.data_path / f'news_{self.pred_horizon}m_val.zarr.zip'
+        test_path = self.data_path / f'news_{self.pred_horizon}m_test.zarr.zip'
+
+        if train_path.exists() and val_path.exists() and test_path.exists() and not force:
+            return
+        
+        
+    
     def build_dataset(self, force=False):
         self.data_path = Path('experiments/data')
         self.data_path.mkdir(parents=True, exist_ok=True)
 
         if self.transformer:
             self._build_stock_transformer_data(force)
+
+            if self.news:
+                self._build_news_transformer_data(force)

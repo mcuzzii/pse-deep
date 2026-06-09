@@ -279,6 +279,27 @@ class StockTransformer(nn.Module):
 
         return out
 
+class DynamicSelection(nn.Module):
+    def __init__(self, input_dim, K):
+
+        self.down_project = nn.Linear(input_dim, input_dim // 2)
+        self.score = nn.Linear(2 * (input_dim // 2), 1)
+        self.topk = PerturbedTopK
+    
+    def forward(self, x, mask):    # Expecting (batch_size, max_num_embeddings, embedding_dim)
+        masked_embeddings = self.down_project(x) * mask
+        embeddings_sum = torch.sum(masked_embeddings, dim=-2)
+        valid_count = torch.sum(mask, dim=-1).clamp(min=1)
+        masked_mean = embeddings_sum / valid_count
+
+        masked_mean = masked_mean.unsqueeze(0).unsqueeze(0).expand_as(masked_embeddings)
+
+        masked_embeddings = torch.cat([masked_mean, masked_embeddings], dim=-1) * mask
+
+        scores = self.score(masked_embeddings) * mask
+
+
+
 
 if __name__ == "__main__":
     # Fake configuration matching your specs
