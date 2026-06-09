@@ -132,14 +132,14 @@ class Experiment:
 
             for path, size in zip([train_path, val_path, test_path], [train_size, val_size, test_size]):
 
-                root = zarr.group(store=path, overwrite=True)
+                root = zarr.open_group(store=path, mode='w')
 
                 X_shape, y_shape, ts_shape = self._get_stock_shapes(size)
                 chunk_X_shape, chunk_y_shape, chunk_ts_shape = self._get_stock_shapes(chunk_size)
 
-                zarr_X = root.create_dataset('features', shape=X_shape, chunks=chunk_X_shape, dtype='float32')
-                zarr_y = root.create_dataset('targets', shape=y_shape, chunks=chunk_y_shape, dtype='float32')
-                zarr_ts = root.create_dataset('timestamps', shape=ts_shape, chunks=chunk_ts_shape, dtype='float32')
+                zarr_X = root.create_array('features', shape=X_shape, chunks=chunk_X_shape, dtype='float32')
+                zarr_y = root.create_array('targets', shape=y_shape, chunks=chunk_y_shape, dtype='float32')
+                zarr_ts = root.create_array('timestamps', shape=ts_shape, chunks=chunk_ts_shape, dtype='float32')
 
                 for i in range(0, size, chunk_size):
                     end_idx = min(i + chunk_size, size)
