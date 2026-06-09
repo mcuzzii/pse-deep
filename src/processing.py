@@ -77,6 +77,11 @@ def get_unique_instruments(dir_path: str):
     
     return list(instruments)
 
+def get_stocks():
+    stocks = get_unique_instruments('data/raw/stocks')
+    stocks = list(set(stocks) - {'psei', 'psho', 'psse', 'psmo', 'psfi', 'pspr', 'psin'})
+    return stocks
+
 def get_features(df):
 
     features = [
@@ -1106,6 +1111,7 @@ class DataSource:
         reference = pd.Timestamp('2025-03-12 00:00:00')
         num_seconds = (pd.Timestamp('2026-04-17 00:00:00') - reference).total_seconds()
         self.df['elapsed_time'] = ((self.df.index - reference).total_seconds() / num_seconds).astype('float32')
+        self.time_vec_input = 'elapsed_time'
     
     @record_history
     def _finalized_stock(
@@ -1118,16 +1124,20 @@ class DataSource:
         features_df = joblib.load(self.processed_path / f'features_{self._target}m.joblib')
         sector = next(c.split('_')[0] for c in self.df.columns if c.startswith('ps') and c.split('_')[0] != 'psei')
 
-        selected_features = [
+        self.features = [
             f'{self.file_name}{feature[5:]}'
             if 'stock' in feature else (
                 f'{sector}{feature[6:]}'
                 if 'sector' in feature else feature
             )
             for feature in features_df.selected_features
-        ] + [f'{self.file_name}_no_activity', f'{self.file_name}_{self._target}m_return']
+        ]
+        self.target = f'{self.file_name}_{self._target}m_return'
+        self.no_activity_col = f'{self.file_name}_no_activity'
 
-        self.df = self.df.loc[features_df.filtered_date_times, selected_features]
+        selected_cols = self.features + [self.no_activity_col, self.target]
+
+        self.df = self.df.loc[features_df.filtered_date_times, selected_cols]
 
         self.df["date_day_of_month_sin"] = np.sin(2 * np.pi * self.df.index.day / self.df.index.days_in_month)
         self.df["date_day_of_month_cos"] = np.cos(2 * np.pi * self.df.index.day / self.df.index.days_in_month)
@@ -1163,6 +1173,19 @@ class DataSource:
             am_end_minutes - current_minutes,
             pm_end_minutes - current_minutes
         ).astype('float32')
+
+        self.benchmark_time_features = [
+            'date_day_of_month_sin',
+            'date_day_of_month_cos',
+            'date_day_of_year_sin',
+            'date_day_of_year_cos',
+            'date_day_of_week',
+            'date_quarter',
+            'date_minute_sin',
+            'date_minute_cos',
+            'session_id',
+            'minutes_to_session_end',
+        ]
         
         features, continuous_cols, binary_cols = get_features(self.df)
 

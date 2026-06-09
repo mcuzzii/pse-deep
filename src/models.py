@@ -1,7 +1,6 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-import copy
 
 class PerturbedTopK(nn.Module):
     def __init__(self, k: int, num_samples: int = 1000, sigma: float = 0.05):
