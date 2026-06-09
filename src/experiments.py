@@ -1,6 +1,7 @@
 import numpy as np
 import torch
 from torch.utils.data import Dataset
+import os
 import sys
 from pathlib import Path
 import zarr
@@ -52,7 +53,7 @@ class Experiment:
         self.pred_horizon = 30 if pred_30 else 10
         self.processed_path = Path('data/processed')
         self.experiment_path = Path(f'experiments/{experiment_name}')
-        self.experiment_path.mkdir(parents=True, exist_ok=True)
+        os.makedirs(str(self.experiment_path), exist_ok=True)
     
     def build_model(
         self,
