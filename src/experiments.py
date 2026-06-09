@@ -53,7 +53,7 @@ class Experiment:
         self.pred_horizon = 30 if pred_30 else 10
         self.processed_path = Path('data/processed')
         self.experiment_path = Path(f'experiments/{experiment_name}')
-        os.makedirs(str(self.experiment_path), exist_ok=True)
+        os.makedirs(self.experiment_path, exist_ok=True)
     
     def build_model(
         self,
