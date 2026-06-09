@@ -5,12 +5,13 @@ from pathlib import Path
 sys.path.append(str(Path.cwd() / 'src'))
 
 from processing import DataSource, get_unique_instruments, get_stocks
+from experiments import Experiment
 from dotenv import load_dotenv
 import gc
 
 load_dotenv()
 
-def main():
+def preprocess():
 
     print("Creating social media data...")
     social_media_data = DataSource()
@@ -102,26 +103,36 @@ def main():
     print("Finalizing datasets...")
     for stock in stocks:
         stock_data = DataSource()
-        stock_data.create_df(file_name=stock, medium='final', target=30, ignore_history=True)
+        stock_data.create_df(file_name=stock, medium='final', target=30)
         del stock_data
         gc.collect()
     
     for stock in stocks:
         stock_data = DataSource()
-        stock_data.create_df(file_name=stock, medium='final', target=10, ignore_history=True)
+        stock_data.create_df(file_name=stock, medium='final', target=10)
         del stock_data
         gc.collect()
     
     lseg_news_data = DataSource()
-    lseg_news_data.create_df(file_name='news', medium='final_text', ignore_history=True)
+    lseg_news_data.create_df(file_name='news', medium='final_text')
     del lseg_news_data
     gc.collect()
 
     social_media_data = DataSource()
-    social_media_data.create_df(file_name='social_media', medium='final_text', ignore_history=True)
+    social_media_data.create_df(file_name='social_media', medium='final_text')
     del social_media_data
     gc.collect()
 
+def main():
+    stock_transformer = Experiment(
+        experiment_name='stock_transformer',
+        transformer=True,
+        pred_30=True,
+        news=False,
+        social=False,
+        stock_lookback=60
+    )
+    stock_transformer.build_dataset()
 
 if __name__ == '__main__':
     main()
