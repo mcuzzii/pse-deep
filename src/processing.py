@@ -116,27 +116,6 @@ def get_text_window(timestamp, T, min_hours=24, min_trading_minutes=270):
         window = past_trading_minutes[past_trading_minutes > final_cutoff]
         return final_cutoff, window
 
-def _compute_news_stats(sentiment_df, cutoffs, news_ts):
-    cutoff = cutoffs[news_ts]
-    if cutoff is None:
-        return pd.Series({
-            'bearish_mean': np.nan,
-            'neutral_mean': np.nan,
-            'bullish_mean': np.nan,
-            'finbert_combined_score_mean': np.nan,
-            'bearish_std': np.nan,
-            'neutral_std': np.nan,
-            'bullish_std': np.nan,
-            'finbert_combined_score_std': np.nan,
-        })
-    
-    mask = (sentiment_df.index >= cutoff) & (sentiment_df.index < news_ts)
-    window_data = sentiment_df[mask]
-    
-    means = window_data.mean().add_suffix('_mean')
-    stds = window_data.std().add_suffix('_std')
-    return pd.concat([means, stds])
-
 class DataSource:
     """A class for storing and processing a dataset."""
 
@@ -1255,6 +1234,57 @@ class DataSource:
 
         self.data_source_path = self.processed_path / f'{self.file_name}.joblib'
     
+    def _compute_news_stats(self, cutoffs, news_ts):
+        cutoff = cutoffs[news_ts]
+        if cutoff is None:
+            return pd.Series({
+                'bearish_mean': np.nan,
+                'neutral_mean': np.nan,
+                'bullish_mean': np.nan,
+                'finbert_combined_score_mean': np.nan,
+                'bearish_std': np.nan,
+                'neutral_std': np.nan,
+                'bullish_std': np.nan,
+                'finbert_combined_score_std': np.nan,
+            })
+        
+        mask = (self.df.index >= cutoff) & (self.df.index < news_ts)
+        window_data = self.df[mask]
+        
+        means = window_data[['bearish', 'neutral', 'bullish', 'finbert_combined_score']].mean().add_suffix('_mean')
+        stds = window_data[['bearish', 'bullish', 'finbert_combined_score']].std().add_suffix('_std')
+        
+        sentiment_counts = window_data['sentiment'].value_counts()
+
+        custom_indicators = pd.Series({
+            'sentiment_intensity': (
+                sentiment_counts.get('bullish', 0) - sentiment_counts.get('bearish', 0)
+            ) / sentiment_counts.sum(),
+            'strongly_bullish': (window_data['bullish'] > 0.7).sum() / window_data.shape[0],
+            'strongly_bearish': (window_data['bearish'] > 0.7).sum() / window_data.shape[0],
+            'overall_momentum': (
+                window_data['finbert_combined_score'].iloc[-1] - window_data['finbert_combined_score'].iloc[0]
+            ),
+            'bullish_momentum': (
+                window_data['bullish'].iloc[-1] - window_data['bullish'].iloc[0]
+            ),
+            'bearish_momentum': (
+                window_data['bearish'].iloc[-1] - window_data['bearish'].iloc[0]
+            ),
+            'short_momentum': (
+                window_data['finbert_combined_score'].iloc[-1] - window_data['finbert_combined_score'].iloc[-window_data.shape[0] // 3]
+            ),
+            'bull_to_bear_ratio': sentiment_counts.get('bullish', 0) / (sentiment_counts.get('bearish', 0) + 1e-4),
+            'net_bullish': (window_data['finbert_combined_score'] > 0).sum() / window_data.shape[0],
+            'net_bearish': (window_data['finbert_combined_score'] < 0).sum() / window_data.shape[0],
+            'prop_neutral': sentiment_counts.get('neutral', 0) / window_data.shape[0]
+        })
+
+        maximum = window_data[['finbert_combined_score']].max().add_suffix('_max')
+        minimum = window_data[['finbert_combined_score']].min().add_suffix('_min')
+
+        return pd.concat([means, stds, maximum, minimum, custom_indicators])
+    
     def _news_sentiment_indicators(
         self,
         ignore_history: bool = False
@@ -1268,6 +1298,14 @@ class DataSource:
             [get_text_window(ts, trading_minutes)[0] for ts in news_timestamps],
             index=news_timestamps
         )
+
+        stats_df = pd.DataFrame(
+            [self._compute_news_stats(cutoffs, ts) for ts in news_timestamps],
+            index=news_timestamps
+        )
+
+
+
     
     @record_history
     def _finalized_text(
@@ -1277,6 +1315,11 @@ class DataSource:
         self.df.index = pd.to_datetime(self.df.index)
         self.df.index.name = 'local_time'
         self._add_elapsed_time()
+
+        self.train_cutoff = joblib.load(f'ac_{self.target}m.joblib').train_cutoff
+
+        if self._medium == 'final_news':
+            self._news_sentiment_indicators()
         
     # Processing pipeline for all data.
     def create_df(
@@ -1344,7 +1387,7 @@ class DataSource:
         elif self._medium == 'final':
             self._finalized_stock(ignore_history=ignore_history)
         
-        elif self._medium == 'final_text':
+        elif self._medium == 'final_news' or self._medium == 'final_social':
             self._finalized_text(ignore_history=ignore_history)
 
         if self._history != init_history:
