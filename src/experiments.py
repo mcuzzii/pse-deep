@@ -105,7 +105,6 @@ class Experiment:
                 self.stock_dfs.append(stock_df)
             
             train_cutoff = self.stock_dfs[0].train_cutoff
-            dataset_size = self.stock_dfs[0].df.shape[0]
             train_size = get_train_split(
                 self.stock_dfs[0].df,
                 train_cutoff
@@ -152,6 +151,7 @@ class Experiment:
                     chunk_X = []
                     chunk_y = []
                     chunk_ts = []
+
                     for stock_df in self.stock_dfs:
 
                         split = None
@@ -174,9 +174,9 @@ class Experiment:
                             self.stock_lookback
                         ))
 
-                    chunk_X = np.transpose(chunk_X, (1, 0, 2, 3))
-                    chunk_y = np.transpose(chunk_y, (1, 0, 2))
-                    chunk_ts = np.transpose(chunk_ts, (1, 0, 2))
+                    chunk_X = np.transpose(np.array(chunk_X), (1, 0, 2, 3))
+                    chunk_y = np.transpose(np.array(chunk_y), (1, 0, 2))
+                    chunk_ts = np.transpose(np.array(chunk_ts), (1, 0, 2))
 
                     zarr_X[i:end_idx] = chunk_X
                     zarr_y[i:end_idx] = chunk_y
