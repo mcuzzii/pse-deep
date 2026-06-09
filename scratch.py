@@ -10,7 +10,7 @@ import numpy as np
 import json
 import gc
 
-stocks = get_stocks
+stocks = get_stocks()
 print("Finalizing datasets...")
 for stock in stocks:
     stock_data = DataSource()

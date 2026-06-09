@@ -78,7 +78,7 @@ def get_unique_instruments(dir_path: str):
     return list(instruments)
 
 def get_stocks():
-    stocks = get_unique_instruments('data/raw/stocks')
+    stocks = get_unique_instruments('data/raw/stock')
     stocks = list(set(stocks) - {'psei', 'psho', 'psse', 'psmo', 'psfi', 'pspr', 'psin'})
     return stocks
 

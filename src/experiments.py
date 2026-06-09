@@ -18,12 +18,14 @@ class Experiment:
         transformer: bool = True,
         pred_30: bool = True,
         news: bool = True,
-        social: bool = True
+        social: bool = True,
+        stock_lookback: int = 60
     ):
         self.transformer = transformer
         self.pred_30 = pred_30
         self.news = news
         self.social = social
+        self.stock_lookback = stock_lookback
         self.processed_path = Path('data/processed')
         self.experiment_path = Path(f'experiments/{experiment_name}')
         self.experiment_path.mkdir(parents=True, exist_ok=True)
@@ -63,6 +65,19 @@ class Experiment:
             store = zarr.DirectoryStore(self.data_path / 'stocks.zarr')
             root = zarr.group(store=store, overwrite=True)
 
+            stock_dfs = []
+            train_cutoffs = set()
+            for stock in stocks:
+                stock_df = DataSource()
+                stock_df.create_df(file_name=f'{stock}_{30 if self.pred_30 else 10}m')
+                stock_dfs.append(stock_df)
+                train_cutoffs.add(stock_df.train_cutoffs)
+            
+            train_cutoff = None
+            if len(train_cutoffs) != 1:
+                raise ValueError("Train cutoffs do not align across stocks.")
+            else:
+                train_cutoff = next(iter(train_cutoffs))
             
 
             zarr_X = root.create_dataset('features', shape=x_shape, chunks=(500, 30, 60, 100), dtype='float32')
