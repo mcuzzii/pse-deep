@@ -124,7 +124,11 @@ class Experiment:
 
             print(f'Validation set cutoff: {val_cutoff}; no. of validation sequences: {val_size}')
 
-            test_size = dataset_size - train_size - val_size
+            test_size = get_test_split(
+                self.stock_dfs[0].df,
+                val_cutoff,
+                self.stock_lookback
+            ).shape[0] - self.stock_lookback + 1
 
             print(f'No. of test sequences: {test_size}')
 
