@@ -79,8 +79,9 @@ class Experiment:
         X_shape = (num_sequences, len(self.stock_dfs), self.stock_lookback, len(self.stock_dfs[0].features))
         y_shape = (num_sequences, len(self.stock_dfs), 2)
         ts_shape = (num_sequences, len(self.stock_dfs), self.stock_lookback)
+        m_shape = (num_sequences, len(self.stock_dfs), self.stock_lookback)
 
-        return X_shape, y_shape, ts_shape
+        return X_shape, y_shape, ts_shape, m_shape
     
     def build_dataset(self, force=False):
         self.data_path = self.experiment_path / 'data'
@@ -137,20 +138,21 @@ class Experiment:
 
                 root = zarr.open_group(store=path, mode='w')
 
-                X_shape, y_shape, ts_shape = self._get_stock_shapes(size)
-                chunk_X_shape, chunk_y_shape, chunk_ts_shape = self._get_stock_shapes(chunk_size)
+                X_shape, y_shape, ts_shape, m_shape = self._get_stock_shapes(size)
+                chunk_X_shape, chunk_y_shape, chunk_ts_shape, chunk_m_shape = self._get_stock_shapes(chunk_size)
 
                 zarr_X = root.create_array('features', shape=X_shape, chunks=chunk_X_shape, dtype='float32')
                 zarr_y = root.create_array('targets', shape=y_shape, chunks=chunk_y_shape, dtype='float32')
                 zarr_ts = root.create_array('timestamps', shape=ts_shape, chunks=chunk_ts_shape, dtype='float32')
+                zarr_m = root.create_array('mask', shape=m_shape, chunks=chunk_m_shape, dtype='float32')
 
                 for i in range(0, size, chunk_size):
                     end_idx = min(i + chunk_size, size)
-                    current_size = end_idx - i
                     
                     chunk_X = []
                     chunk_y = []
                     chunk_ts = []
+                    chunk_m = []
 
                     for stock_df in self.stock_dfs:
 
@@ -166,6 +168,7 @@ class Experiment:
                             split[stock_df.features].iloc[i:end_idx + self.stock_lookback - 1].values,
                             self.stock_lookback
                         ))
+
                         target = split[stock_df.target].iloc[i + self.stock_lookback - 1:end_idx + self.stock_lookback - 1].values
                         chunk_y.append(np.array([target, 1 - target]))
                         
@@ -174,12 +177,19 @@ class Experiment:
                             self.stock_lookback
                         ))
 
+                        chunk_m.append(create_sequences(
+                            split[stock_df.no_activity_col].iloc[i:end_idx + self.stock_lookback - 1].values,
+                            self.stock_lookback
+                        ))
+
                     chunk_X = np.transpose(np.array(chunk_X), (1, 0, 2, 3))
                     chunk_y = np.transpose(np.array(chunk_y), (2, 0, 1))
                     chunk_ts = np.transpose(np.array(chunk_ts), (1, 0, 2))
+                    chunk_m = np.transpose(np.array(chunk_m), (1, 0, 2))
 
                     zarr_X[i:end_idx] = chunk_X
                     zarr_y[i:end_idx] = chunk_y
                     zarr_ts[i:end_idx] = chunk_ts
+                    zarr_m[i:end_idx] = chunk_m
                     
                     print(f"Saved rows {i} to {end_idx} safely to disk.")
