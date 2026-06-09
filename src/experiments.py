@@ -166,16 +166,16 @@ class Experiment:
                             split[stock_df.features].iloc[i:end_idx + self.stock_lookback - 1].values,
                             self.stock_lookback
                         ))
-                        chunk_y.append(
-                            split[stock_df.target].iloc[i + self.stock_lookback - 1:end_idx + self.stock_lookback - 1].values
-                        )
+                        target = split[stock_df.target].iloc[i + self.stock_lookback - 1:end_idx + self.stock_lookback - 1].values
+                        chunk_y.append(np.array([target, 1 - target]))
+                        
                         chunk_ts.append(create_sequences(
                             split[stock_df.time_vec_input].iloc[i:end_idx + self.stock_lookback - 1].values,
                             self.stock_lookback
                         ))
 
                     chunk_X = np.transpose(np.array(chunk_X), (1, 0, 2, 3))
-                    chunk_y = np.transpose(np.array(chunk_y), (1, 0, 2))
+                    chunk_y = np.transpose(np.array(chunk_y), (2, 0, 1))
                     chunk_ts = np.transpose(np.array(chunk_ts), (1, 0, 2))
 
                     zarr_X[i:end_idx] = chunk_X
