@@ -18,7 +18,7 @@ def get_val_split(df, train_cutoff, val_cutoff, window_size):
     last_train_idx = df.index.get_loc(train_cutoff)
 
     non_train_split = df.iloc[last_train_idx - window_size + 2:]
-    non_test_mask = df.index.get_level_values('local_time') <= val_cutoff
+    non_test_mask = non_train_split.index.get_level_values('local_time') <= val_cutoff
 
     return non_train_split.loc[non_test_mask]
 
