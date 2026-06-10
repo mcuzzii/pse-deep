@@ -151,6 +151,8 @@ class AttentionBlock(nn.Module):
                 torch.ones(sz, sz, dtype=torch.bool),
                 diagonal=1
             )
+        
+        print(mask_y, safe_mask_y)
 
         attn_out, attn_weights = self.attention(
             norm_x, norm_y, norm_y,

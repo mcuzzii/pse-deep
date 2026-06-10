@@ -378,6 +378,7 @@ class Experiment:
                         global_step += 1
                         pbar.update(1)
                         continue
+                    
                     elif resume_step and global_step >= resume_step:
                         resume_step = None  # done catching up
 
