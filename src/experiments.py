@@ -14,47 +14,47 @@ sys.path.append(str(Path.cwd() / 'src'))
 from models import StockTransformer
 from processing import DataSource, get_stocks, get_text_window
 
-def create_sequences(arr, window_size):
-    sequences = []
-    num_samples = len(arr)
-    for i in range(num_samples - window_size + 1):
-        sequences.append(arr[i:i + window_size])
-    return np.array(sequences)
-
 def collate_fn(batch):
     args = list(zip(*batch))
     n = len(args)
 
     for i, arg in enumerate(args[:n]):
         lengths = torch.tensor([len(f) for f in arg])
+
         if not (lengths == lengths[0]).all():
             args[i] = pad_sequence(arg, batch_first=True, padding_value=0.0)
-            B, L_max = args[i].shape[:2]
+
+            _, L_max = args[i].shape[:2]
             arg_mask = torch.arange(L_max).unsqueeze(0) < lengths.unsqueeze(1)
+
             args.insert(-1, arg_mask)
+        
         else:
             args[i] = torch.stack(list(arg))
 
     return tuple(args)
 
 class StockTransformerDataset(Dataset):
-    def __init__(self, path):
+    def __init__(self, path, stock_lookback):
         self.stock_data = torch.load(path)
+        self.stock_lookback = stock_lookback
     
     def __len__(self):
-        return self.stock_data['features'].shape[0]
+        return self.stock_data['features'].shape[0] - self.stock_lookback + 1
     
     def __getitem__(self, idx):
-        t = torch.from_numpy(self.stock_data['timestamps'][idx].astype(np.float32))
-        x = torch.from_numpy(self.stock_data['features'][idx].astype(np.float32))
-        y = torch.from_numpy(self.stock_data['target'][idx].astype(np.float32))
-        m = torch.from_numpy(self.stock_data['mask'][idx].astype(np.float32))
+        x = self.stock_data['features'][:, idx:idx + self.stock_lookback - 1, :]
+        y = self.stock_data['target'][:, :, idx]
+        t = self.stock_data['timestamps'][:, idx:idx + self.stock_lookback - 1]
+        m = self.stock_data['mask'][:, idx:idx + self.stock_lookback - 1]
+
+        print(f'Shapes: X: {x.shape}; y: {y.shape}; ts: {t.shape}; m: {m.shape}')
 
         return t, x, m, y
 
 class StockNewsTransformerDataset(StockTransformerDataset):
-    def __init__(self, stock_path, news_path, pred_horizon, time_vec_input):
-        super().__init__(stock_path)
+    def __init__(self, stock_path, news_path, stock_lookback, pred_horizon, time_vec_input):
+        super().__init__(stock_path, stock_lookback)
         self.news_data = torch.load(news_path)
 
         self.pred_horizon = pred_horizon
@@ -73,6 +73,8 @@ class StockNewsTransformerDataset(StockTransformerDataset):
         embeddings = self.news_data['embeddings']
         timestamps = self.news_data['timestamps']
         window = (cutoff_scaled < timestamps) & (timestamps <= t[-1])
+
+        print(f'Shapes: news_e: {embeddings[window].shape}; news_t: {timestamps[window].shape}')
 
         return t, timestamps[window], x, embeddings[window], m, y
 
@@ -169,15 +171,6 @@ class Experiment:
             stock_df.create_df(file_name=f'{stock}_{self.pred_horizon}m')
             stock_df.df = stock_df.df.sort_index()
             self.stock_dfs.append(stock_df)
-        
-        train_size = self._get_train_split(self.stock_dfs[0].df).shape[0] - self.stock_lookback + 1
-        print(f'Train cutoff: {self.train_cutoff}; no. of training sequences: {train_size}')
-
-        val_size = self._get_val_split(self.stock_dfs[0].df).shape[0] - self.stock_lookback + 1
-        print(f'Validation set cutoff: {self.val_cutoff}; no. of validation sequences: {val_size}')
-
-        test_size = self._get_test_split(self.stock_dfs[0].df).shape[0] - self.stock_lookback + 1
-        print(f'No. of test sequences: {test_size}\n')
 
         for path, split_func in zip(
             [train_path, val_path, test_path],
@@ -194,13 +187,12 @@ class Experiment:
             for stock_df in self.stock_dfs:
 
                 split = split_func(stock_df.df)
-
                 target = split[stock_df.target].iloc[self.stock_lookback - 1:].values
-                
-                stock_X = create_sequences(split[stock_df.features].values, self.stock_lookback)
+
+                stock_X = split[stock_df.features].values
                 stock_y = np.array([target, 1 - target])
-                stock_ts = create_sequences(split[stock_df.time_vec_input].values, self.stock_lookback)
-                stock_m = create_sequences(split[stock_df.no_activity_col].values, self.stock_lookback)
+                stock_ts = split[stock_df.time_vec_input].values
+                stock_m = split[stock_df.no_activity_col].values
                 
                 tensors['features'].append(stock_X)
                 tensors['target'].append(stock_y)
@@ -215,10 +207,10 @@ class Experiment:
                     f'- Target: {stock_y.shape}.\n\n'
                 )
 
-            tensors['features'] = np.transpose(np.array(tensors['features']), (1, 0, 2, 3))
-            tensors['target'] = np.transpose(np.array(tensors['target']), (2, 0, 1))
-            tensors['timestamps'] = np.transpose(np.array(tensors['timestamps']), (1, 0, 2))
-            tensors['mask'] = np.transpose(np.array(tensors['mask']), (1, 0, 2))
+            tensors['features'] = torch.from_numpy(np.array(tensors['features'], dtype=np.float32))         # (30, B, 100)
+            tensors['target'] = torch.from_numpy(np.array(tensors['target'], dtype=np.float32))          # (30, 2, B)
+            tensors['timestamps'] = torch.from_numpy(np.array(tensors['timestamps'], dtype=np.float32))     # (30, B)
+            tensors['mask'] = torch.from_numpy(np.array(tensors['mask'], dtype=np.float32))                 # (30, B)
 
             print(
                 'Final dataset sizes:\n'
@@ -248,8 +240,8 @@ class Experiment:
         ):
             split = split_func(news_df.df)
 
-            embeddings = np.stack(split['embeddings'].values)
-            timestamps = split['elapsed_time'].values
+            embeddings = torch.from_numpy(np.stack(split['embeddings'].values).astype(np.float32))
+            timestamps = torch.from_numpy(split['elapsed_time'].values.astype(np.float32))
 
             torch.save({
                 'embeddings': embeddings,
@@ -277,10 +269,13 @@ class Experiment:
 
             if self.news:
                 news_path = self.data_path / f'news_transformer_{self.pred_horizon}m_{split}.pt'
-                return StockNewsTransformerDataset(stock_path, news_path, self.pred_horizon, self.time_vec_input)
+                return StockNewsTransformerDataset(
+                    stock_path, news_path, self.stock_lookback,
+                    self.pred_horizon, self.time_vec_input
+                )
             
             else:
-                return StockTransformerDataset(stock_path)
+                return StockTransformerDataset(stock_path, self.stock_lookback)
     
     def train(
         self,
@@ -315,7 +310,7 @@ class Experiment:
             for *args, target in loaders['train']:
                 target = target.argmax(dim=-1)       # (B, 30, 2) → (B, 30)
 
-                target   = target.to(device)
+                target = target.to(device)
                 for arg in args:
                     arg = arg.to(device)
 
