@@ -35,4 +35,4 @@ import joblib
 import torch
 
 d = joblib.load('data/processed/ac_30m.joblib')
-print(torch.from_numpy(d.df['elapsed_time'].values.astype(np.float32)))
+print(torch.from_numpy(d.df['elapsed_time'].values))
