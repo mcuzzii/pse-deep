@@ -4,8 +4,9 @@ import torch.nn as nn
 from torch.utils.data import Dataset
 from torch.utils.data import DataLoader
 from torch.nn.utils.rnn import pad_sequence
-import os
+from tqdm import tqdm
 import sys
+import signal
 from pathlib import Path
 
 # Add the 'src' directory to the path
@@ -34,6 +35,30 @@ def collate_fn(batch):
 
     return tuple(args)
 
+def _run_validation(model, loaders, device, criterion):
+    model.eval()
+    total_val_loss = 0
+
+    with tqdm(total=len(loaders['val']), desc="Validation") as pbar:
+
+        with torch.no_grad():
+            for *args, target in loaders['val']:
+                target = target.argmax(dim=-1).to(device)
+
+                args = [a.to(device) for a in args]
+
+                logits = model(*args)[0]
+                logits = logits.permute(0, 2, 1)
+
+                loss = criterion(logits, target)
+                total_val_loss += loss.item()
+
+                pbar.update(1)
+    
+    model.train()
+
+    return total_val_loss / len(loaders['val'])
+
 class StockTransformerDataset(Dataset):
     def __init__(self, path, stock_lookback):
         self.stock_data = torch.load(path)
@@ -48,7 +73,7 @@ class StockTransformerDataset(Dataset):
         t = self.stock_data['timestamps'][:, idx:idx + self.stock_lookback]
         m = self.stock_data['mask'][:, idx:idx + self.stock_lookback]
 
-        print(f'Shapes: X: {x.shape}; y: {y.shape}; ts: {t.shape}; m: {m.shape}')
+        # print(f'Shapes: X: {x.shape}; y: {y.shape}; ts: {t.shape}; m: {m.shape}')
 
         return t, x, m, y
 
@@ -74,7 +99,7 @@ class StockNewsTransformerDataset(StockTransformerDataset):
         timestamps = self.news_data['timestamps']
         window = (cutoff_scaled < timestamps) & (timestamps <= t[-1])
 
-        print(f'Shapes: news_e: {embeddings[window].shape}; news_t: {timestamps[window].shape}')
+        # print(f'Shapes: news_e: {embeddings[window].shape}; news_t: {timestamps[window].shape}')
 
         return t, timestamps[window], x, embeddings[window], m, y
 
@@ -282,7 +307,10 @@ class Experiment:
         num_epochs,
         batch_size=32,
         lr=1e-3,
+        val_every=500,
+        ckpt_path=None
     ):
+        path = ckpt_path if ckpt_path else self.experiment_path / 'ckpt.pt'
 
         device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
@@ -302,27 +330,110 @@ class Experiment:
         optimizer = torch.optim.Adam(model.parameters(), lr=lr)
         criterion = nn.CrossEntropyLoss()
 
+        global_step = 0
+        total_loss = 0
+        train_losses = []
+        val_losses = []
+
+        resume_step = None
+        if path.exists():
+            checkpoint = torch.load(ckpt_path, map_location=device)
+
+            model.load_state_dict(checkpoint["model"])
+            optimizer.load_state_dict(checkpoint["optimizer"])
+
+            for state in optimizer.state.values():
+                for k, v in state.items():
+                    if torch.is_tensor(v):
+                        state[k] = v.to(device)
+            
+            resume_step = checkpoint["global_step"]
+            train_losses = checkpoint["train_losses"]
+            val_losses = checkpoint["val_losses"]
+            total_loss = checkpoint["total_loss"]
+
+        pbar = tqdm(total=len(loaders['train']) * num_epochs, desc="Training")
+
+        interrupted = False
+
+        def handler(sig, frame):
+            nonlocal interrupted
+            interrupted = True
+            print("Interrupt received. Saving checkpoint...")
+
+        signal.signal(signal.SIGINT, handler)
+        signal.signal(signal.SIGTERM, handler)
+
         # Training loop
-        for epoch in range(num_epochs):
-            model.train()
-            total_loss = 0
+        try:
+            for epoch in range(num_epochs):
+                model.train()
 
-            for *args, target in loaders['train']:
-                target = target.argmax(dim=-1)       # (B, 30, 2) → (B, 30)
+                for *args, target in loaders['train']:
 
-                target = target.to(device)
-                for arg in args:
-                    arg = arg.to(device)
+                    if interrupted:
+                        raise KeyboardInterrupt
+                    
+                    if resume_step and global_step < resume_step:
+                        global_step += 1
+                        pbar.update(1)
+                        continue
+                    elif resume_step and global_step >= resume_step:
+                        resume_step = None  # done catching up
 
-                optimizer.zero_grad()
-                logits = model(*args)       # (B, 30, 2)
-                logits = logits.permute(0, 2, 1)     # (B, 2, 30)
+                    target = target.argmax(dim=-1)       # (B, 30, 2) → (B, 30)
 
-                loss = criterion(logits, target)     # target (B, 30)
-                loss.backward()
-                optimizer.step()
+                    target = target.to(device)
+                    args = [a.to(device) for a in args]
 
-                total_loss += loss.item()
+                    optimizer.zero_grad()
+                    logits = model(*args)[0]       # (B, 30, 2)
+                    logits = logits.permute(0, 2, 1)     # (B, 2, 30)
 
-            avg_loss = total_loss / len(loaders['train'])
-            print(f"Epoch {epoch + 1}/{num_epochs} train loss: {avg_loss:.4f}")
+                    loss = criterion(logits, target)     # target (B, 30)
+                    loss.backward()
+                    optimizer.step()
+
+                    total_loss += loss.item()
+
+                    global_step += 1
+
+                    pbar.update(1)
+                    pbar.set_postfix(loss=loss.item())
+
+                    if global_step % val_every == 0:
+                        val_loss = _run_validation(model, loaders, device, criterion)
+                        val_losses.append(val_loss)
+
+                        train_loss = total_loss / val_every
+                        total_loss = 0
+                        train_losses.append(train_loss)
+
+                        pbar.set_postfix(train_loss=loss.item(), val_loss=val_loss)
+
+                        # optional checkpoint on validation
+                        torch.save({
+                            "model": model.state_dict(),
+                            "optimizer": optimizer.state_dict(),
+                            "global_step": global_step,
+                            "train_losses": train_losses,
+                            "val_losses": val_losses,
+                            "total_loss": total_loss
+                        }, path)
+                
+                print(f"Epoch {epoch + 1}/{num_epochs} ({len(loaders['train']) * epoch} batches).")
+
+        except KeyboardInterrupt:
+            pass
+
+        finally:
+            torch.save({
+                "model": model.state_dict(),
+                "optimizer": optimizer.state_dict(),
+                "global_step": global_step,
+                "train_losses": train_losses,
+                "val_losses": val_losses,
+                "total_loss": total_loss
+            }, path)
+            
+            pbar.close()

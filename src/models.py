@@ -147,12 +147,17 @@ class AttentionBlock(nn.Module):
         attn_mask = None
         if self.is_causal:
             sz = x.size(1)
-            attn_mask = torch.triu(torch.full((sz, sz), float('-inf'), device=x.device), diagonal=1)
+            attn_mask = torch.triu(
+                torch.ones(sz, sz, dtype=torch.bool),
+                diagonal=1
+            )
 
-        attn_out, _ = self.attention(
+        attn_out, attn_weights = self.attention(
             norm_x, norm_y, norm_y,
             key_padding_mask=safe_mask_y,
-            attn_mask=attn_mask
+            attn_mask=attn_mask,
+            need_weights=True,
+            average_attn_weights=False
         )
         attn_out = self.dropout(attn_out)
 
@@ -164,7 +169,7 @@ class AttentionBlock(nn.Module):
         
         out = x + attn_out
 
-        return out.view(orig_shape)
+        return out.view(orig_shape), attn_weights.to(torch.float32)
 
 class FeedForward(nn.Module):
     def __init__(self, embedding_dim, expansion=4, dropout=0.1):
@@ -196,11 +201,10 @@ class TransformerLayer(nn.Module):
         self.attn_blk = AttentionBlock(embedding_dim, num_heads, dropout, is_causal)
         self.ffnn = FeedForward(embedding_dim, expansion, dropout)
 
-
     def forward(self, x, y, mask_x=None, mask_y=None):
-        x = self.attn_blk(x, y, mask_x, mask_y)
+        x, attn_weights = self.attn_blk(x, y, mask_x, mask_y)
         x = self.ffnn(x, mask_x)
-        return x
+        return x, attn_weights
 
 class TransformerLayers(nn.Module):
     def __init__(self, embedding_dim, num_heads, num_layers=1, expansion=4, dropout=0.1, is_causal=False):
@@ -212,9 +216,12 @@ class TransformerLayers(nn.Module):
         ])
     
     def forward(self, x, y, mask_x=None, mask_y=None):
+        attn_blocks = []
         for layer in self.transformer:
-            x = layer(x, y, mask_x, mask_y)
-        return x
+            x, attn_weights = layer(x, y, mask_x, mask_y)
+            attn_blocks.append(attn_weights)
+        
+        return x, torch.stack(attn_blocks, dim=0)
 
 class StockTransformer(nn.Module):
     def __init__(
@@ -244,13 +251,13 @@ class StockTransformer(nn.Module):
     
     def time_series_transform(self, x, t, mask):
         x = self.fin_embed(x, t)
-        x = self.time_series_transformer(x, x, mask, mask)
-        return x
+        x, attn_weights = self.time_series_transformer(x, x, mask, mask)
+        return x, attn_weights
     
     def inter_stock_transform(self, x, mask):
         x = x.transpose(-3, -2).contiguous() # Becomes [B, 60, 30, 512]
         perm_mask = mask.transpose(-2, -1).contiguous().bool() if mask is not None else None
-        x = self.inter_stock_transformer(x, x, perm_mask, perm_mask)
+        x, attn_weights = self.inter_stock_transformer(x, x, perm_mask, perm_mask)
 
         if mask is not None:
             # [B, 30, 60] -> [B, 60, 30]
@@ -283,11 +290,12 @@ class StockTransformer(nn.Module):
 
         out = self.projection(last_timestamp) # [B, 30, 2]
 
-        return out
+        return out, attn_weights
     
     def forward(self, t, x, mask):
-        x = self.time_series_transform(x, t, mask)
-        return self.inter_stock_transform(x, mask)
+        x, tst_attn_weights = self.time_series_transform(x, t, mask)
+        x, ist_attn_weights = self.inter_stock_transform(x, mask)
+        return x, tst_attn_weights, ist_attn_weights
 
 class NewsEmbedding(nn.Module):
     def __init__(self, embedding_dim, temporal_embedding_dim):
@@ -371,12 +379,15 @@ class StockNewsTransformer(StockTransformer):
         num_stocks = x.size(1)
         news = news.expand(-1, num_stocks, -1, -1) # (B, 1, K, D) -> (B, 30, K, D)
 
-        return self.news_fusion_layer(x, news, x_mask)
+        x, attn_weights = self.news_fusion_layer(x, news, x_mask)
+
+        return x, attn_weights
     
     def forward(self, t, t_news, x, news, x_mask, news_mask):
-        x = self.time_series_transform(x, t, x_mask)
-        x = self.news_fusion_transform(x, news, t_news, x_mask, news_mask)
-        return self.inter_stock_transform(x, x_mask)
+        x, tst_attn_weights = self.time_series_transform(x, t, x_mask)
+        x, nft_attn_weights = self.news_fusion_transform(x, news, t_news, x_mask, news_mask)
+        x, ist_attn_weights = self.inter_stock_transform(x, x_mask)
+        return x, tst_attn_weights, nft_attn_weights, ist_attn_weights
 
 class SigmaAnnealer:
     def __init__(self, model: StockNewsTransformer, sigma_start=0.05, sigma_end=1e-4, num_epochs=50):
