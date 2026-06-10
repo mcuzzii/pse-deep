@@ -32,6 +32,7 @@ import gc
 #print(d['timestamps'][0, 1])
 
 import joblib
+import torch
 
 d = joblib.load('data/processed/ac_30m.joblib')
-print(d.df['elapsed_time'])
+print(torch.from_numpy(d.df['elapsed_time'].values.astype(np.float32)))
