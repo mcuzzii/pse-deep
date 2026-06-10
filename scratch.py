@@ -24,5 +24,5 @@ import gc
 #    del stock_data
 #    gc.collect()
 
-data = joblib.load('ac_30m.joblib')
+data = joblib.load('data/processed/ac_30m.joblib')
 print(data.df.columns)
