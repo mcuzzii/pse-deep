@@ -29,4 +29,4 @@ import torch
 d = torch.load('experiments/data/stock_transformer_30m_train.pt', map_location=torch.device('cpu'))
 for a in d:
     if torch.is_tensor(d[a]):
-        print(torch.isnan(d[a]).any())
+        print(d[a])
