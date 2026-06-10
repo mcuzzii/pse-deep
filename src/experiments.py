@@ -1,6 +1,9 @@
 import numpy as np
 import torch
+import torch.nn as nn
 from torch.utils.data import Dataset
+from torch.utils.data import DataLoader
+from torch.nn.utils.rnn import pad_sequence
 import os
 import sys
 from pathlib import Path
@@ -11,23 +14,7 @@ from zarr.storage import ZipStore
 sys.path.append(str(Path.cwd() / 'src'))
 
 from models import StockTransformer
-from processing import DataSource, get_stocks
-
-def get_train_split(df, train_cutoff):
-    return df.loc[df.index.get_level_values('local_time') <= train_cutoff]
-
-def get_val_split(df, train_cutoff, val_cutoff, window_size):
-    last_train_idx = df.index.get_loc(train_cutoff)
-
-    non_train_split = df.iloc[last_train_idx - window_size + 2:]
-    non_test_mask = non_train_split.index.get_level_values('local_time') <= val_cutoff
-
-    return non_train_split.loc[non_test_mask]
-
-def get_test_split(df, val_cutoff, window_size):
-    last_val_idx = df.index.get_loc(val_cutoff)
-
-    return df.iloc[last_val_idx - window_size + 2:]
+from processing import DataSource, get_stocks, get_text_window
 
 def create_sequences(arr, window_size):
     sequences = []
@@ -35,6 +22,61 @@ def create_sequences(arr, window_size):
     for i in range(num_samples - window_size + 1):
         sequences.append(arr[i:i + window_size])
     return np.array(sequences)
+
+def collate_fn(batch):
+    args = list(zip(*batch))
+    n = len(args)
+
+    for i, arg in enumerate(args[:n]):
+        lengths = torch.tensor([len(f) for f in arg])
+        if not (lengths == lengths[0]).all():
+            args[i] = pad_sequence(arg, batch_first=True, padding_value=0.0)
+            B, L_max = args[i].shape[:2]
+            arg_mask = torch.arange(L_max).unsqueeze(0) < lengths.unsqueeze(1)
+            args.insert(-1, arg_mask)
+        else:
+            args[i] = torch.stack(list(arg))
+
+    return tuple(args)
+
+class StockTransformerDataset(Dataset):
+    def __init__(self, path):
+        self.stock_data = zarr.open_group(path, mode='r')
+    
+    def __len__(self):
+        return self.stock_data['features'].shape[0]
+    
+    def __getitem__(self, idx):
+        t = torch.from_numpy(self.stock_data['timestamps'][idx].astype(np.float32))
+        x = torch.from_numpy(self.stock_data['features'][idx].astype(np.float32))
+        y = torch.from_numpy(self.stock_data['target'][idx].astype(np.float32))
+        m = torch.from_numpy(self.stock_data['mask'][idx].astype(np.float32))
+
+        return t, x, m, y
+
+class StockNewsTransformerDataset(StockTransformerDataset):
+    def __init__(self, stock_path, news_path, pred_horizon, time_vec_input):
+        super().__init__(stock_path)
+        self.news_data = zarr.open_group(news_path, mode='r')
+
+        self.pred_horizon = pred_horizon
+        self.time_vec_input = time_vec_input
+    
+    def __len__(self):
+        self.stock_data['features'].shape[0]
+    
+    def __getitem__(self, idx):
+        t, x, m, y = super().__getitem__(idx)
+
+        idx = (self.time_vec_input - t[-1]).abs().idxmin()
+        cutoff, _ = get_text_window(idx, self.time_vec_input.index, self.pred_horizon)
+        cutoff_scaled = self.time_vec_input[cutoff]
+
+        embeddings = self.news_data['embeddings']
+        timestamps = self.news_data['timestamps']
+        window = (cutoff_scaled < timestamps) & (timestamps <= t[-1])
+
+        return t, timestamps[window], x, embeddings[window], m, y
 
 class Experiment:
     def __init__(
@@ -54,6 +96,32 @@ class Experiment:
         self.processed_path = Path('data/processed')
         self.experiment_path = Path(f'experiments/{experiment_name}')
         self.experiment_path.mkdir(parents=True, exist_ok=True)
+        self.data_path = Path('experiments/data')
+        self.data_path.mkdir(parents=True, exist_ok=True)
+
+        reference_df = DataSource()
+        reference_df.create_df(f'ac_{self.pred_horizon}m')
+
+        self.filtered_date_times = reference_df.filtered_date_times
+        self.train_cutoff = reference_df.train_cutoff
+        self.val_cutoff = self.filtered_date_times[int(0.9 * len(self.filtered_date_times))]
+        self.time_vec_input = reference_df.df['time_vec_input']
+    
+    def _get_train_split(self, df):
+        return df.loc[df.index.get_level_values('local_time') <= self.train_cutoff]
+
+    def _get_val_split(self, df):
+        last_train_idx = df.index.get_loc(self.train_cutoff)
+
+        non_train_split = df.iloc[last_train_idx - self.window_size + 2:]
+        non_test_mask = non_train_split.index.get_level_values('local_time') <= self.val_cutoff
+
+        return non_train_split.loc[non_test_mask]
+
+    def _get_test_split(self, df):
+        last_val_idx = df.index.get_loc(self.val_cutoff)
+
+        return df.iloc[last_val_idx - self.window_size + 2:]
     
     def build_model(
         self,
@@ -87,9 +155,9 @@ class Experiment:
     
     def _build_stock_transformer_data(self, force=False):
 
-        train_path = self.data_path / f'stock_{self.pred_horizon}m_train.zarr.zip'
-        val_path = self.data_path / f'stock_{self.pred_horizon}m_val.zarr.zip'
-        test_path = self.data_path / f'stock_{self.pred_horizon}m_test.zarr.zip'
+        train_path = self.data_path / f'stock_transformer_{self.pred_horizon}m_train.zarr.zip'
+        val_path = self.data_path / f'stock_transformer_{self.pred_horizon}m_val.zarr.zip'
+        test_path = self.data_path / f'stock_transformer_{self.pred_horizon}m_test.zarr.zip'
 
         if train_path.exists() and val_path.exists() and test_path.exists() and not force:
             return
@@ -104,31 +172,13 @@ class Experiment:
             stock_df.df = stock_df.df.sort_index()
             self.stock_dfs.append(stock_df)
         
-        train_cutoff = self.stock_dfs[0].train_cutoff
-        train_size = get_train_split(
-            self.stock_dfs[0].df,
-            train_cutoff
-        ).shape[0] - self.stock_lookback + 1
+        train_size = self._get_train_split(self.stock_dfs[0].df).shape[0] - self.stock_lookback + 1
+        print(f'Train cutoff: {self.train_cutoff}; no. of training sequences: {train_size}')
 
-        print(f'Train cutoff: {train_cutoff}; no. of training sequences: {train_size}')
+        val_size = self._get_val_split(self.stock_dfs[0].df).shape[0] - self.stock_lookback + 1
+        print(f'Validation set cutoff: {self.val_cutoff}; no. of validation sequences: {val_size}')
 
-        filtered_date_times = self.stock_dfs[0].filtered_date_times
-        val_cutoff = filtered_date_times[int(0.9 * len(filtered_date_times))]
-        val_size = get_val_split(
-            self.stock_dfs[0].df,
-            train_cutoff,
-            val_cutoff,
-            self.stock_lookback
-        ).shape[0] - self.stock_lookback + 1
-
-        print(f'Validation set cutoff: {val_cutoff}; no. of validation sequences: {val_size}')
-
-        test_size = get_test_split(
-            self.stock_dfs[0].df,
-            val_cutoff,
-            self.stock_lookback
-        ).shape[0] - self.stock_lookback + 1
-
+        test_size = self._get_test_split(self.stock_dfs[0].df).shape[0] - self.stock_lookback + 1
         print(f'No. of test sequences: {test_size}')
 
         chunk_size = 500
@@ -158,11 +208,11 @@ class Experiment:
 
                     split = None
                     if path == train_path:
-                        split = get_train_split(stock_df.df, train_cutoff)
+                        split = self._get_train_split(stock_df.df)
                     elif path == val_path:
-                        split = get_val_split(stock_df.df, train_cutoff, val_cutoff, self.stock_lookback)
+                        split = self._get_val_split(stock_df.df)
                     elif path == test_path:
-                        split = get_test_split(stock_df.df, val_cutoff, self.stock_lookback)
+                        split = self._get_test_split(stock_df.df)
                     
                     chunk_X.append(create_sequences(
                         split[stock_df.features].iloc[i:end_idx + self.stock_lookback - 1].values,
@@ -196,9 +246,9 @@ class Experiment:
     
     def _build_news_transformer_data(self, force=False):
 
-        train_path = self.data_path / f'news_{self.pred_horizon}m_train.zarr.zip'
-        val_path = self.data_path / f'news_{self.pred_horizon}m_val.zarr.zip'
-        test_path = self.data_path / f'news_{self.pred_horizon}m_test.zarr.zip'
+        train_path = self.data_path / f'news_transformer_{self.pred_horizon}m_train.zarr.zip'
+        val_path = self.data_path / f'news_transformer_{self.pred_horizon}m_val.zarr.zip'
+        test_path = self.data_path / f'news_transformer_{self.pred_horizon}m_test.zarr.zip'
 
         if train_path.exists() and val_path.exists() and test_path.exists() and not force:
             return
@@ -206,20 +256,9 @@ class Experiment:
         news_df = DataSource()
         news_df.create_df('news')
 
-        reference_df = DataSource()
-        reference_df.create_df(f'ac_{self.pred_horizon}m')
-
-        filtered_date_times = reference_df.filtered_date_times
-        train_cutoff = reference_df.train_cutoff
-        val_cutoff = filtered_date_times[int(0.9 * len(filtered_date_times))]
-
-        news_train = get_train_split(news_df.df, train_cutoff)
-        news_val = get_val_split(
-            news_df.df, train_cutoff, val_cutoff, self.stock_lookback
-        )
-        news_test = get_test_split(
-            news_df.df, val_cutoff, self.stock_lookback
-        )
+        news_train = self._get_train_split(news_df.df)
+        news_val = self._get_val_split(news_df.df)
+        news_test = self._get_test_split(news_df.df)
 
         train_arr = np.stack(news_train['embeddings'].values)
         train_t = news_train['time_vec_input'].values
@@ -241,11 +280,66 @@ class Experiment:
         z['timestamps'] = test_t
     
     def build_dataset(self, force=False):
-        self.data_path = Path('experiments/data')
-        self.data_path.mkdir(parents=True, exist_ok=True)
 
         if self.transformer:
             self._build_stock_transformer_data(force)
 
             if self.news:
                 self._build_news_transformer_data(force)
+    
+    def _make_dataset(self, split):
+
+        if self.transformer:
+            stock_path = self.data_path / f'stock_transformer_{self.pred_horizon}m_{split}.zarr.zip'
+
+            if self.news:
+                news_path = self.data_path / f'news_transformer_{self.pred_horizon}m_{split}.zarr.zip'
+                return StockNewsTransformerDataset(stock_path, news_path, self.pred_horizon, self.time_vec_input)
+            
+            else:
+                return StockTransformerDataset(stock_path)
+    
+    def train(self, num_epochs):
+
+        device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+
+        loaders = {
+            split: DataLoader(
+                self._make_dataset(split),
+                batch_size=32,
+                shuffle=True,
+                num_workers=4,
+                pin_memory=True,
+                collate_fn=collate_fn
+            )
+            for split in ('train', 'val', 'test')
+        }
+
+        model = self.model.to(device)
+        optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
+        criterion = nn.CrossEntropyLoss()
+
+        # Training loop
+        for epoch in range(num_epochs):
+            model.train()
+            total_loss = 0
+
+            for features, target, mask in loaders['train']:
+                target = target.argmax(dim=-1)       # (B, 30, 2) → (B, 30)
+
+                features = features.to(device)
+                target   = target.to(device)
+                mask     = mask.to(device)
+
+                optimizer.zero_grad()
+                logits = model(features, mask)       # (B, 30, 2)
+                logits = logits.permute(0, 2, 1)     # (B, 2, 30)
+
+                loss = criterion(logits, target)     # target (B, 30)
+                loss.backward()
+                optimizer.step()
+
+                total_loss += loss.item()
+
+            avg_loss = total_loss / len(loaders['train'])
+            print(f"Epoch {epoch+1}/{num_epochs}  loss: {avg_loss:.4f}")

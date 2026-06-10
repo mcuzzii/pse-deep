@@ -96,7 +96,9 @@ def get_features(df):
 
     return features, continuous_cols, binary_cols
 
-def get_text_window(timestamp, T, min_hours=24, min_trading_minutes=270):
+def get_text_window(timestamp, T, pred_horizon, min_hours=24):
+
+    min_trading_minutes = 270 - 2 * pred_horizon
 
     cutoff_24h = timestamp - pd.Timedelta(hours=min_hours)
     past_trading_minutes = T[T <= timestamp]
@@ -1290,7 +1292,7 @@ class DataSource:
         news_df = joblib.load(self.processed_path / 'news.joblib')
 
         cutoffs = pd.Series(
-            [get_text_window(ts, self.filtered_date_times)[0] for ts in self.filtered_date_times],
+            [get_text_window(ts, self.filtered_date_times, self._target)[0] for ts in self.filtered_date_times],
             index=self.filtered_date_times
         )
 
