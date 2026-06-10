@@ -43,10 +43,10 @@ class StockTransformerDataset(Dataset):
         return self.stock_data['features'].shape[1] - self.stock_lookback + 1
     
     def __getitem__(self, idx):
-        x = self.stock_data['features'][:, idx:idx + self.stock_lookback - 1, :]
+        x = self.stock_data['features'][:, idx:idx + self.stock_lookback, :]
         y = self.stock_data['target'][:, :, idx]
-        t = self.stock_data['timestamps'][:, idx:idx + self.stock_lookback - 1]
-        m = self.stock_data['mask'][:, idx:idx + self.stock_lookback - 1]
+        t = self.stock_data['timestamps'][:, idx:idx + self.stock_lookback]
+        m = self.stock_data['mask'][:, idx:idx + self.stock_lookback]
 
         print(f'Shapes: X: {x.shape}; y: {y.shape}; ts: {t.shape}; m: {m.shape}')
 
