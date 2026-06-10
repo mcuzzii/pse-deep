@@ -42,7 +42,7 @@ def collate_fn(batch):
 class StockTransformerDataset(Dataset):
     def __init__(self, path):
         store = ZipStore(path, mode='r')
-        self.stock_data = zarr.open_group(store=store)
+        self.stock_data = zarr.open_group(store=store, mode='r')
     
     def __len__(self):
         return self.stock_data['features'].shape[0]
@@ -59,7 +59,7 @@ class StockNewsTransformerDataset(StockTransformerDataset):
     def __init__(self, stock_path, news_path, pred_horizon, time_vec_input):
         super().__init__(stock_path)
         store = ZipStore(news_path, mode='r')
-        self.news_data = zarr.open_group(store=store)
+        self.news_data = zarr.open_group(store=store, mode='r')
 
         self.pred_horizon = pred_horizon
         self.time_vec_input = time_vec_input
