@@ -48,7 +48,7 @@ class StockTransformerDataset(Dataset):
         t = self.stock_data['timestamps'][:, idx:idx + self.stock_lookback]
         m = self.stock_data['mask'][:, idx:idx + self.stock_lookback]
 
-        # print(f'Shapes: X: {x.shape}; y: {y.shape}; ts: {t.shape}; m: {m.shape}')
+        print(f'Shapes: X: {x.shape}; y: {y.shape}; ts: {t.shape}; m: {m.shape}')
 
         return t, x, m, y
 
