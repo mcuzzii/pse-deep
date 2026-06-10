@@ -133,7 +133,12 @@ def main():
         stock_lookback=60
     )
     stock_transformer.build_dataset()
-    stock_transformer.build_model()
+    stock_transformer.build_model(
+        input_dim=100,
+        embedding_dim=512,
+        temporal_embedding_dim=32,
+        dropout=0.1
+    )
     stock_transformer.train(3)
 
 if __name__ == '__main__':
