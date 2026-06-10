@@ -26,6 +26,6 @@ import gc
 
 import zarr
 
-z = zarr.open('experiments/data/stock_transformer_30m_train.zarr.zip', mode='r')
+z = zarr.open('experiments/data/fixed_train.zarr.zip', mode='r')
 print(type(z))
 print(z.info)
