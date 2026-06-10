@@ -86,7 +86,7 @@ class FinEmbedding(nn.Module):
 
         self.dim = embedding_dim + temporal_embedding_dim
 
-        self.linear = nn.Linear(input_dim, self.dim - temporal_embedding_dim)
+        self.linear = nn.Linear(input_dim, embedding_dim)
         self.time_embed = Time2Vec(temporal_embedding_dim)
     
     def forward(self, x, t):
@@ -97,8 +97,8 @@ class FinEmbedding(nn.Module):
         stock_vector = self.linear(x) # (batch_size, num_stocks, window_size, embedding_dim)
         time_vector = self.time_embed(t) # (batch_size, num_stocks, window_size, temporal_embedding_dim]
 
-
-        print("after finembedding:", torch.isnan(torch.cat([stock_vector, time_vector], dim=-1)).any())
+        print(stock_vector)
+        print(time_vector)
         
         return torch.cat([stock_vector, time_vector], dim=-1)
 
@@ -171,8 +171,6 @@ class AttentionBlock(nn.Module):
             attn_out[mask_x] = 0.0
         
         out = x + attn_out
-
-        print("after attn_block:", torch.isnan(out).any())
 
         return out.view(orig_shape), attn_weights.to(torch.float32)
 
