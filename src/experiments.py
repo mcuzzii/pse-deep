@@ -317,7 +317,7 @@ class Experiment:
                 self._make_dataset(split),
                 batch_size=batch_size,
                 shuffle=True,
-                num_workers=4,
+                num_workers=2,
                 pin_memory=True,
                 collate_fn=collate_fn
             )
