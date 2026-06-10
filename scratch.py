@@ -27,6 +27,6 @@ import gc
 import torch
 
 d = torch.load('experiments/data/stock_transformer_30m_train.pt', map_location=torch.device('cpu'))
-for a in d:
-    if torch.is_tensor(d[a]):
-        print(d[a])
+
+print(d['timestamps'][0, 0])
+print(d['timestamps'][0, 1])
