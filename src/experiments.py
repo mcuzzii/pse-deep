@@ -41,7 +41,8 @@ def collate_fn(batch):
 
 class StockTransformerDataset(Dataset):
     def __init__(self, path):
-        self.stock_data = zarr.open_group(path, mode='r')
+        store = ZipStore(path, mode='r')
+        self.stock_data = zarr.open_group(store=store)
     
     def __len__(self):
         return self.stock_data['features'].shape[0]
@@ -57,7 +58,8 @@ class StockTransformerDataset(Dataset):
 class StockNewsTransformerDataset(StockTransformerDataset):
     def __init__(self, stock_path, news_path, pred_horizon, time_vec_input):
         super().__init__(stock_path)
-        self.news_data = zarr.open_group(news_path, mode='r')
+        store = ZipStore(news_path, mode='r')
+        self.news_data = zarr.open_group(store=store)
 
         self.pred_horizon = pred_horizon
         self.time_vec_input = time_vec_input
@@ -243,6 +245,8 @@ class Experiment:
                 zarr_m[i:end_idx] = chunk_m
                 
                 print(f"Saved sequences {i} to {end_idx} safely to disk.")
+
+            store.close()
     
     def _build_news_transformer_data(self, force=False):
 
