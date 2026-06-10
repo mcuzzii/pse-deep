@@ -125,7 +125,7 @@ def preprocess():
 
 def main():
     stock_transformer = Experiment(
-        experiment_name='stock_transformer',
+        experiment_name='stock_transformer_30',
         transformer=True,
         pred_30=True,
         news=False,
