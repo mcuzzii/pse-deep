@@ -40,7 +40,7 @@ class StockTransformerDataset(Dataset):
         self.stock_lookback = stock_lookback
     
     def __len__(self):
-        return self.stock_data['features'].shape[0] - self.stock_lookback + 1
+        return self.stock_data['features'].shape[1] - self.stock_lookback + 1
     
     def __getitem__(self, idx):
         x = self.stock_data['features'][:, idx:idx + self.stock_lookback - 1, :]
