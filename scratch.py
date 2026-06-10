@@ -26,7 +26,7 @@ import gc
 
 import torch
 
-d = torch.load('experiments/stock_transformer/ckpt.pt')
+d = torch.load('experiments/stock_transformer/ckpt.pt', map_location=torch.device('cpu'))
 print(d['train_losses'])
 print(d['val_losses'])
 print(d['total_loss'])
