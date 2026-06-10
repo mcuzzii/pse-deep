@@ -324,15 +324,15 @@ class Experiment:
             model.train()
             total_loss = 0
 
-            for features, target, mask in loaders['train']:
+            for *args, target in loaders['train']:
                 target = target.argmax(dim=-1)       # (B, 30, 2) → (B, 30)
 
-                features = features.to(device)
                 target   = target.to(device)
-                mask     = mask.to(device)
+                for arg in args:
+                    arg = arg.to(device)
 
                 optimizer.zero_grad()
-                logits = model(features, mask)       # (B, 30, 2)
+                logits = model(*args)       # (B, 30, 2)
                 logits = logits.permute(0, 2, 1)     # (B, 2, 30)
 
                 loss = criterion(logits, target)     # target (B, 30)
@@ -342,4 +342,4 @@ class Experiment:
                 total_loss += loss.item()
 
             avg_loss = total_loss / len(loaders['train'])
-            print(f"Epoch {epoch+1}/{num_epochs}  loss: {avg_loss:.4f}")
+            print(f"Epoch {epoch + 1}/{num_epochs} train loss: {avg_loss:.4f}")

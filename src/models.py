@@ -290,7 +290,7 @@ class StockTransformer(nn.Module):
 
         return out
     
-    def forward(self, x, t, mask):
+    def forward(self, t, x, mask):
         x = self.time_series_transform(x, t, mask)
         return self.inter_stock_transform(x, mask)
 
@@ -378,7 +378,7 @@ class StockNewsTransformer(StockTransformer):
 
         return self.news_fusion_layer(x, news, x_mask)
     
-    def forward(self, x, news, t, t_news, x_mask, news_mask):
+    def forward(self, t, t_news, x, news, x_mask, news_mask):
         x = self.time_series_transform(x, t, x_mask)
         x = self.news_fusion_transform(x, news, t_news, x_mask, news_mask)
         return self.inter_stock_transform(x, x_mask)
