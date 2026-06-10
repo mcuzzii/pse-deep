@@ -41,8 +41,8 @@ def collate_fn(batch):
 
 class StockTransformerDataset(Dataset):
     def __init__(self, path):
-        store = ZipStore(path, mode='r')
-        self.stock_data = zarr.open_group(store=store, mode='r')
+        with ZipStore(path, mode='r') as store:
+            self.stock_data = zarr.open_group(store=store, mode='r')
     
     def __len__(self):
         return self.stock_data['features'].shape[0]
@@ -58,8 +58,8 @@ class StockTransformerDataset(Dataset):
 class StockNewsTransformerDataset(StockTransformerDataset):
     def __init__(self, stock_path, news_path, pred_horizon, time_vec_input):
         super().__init__(stock_path)
-        store = ZipStore(news_path, mode='r')
-        self.news_data = zarr.open_group(store=store, mode='r')
+        with ZipStore(news_path, mode='r') as store:
+            self.news_data = zarr.open_group(store=store, mode='r')
 
         self.pred_horizon = pred_horizon
         self.time_vec_input = time_vec_input
@@ -187,66 +187,64 @@ class Experiment:
 
         for path, size in zip([train_path, val_path, test_path], [train_size, val_size, test_size]):
 
-            store = ZipStore(path, mode='w')
-            root = zarr.open_group(store=store)
+            with ZipStore(path, mode='w') as store:
+                root = zarr.open_group(store=store)
 
-            X_shape, y_shape, ts_shape, m_shape = self._get_stock_shapes(size)
-            chunk_X_shape, chunk_y_shape, chunk_ts_shape, chunk_m_shape = self._get_stock_shapes(chunk_size)
+                X_shape, y_shape, ts_shape, m_shape = self._get_stock_shapes(size)
+                chunk_X_shape, chunk_y_shape, chunk_ts_shape, chunk_m_shape = self._get_stock_shapes(chunk_size)
 
-            zarr_X = root.create_array('features', shape=X_shape, chunks=chunk_X_shape, dtype='float32')
-            zarr_y = root.create_array('targets', shape=y_shape, chunks=chunk_y_shape, dtype='float32')
-            zarr_ts = root.create_array('timestamps', shape=ts_shape, chunks=chunk_ts_shape, dtype='float32')
-            zarr_m = root.create_array('mask', shape=m_shape, chunks=chunk_m_shape, dtype='float32')
+                zarr_X = root.create_array('features', shape=X_shape, chunks=chunk_X_shape, dtype='float32')
+                zarr_y = root.create_array('targets', shape=y_shape, chunks=chunk_y_shape, dtype='float32')
+                zarr_ts = root.create_array('timestamps', shape=ts_shape, chunks=chunk_ts_shape, dtype='float32')
+                zarr_m = root.create_array('mask', shape=m_shape, chunks=chunk_m_shape, dtype='float32')
 
-            for i in range(0, size, chunk_size):
-                end_idx = min(i + chunk_size, size)
-                
-                chunk_X = []
-                chunk_y = []
-                chunk_ts = []
-                chunk_m = []
-
-                for stock_df in self.stock_dfs:
-
-                    split = None
-                    if path == train_path:
-                        split = self._get_train_split(stock_df.df)
-                    elif path == val_path:
-                        split = self._get_val_split(stock_df.df)
-                    elif path == test_path:
-                        split = self._get_test_split(stock_df.df)
+                for i in range(0, size, chunk_size):
+                    end_idx = min(i + chunk_size, size)
                     
-                    chunk_X.append(create_sequences(
-                        split[stock_df.features].iloc[i:end_idx + self.stock_lookback - 1].values,
-                        self.stock_lookback
-                    ))
+                    chunk_X = []
+                    chunk_y = []
+                    chunk_ts = []
+                    chunk_m = []
 
-                    target = split[stock_df.target].iloc[i + self.stock_lookback - 1:end_idx + self.stock_lookback - 1].values
-                    chunk_y.append(np.array([target, 1 - target]))
+                    for stock_df in self.stock_dfs:
+
+                        split = None
+                        if path == train_path:
+                            split = self._get_train_split(stock_df.df)
+                        elif path == val_path:
+                            split = self._get_val_split(stock_df.df)
+                        elif path == test_path:
+                            split = self._get_test_split(stock_df.df)
+                        
+                        chunk_X.append(create_sequences(
+                            split[stock_df.features].iloc[i:end_idx + self.stock_lookback - 1].values,
+                            self.stock_lookback
+                        ))
+
+                        target = split[stock_df.target].iloc[i + self.stock_lookback - 1:end_idx + self.stock_lookback - 1].values
+                        chunk_y.append(np.array([target, 1 - target]))
+                        
+                        chunk_ts.append(create_sequences(
+                            split[stock_df.df[stock_df.time_vec_input]].iloc[i:end_idx + self.stock_lookback - 1].values,
+                            self.stock_lookback
+                        ))
+
+                        chunk_m.append(create_sequences(
+                            split[stock_df.no_activity_col].iloc[i:end_idx + self.stock_lookback - 1].values,
+                            self.stock_lookback
+                        ))
+
+                    chunk_X = np.transpose(np.array(chunk_X), (1, 0, 2, 3))
+                    chunk_y = np.transpose(np.array(chunk_y), (2, 0, 1))
+                    chunk_ts = np.transpose(np.array(chunk_ts), (1, 0, 2))
+                    chunk_m = np.transpose(np.array(chunk_m), (1, 0, 2))
+
+                    zarr_X[i:end_idx] = chunk_X
+                    zarr_y[i:end_idx] = chunk_y
+                    zarr_ts[i:end_idx] = chunk_ts
+                    zarr_m[i:end_idx] = chunk_m
                     
-                    chunk_ts.append(create_sequences(
-                        split[stock_df.df[stock_df.time_vec_input]].iloc[i:end_idx + self.stock_lookback - 1].values,
-                        self.stock_lookback
-                    ))
-
-                    chunk_m.append(create_sequences(
-                        split[stock_df.no_activity_col].iloc[i:end_idx + self.stock_lookback - 1].values,
-                        self.stock_lookback
-                    ))
-
-                chunk_X = np.transpose(np.array(chunk_X), (1, 0, 2, 3))
-                chunk_y = np.transpose(np.array(chunk_y), (2, 0, 1))
-                chunk_ts = np.transpose(np.array(chunk_ts), (1, 0, 2))
-                chunk_m = np.transpose(np.array(chunk_m), (1, 0, 2))
-
-                zarr_X[i:end_idx] = chunk_X
-                zarr_y[i:end_idx] = chunk_y
-                zarr_ts[i:end_idx] = chunk_ts
-                zarr_m[i:end_idx] = chunk_m
-                
-                print(f"Saved sequences {i} to {end_idx} safely to disk.")
-
-            store.close()
+                    print(f"Saved sequences {i} to {end_idx} safely to disk.")
     
     def _build_news_transformer_data(self, force=False):
 
