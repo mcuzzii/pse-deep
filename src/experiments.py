@@ -105,7 +105,7 @@ class Experiment:
         self.filtered_date_times = reference_df.filtered_date_times
         self.train_cutoff = reference_df.train_cutoff
         self.val_cutoff = self.filtered_date_times[int(0.9 * len(self.filtered_date_times))]
-        self.time_vec_input = reference_df.df['time_vec_input']
+        self.time_vec_input = reference_df.df[reference_df.time_vec_input]
     
     def _get_train_split(self, df):
         return df.loc[df.index.get_level_values('local_time') <= self.train_cutoff]
@@ -223,7 +223,7 @@ class Experiment:
                     chunk_y.append(np.array([target, 1 - target]))
                     
                     chunk_ts.append(create_sequences(
-                        split[stock_df.time_vec_input].iloc[i:end_idx + self.stock_lookback - 1].values,
+                        split[stock_df.df[stock_df.time_vec_input]].iloc[i:end_idx + self.stock_lookback - 1].values,
                         self.stock_lookback
                     ))
 
@@ -261,11 +261,11 @@ class Experiment:
         news_test = self._get_test_split(news_df.df)
 
         train_arr = np.stack(news_train['embeddings'].values)
-        train_t = news_train['time_vec_input'].values
+        train_t = news_train['elapsed_time'].values
         val_arr = np.stack(news_val['embeddings'].values)
-        val_t = news_val['time_vec_input'].values
+        val_t = news_val['elapsed_time'].values
         test_arr = np.stack(news_test['embeddings'].values)
-        test_t = news_test['time_vec_input'].values
+        test_t = news_test['elapsed_time'].values
 
         z = zarr.open(train_path, mode='w')
         z['embeddings'] = train_arr
@@ -299,14 +299,19 @@ class Experiment:
             else:
                 return StockTransformerDataset(stock_path)
     
-    def train(self, num_epochs):
+    def train(
+        self,
+        num_epochs,
+        batch_size=32,
+        lr=1e-3,
+    ):
 
         device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
         loaders = {
             split: DataLoader(
                 self._make_dataset(split),
-                batch_size=32,
+                batch_size=batch_size,
                 shuffle=True,
                 num_workers=4,
                 pin_memory=True,
@@ -316,7 +321,7 @@ class Experiment:
         }
 
         model = self.model.to(device)
-        optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
+        optimizer = torch.optim.Adam(model.parameters(), lr=lr)
         criterion = nn.CrossEntropyLoss()
 
         # Training loop
