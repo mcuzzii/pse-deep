@@ -24,8 +24,9 @@ import gc
 #    del stock_data
 #    gc.collect()
 
-import zarr
+import torch
 
-z = zarr.open('experiments/data/fixed_train.zarr.zip', mode='r')
-print(type(z))
-print(z.info)
+d = torch.load('experiments/stock_transformer/ckpt.pt')
+print(d['train_losses'])
+print(d['val_losses'])
+print(d['total_loss'])
