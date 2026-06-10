@@ -225,7 +225,7 @@ class Experiment:
                         chunk_y.append(np.array([target, 1 - target]))
                         
                         chunk_ts.append(create_sequences(
-                            split[stock_df.df[stock_df.time_vec_input]].iloc[i:end_idx + self.stock_lookback - 1].values,
+                            split[stock_df.time_vec_input].iloc[i:end_idx + self.stock_lookback - 1].values,
                             self.stock_lookback
                         ))
 
