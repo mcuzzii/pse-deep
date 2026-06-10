@@ -7,8 +7,6 @@ from torch.nn.utils.rnn import pad_sequence
 import os
 import sys
 from pathlib import Path
-import zarr
-from zarr.storage import ZipStore
 
 # Add the 'src' directory to the path
 sys.path.append(str(Path.cwd() / 'src'))
@@ -41,8 +39,7 @@ def collate_fn(batch):
 
 class StockTransformerDataset(Dataset):
     def __init__(self, path):
-        with ZipStore(path, mode='r') as store:
-            self.stock_data = zarr.open_group(store=store, mode='r')
+        self.stock_data = torch.load(path)
     
     def __len__(self):
         return self.stock_data['features'].shape[0]
@@ -58,8 +55,7 @@ class StockTransformerDataset(Dataset):
 class StockNewsTransformerDataset(StockTransformerDataset):
     def __init__(self, stock_path, news_path, pred_horizon, time_vec_input):
         super().__init__(stock_path)
-        with ZipStore(news_path, mode='r') as store:
-            self.news_data = zarr.open_group(store=store, mode='r')
+        self.news_data = torch.load(news_path)
 
         self.pred_horizon = pred_horizon
         self.time_vec_input = time_vec_input
@@ -157,9 +153,9 @@ class Experiment:
     
     def _build_stock_transformer_data(self, force=False):
 
-        train_path = self.data_path / f'stock_transformer_{self.pred_horizon}m_train.zarr.zip'
-        val_path = self.data_path / f'stock_transformer_{self.pred_horizon}m_val.zarr.zip'
-        test_path = self.data_path / f'stock_transformer_{self.pred_horizon}m_test.zarr.zip'
+        train_path = self.data_path / f'stock_transformer_{self.pred_horizon}m_train.pt'
+        val_path = self.data_path / f'stock_transformer_{self.pred_horizon}m_val.pt'
+        test_path = self.data_path / f'stock_transformer_{self.pred_horizon}m_test.pt'
 
         if train_path.exists() and val_path.exists() and test_path.exists() and not force:
             return
@@ -181,76 +177,64 @@ class Experiment:
         print(f'Validation set cutoff: {self.val_cutoff}; no. of validation sequences: {val_size}')
 
         test_size = self._get_test_split(self.stock_dfs[0].df).shape[0] - self.stock_lookback + 1
-        print(f'No. of test sequences: {test_size}')
+        print(f'No. of test sequences: {test_size}\n')
 
-        chunk_size = 500
+        for path, split_func in zip(
+            [train_path, val_path, test_path],
+            [self._get_train_split, self._get_val_split, self._get_test_split]
+        ):
 
-        for path, size in zip([train_path, val_path, test_path], [train_size, val_size, test_size]):
+            tensors = {
+                'timestamps': list(),
+                'features': list(),
+                'target': list(),
+                'mask': list()
+            }
 
-            with ZipStore(path, mode='w') as store:
-                root = zarr.open_group(store=store)
+            for stock_df in self.stock_dfs:
 
-                X_shape, y_shape, ts_shape, m_shape = self._get_stock_shapes(size)
-                chunk_X_shape, chunk_y_shape, chunk_ts_shape, chunk_m_shape = self._get_stock_shapes(chunk_size)
+                split = split_func(stock_df.df)
 
-                zarr_X = root.create_array('features', shape=X_shape, chunks=chunk_X_shape, dtype='float32')
-                zarr_y = root.create_array('targets', shape=y_shape, chunks=chunk_y_shape, dtype='float32')
-                zarr_ts = root.create_array('timestamps', shape=ts_shape, chunks=chunk_ts_shape, dtype='float32')
-                zarr_m = root.create_array('mask', shape=m_shape, chunks=chunk_m_shape, dtype='float32')
+                target = split[stock_df.target].iloc[self.stock_lookback - 1:].values
+                
+                stock_X = create_sequences(split[stock_df.features].values, self.stock_lookback)
+                stock_y = np.array([target, 1 - target])
+                stock_ts = create_sequences(split[stock_df.time_vec_input].values, self.stock_lookback)
+                stock_m = create_sequences(split[stock_df.no_activity_col].values, self.stock_lookback)
+                
+                tensors['features'].append(stock_X)
+                tensors['target'].append(stock_y)
+                tensors['timestamps'].append(stock_ts)
+                tensors['mask'].append(stock_m)
 
-                for i in range(0, size, chunk_size):
-                    end_idx = min(i + chunk_size, size)
-                    
-                    chunk_X = []
-                    chunk_y = []
-                    chunk_ts = []
-                    chunk_m = []
+                print(
+                    f'Processed {stock_df.file_name} into arrays:\n'
+                    f'- Timestamps: {stock_ts.shape},\n'
+                    f'- Features: {stock_X.shape},\n'
+                    f'- Mask: {stock_m.shape},\n'
+                    f'- Target: {stock_y.shape}.\n\n'
+                )
 
-                    for stock_df in self.stock_dfs:
+            tensors['features'] = np.transpose(np.array(tensors['features']), (1, 0, 2, 3))
+            tensors['target'] = np.transpose(np.array(tensors['target']), (2, 0, 1))
+            tensors['timestamps'] = np.transpose(np.array(tensors['timestamps']), (1, 0, 2))
+            tensors['mask'] = np.transpose(np.array(tensors['mask']), (1, 0, 2))
 
-                        split = None
-                        if path == train_path:
-                            split = self._get_train_split(stock_df.df)
-                        elif path == val_path:
-                            split = self._get_val_split(stock_df.df)
-                        elif path == test_path:
-                            split = self._get_test_split(stock_df.df)
-                        
-                        chunk_X.append(create_sequences(
-                            split[stock_df.features].iloc[i:end_idx + self.stock_lookback - 1].values,
-                            self.stock_lookback
-                        ))
+            print(
+                'Final dataset sizes:\n'
+                f'- Timestamps: {tensors['timestamps'].shape},\n'
+                f'- Features: {tensors['features'].shape},\n'
+                f'- Mask: {tensors['mask'].shape},\n'
+                f'- Target: {tensors['target'].shape}.\n\n'
+            )
 
-                        target = split[stock_df.target].iloc[i + self.stock_lookback - 1:end_idx + self.stock_lookback - 1].values
-                        chunk_y.append(np.array([target, 1 - target]))
-                        
-                        chunk_ts.append(create_sequences(
-                            split[stock_df.time_vec_input].iloc[i:end_idx + self.stock_lookback - 1].values,
-                            self.stock_lookback
-                        ))
-
-                        chunk_m.append(create_sequences(
-                            split[stock_df.no_activity_col].iloc[i:end_idx + self.stock_lookback - 1].values,
-                            self.stock_lookback
-                        ))
-
-                    chunk_X = np.transpose(np.array(chunk_X), (1, 0, 2, 3))
-                    chunk_y = np.transpose(np.array(chunk_y), (2, 0, 1))
-                    chunk_ts = np.transpose(np.array(chunk_ts), (1, 0, 2))
-                    chunk_m = np.transpose(np.array(chunk_m), (1, 0, 2))
-
-                    zarr_X[i:end_idx] = chunk_X
-                    zarr_y[i:end_idx] = chunk_y
-                    zarr_ts[i:end_idx] = chunk_ts
-                    zarr_m[i:end_idx] = chunk_m
-                    
-                    print(f"Saved sequences {i} to {end_idx} safely to disk.")
+            torch.save(tensors, path)
     
     def _build_news_transformer_data(self, force=False):
 
-        train_path = self.data_path / f'news_transformer_{self.pred_horizon}m_train.zarr.zip'
-        val_path = self.data_path / f'news_transformer_{self.pred_horizon}m_val.zarr.zip'
-        test_path = self.data_path / f'news_transformer_{self.pred_horizon}m_test.zarr.zip'
+        train_path = self.data_path / f'news_transformer_{self.pred_horizon}m_train.pt'
+        val_path = self.data_path / f'news_transformer_{self.pred_horizon}m_val.pt'
+        test_path = self.data_path / f'news_transformer_{self.pred_horizon}m_test.pt'
 
         if train_path.exists() and val_path.exists() and test_path.exists() and not force:
             return
@@ -258,28 +242,25 @@ class Experiment:
         news_df = DataSource()
         news_df.create_df('news')
 
-        news_train = self._get_train_split(news_df.df)
-        news_val = self._get_val_split(news_df.df)
-        news_test = self._get_test_split(news_df.df)
+        for path, split_func in zip(
+            [train_path, val_path, test_path],
+            [self._get_train_split, self._get_val_split, self._get_test_split]
+        ):
+            split = split_func(news_df.df)
 
-        train_arr = np.stack(news_train['embeddings'].values)
-        train_t = news_train['elapsed_time'].values
-        val_arr = np.stack(news_val['embeddings'].values)
-        val_t = news_val['elapsed_time'].values
-        test_arr = np.stack(news_test['embeddings'].values)
-        test_t = news_test['elapsed_time'].values
+            embeddings = np.stack(split['embeddings'].values)
+            timestamps = split['elapsed_time'].values
 
-        z = zarr.open(train_path, mode='w')
-        z['embeddings'] = train_arr
-        z['timestamps'] = train_t
+            torch.save({
+                'embeddings': embeddings,
+                'timestamps': timestamps
+            }, path)
 
-        z = zarr.open(val_path, mode='w')
-        z['embeddings'] = val_arr
-        z['timestamps'] = val_t
-
-        z = zarr.open(test_path, mode='w')
-        z['embeddings'] = test_arr
-        z['timestamps'] = test_t
+            print(
+                f'Saved dataset to {path}:\n'
+                f'Embeddings: {embeddings.shape},\n'
+                f'Timestamps: {timestamps.shape}.\n\n'
+            )
     
     def build_dataset(self, force=False):
 
@@ -292,10 +273,10 @@ class Experiment:
     def _make_dataset(self, split):
 
         if self.transformer:
-            stock_path = self.data_path / f'stock_transformer_{self.pred_horizon}m_{split}.zarr.zip'
+            stock_path = self.data_path / f'stock_transformer_{self.pred_horizon}m_{split}.pt'
 
             if self.news:
-                news_path = self.data_path / f'news_transformer_{self.pred_horizon}m_{split}.zarr.zip'
+                news_path = self.data_path / f'news_transformer_{self.pred_horizon}m_{split}.pt'
                 return StockNewsTransformerDataset(stock_path, news_path, self.pred_horizon, self.time_vec_input)
             
             else:
