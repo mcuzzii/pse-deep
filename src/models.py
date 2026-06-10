@@ -360,28 +360,32 @@ class StockNewsTransformer(StockTransformer):
 
         self.news_embed = NewsEmbedding(embedding_dim, temporal_embedding_dim)
         self.news_selection = DynamicSelection(self.dim, K)
+        self.topk = self.news_selection.topk
 
         self.news_fusion_layer = TransformerLayers(
             self.dim, num_heads, num_layers,
             expansion, dropout, True
         )
     
-    def news_fusion_transform(self, x, news, mask):
+    def news_fusion_transform(self, x, news, t_news, x_mask, news_mask):
+        news = self.news_embed(news, t_news) # (B, N, D)
+        news = self.news_selection(news, news_mask) # (B, N, D) -> (B, K, D)
+
         news = news.unsqueeze(1) # (B, K, D) -> # (B, 1, K, D)
 
         num_stocks = x.size(1)
         news = news.expand(-1, num_stocks, -1, -1) # (B, 1, K, D) -> (B, 30, K, D)
 
-        return self.news_fusion_layer(x, news, mask)
+        return self.news_fusion_layer(x, news, x_mask)
     
-    def forward(self, x, news, t, mask):
-        x = self.time_series_transform(x, t, mask)
-        x = self.news_fusion_transform(x, news, mask)
-        return self.inter_stock_transform(x, mask)
+    def forward(self, x, news, t, t_news, x_mask, news_mask):
+        x = self.time_series_transform(x, t, x_mask)
+        x = self.news_fusion_transform(x, news, t_news, x_mask, news_mask)
+        return self.inter_stock_transform(x, x_mask)
 
 class SigmaAnnealer:
-    def __init__(self, model: DynamicSelection, sigma_start=0.05, sigma_end=1e-4, num_epochs=50):
-        self.module = model.topk
+    def __init__(self, model: StockNewsTransformer, sigma_start=0.05, sigma_end=1e-4, num_epochs=50):
+        self.topk = model.topk
         self.sigma_start = sigma_start
         self.sigma_end = sigma_end
         self.num_epochs = num_epochs
@@ -390,7 +394,7 @@ class SigmaAnnealer:
         t = epoch / self.num_epochs
         sigma = self.sigma_start * (self.sigma_end / self.sigma_start) ** t
 
-        self.module.set_sigma(sigma)
+        self.topk.set_sigma(sigma)
         return sigma
 
 if __name__ == "__main__":
