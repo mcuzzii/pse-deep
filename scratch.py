@@ -24,5 +24,8 @@ import gc
 #    del stock_data
 #    gc.collect()
 
-data = joblib.load('data/processed/ac_30m.joblib')
-print(data.df.columns)
+import zarr
+
+z = zarr.open('experiments/data/stock_transformer_30m_train.zarr.zip', mode='r')
+print(type(z))
+print(z.info)
