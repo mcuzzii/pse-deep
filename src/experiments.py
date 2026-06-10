@@ -4,6 +4,7 @@ import torch.nn as nn
 from torch.utils.data import Dataset
 from torch.utils.data import DataLoader
 from torch.nn.utils.rnn import pad_sequence
+from torch.nn.utils import clip_grad_norm_
 from tqdm import tqdm
 import sys
 import signal
@@ -113,6 +114,8 @@ class Experiment:
         social: bool = True,
         stock_lookback: int = 60
     ):
+        self.experiment_name = experiment_name
+
         self.transformer = transformer
         self.news = news
         self.social = social
@@ -310,7 +313,7 @@ class Experiment:
         val_every=500,
         ckpt_path=None
     ):
-        path = ckpt_path if ckpt_path else self.experiment_path / 'ckpt.pt'
+        path = ckpt_path if ckpt_path else self.experiment_path / f'{self.experiment_name}.pt'
 
         device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
@@ -378,7 +381,7 @@ class Experiment:
                         global_step += 1
                         pbar.update(1)
                         continue
-                    
+
                     elif resume_step and global_step >= resume_step:
                         resume_step = None  # done catching up
 
@@ -393,6 +396,7 @@ class Experiment:
 
                     loss = criterion(logits, target)     # target (B, 30)
                     loss.backward()
+                    clip_grad_norm_(model.parameters(), max_norm=1.0)
                     optimizer.step()
 
                     total_loss += loss.item()
@@ -422,7 +426,7 @@ class Experiment:
                             "total_loss": total_loss
                         }, path)
                 
-                print(f"Epoch {epoch + 1}/{num_epochs} ({len(loaders['train']) * epoch} batches).")
+                print(f"Epoch {epoch + 1}/{num_epochs} ({len(loaders['train']) * (epoch + 1)} batches).")
 
         except KeyboardInterrupt:
             pass

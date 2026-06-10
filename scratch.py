@@ -26,7 +26,7 @@ import gc
 
 import torch
 
-d = torch.load('experiments/stock_transformer/ckpt.pt', map_location=torch.device('cpu'))
-print(d['train_losses'])
-print(d['val_losses'])
-print(d['total_loss'])
+d = torch.load('experiments/data/stock_transformer_30m_train.pt', map_location=torch.device('cpu'))
+for a in d:
+    if torch.is_tensor(d[a]):
+        print(torch.isnan(d[a]).any())
