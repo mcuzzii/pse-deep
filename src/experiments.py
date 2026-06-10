@@ -203,7 +203,42 @@ class Experiment:
         if train_path.exists() and val_path.exists() and test_path.exists() and not force:
             return
         
-        
+        news_df = DataSource()
+        news_df.create_df('news')
+
+        reference_df = DataSource()
+        reference_df.create_df(f'ac_{self.pred_horizon}m')
+
+        filtered_date_times = reference_df.filtered_date_times
+        train_cutoff = reference_df.train_cutoff
+        val_cutoff = filtered_date_times[int(0.9 * len(filtered_date_times))]
+
+        news_train = get_train_split(news_df.df, train_cutoff)
+        news_val = get_val_split(
+            news_df.df, train_cutoff, val_cutoff, self.stock_lookback
+        )
+        news_test = get_test_split(
+            news_df.df, val_cutoff, self.stock_lookback
+        )
+
+        train_arr = np.stack(news_train['embeddings'].values)
+        train_t = news_train['time_vec_input'].values
+        val_arr = np.stack(news_val['embeddings'].values)
+        val_t = news_val['time_vec_input'].values
+        test_arr = np.stack(news_test['embeddings'].values)
+        test_t = news_test['time_vec_input'].values
+
+        z = zarr.open(train_path, mode='w')
+        z['embeddings'] = train_arr
+        z['timestamps'] = train_t
+
+        z = zarr.open(val_path, mode='w')
+        z['embeddings'] = val_arr
+        z['timestamps'] = val_t
+
+        z = zarr.open(test_path, mode='w')
+        z['embeddings'] = test_arr
+        z['timestamps'] = test_t
     
     def build_dataset(self, force=False):
         self.data_path = Path('experiments/data')
