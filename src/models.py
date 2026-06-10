@@ -127,16 +127,16 @@ class AttentionBlock(nn.Module):
         
         # [B, 30, 60] -> [B * 30, 60]
         if mask_x is not None:
-            mask_x = mask_x.flatten(0, 1)
+            mask_x = mask_x.flatten(0, 1).bool()
         if mask_y is not None:
-            mask_y = mask_y.flatten(0, 1)
+            mask_y = mask_y.flatten(0, 1).bool()
 
         norm_x = self.norm_q(x)
         norm_y = self.norm_kv(y)
 
         # check which batch items have fully masked y
         if mask_y is not None:
-            all_masked_y = mask_y.all(dim=-1)  # [B], True = entire y is masked
+            all_masked_y = mask_y.all(dim=-1).bool()  # [B], True = entire y is masked
             # temporarily unmask one position to avoid nan
             safe_mask_y = mask_y.clone()
             safe_mask_y[all_masked_y, 0] = False
@@ -185,7 +185,7 @@ class FeedForward(nn.Module):
         ffn_out = self.ff(norm_x)
 
         if mask is not None:
-            ffn_out[mask.unsqueeze(-1).expand_as(ffn_out)] = 0.0
+            ffn_out[mask.unsqueeze(-1).expand_as(ffn_out).bool()] = 0.0
         
         return x + ffn_out
 
@@ -249,12 +249,12 @@ class StockTransformer(nn.Module):
     
     def inter_stock_transform(self, x, mask):
         x = x.transpose(-3, -2).contiguous() # Becomes [B, 60, 30, 512]
-        perm_mask = mask.transpose(-2, -1).contiguous() if mask is not None else None
+        perm_mask = mask.transpose(-2, -1).contiguous().bool() if mask is not None else None
         x = self.inter_stock_transformer(x, x, perm_mask, perm_mask)
 
         if mask is not None:
             # [B, 30, 60] -> [B, 60, 30]
-            t_mask = mask.transpose(-2, -1) 
+            t_mask = mask.transpose(-2, -1).bool()
             active_mask = ~t_mask  # True = Active Data
             
             time_indices = torch.arange(x.size(1), device=x.device).view(1, -1, 1) # Shape: [1, 60, 1]
@@ -262,7 +262,7 @@ class StockTransformer(nn.Module):
 
             last_active_idx = masked_indices.argmax(dim=1) # Shape: [B, 30]
             
-            has_activity = active_mask.any(dim=1) # Shape: [B, 30]
+            has_activity = active_mask.any(dim=1).bool() # Shape: [B, 30]
             last_active_idx = torch.where(has_activity, last_active_idx, 0)
             
             # [B, 30] -> [B, 1, 30]
