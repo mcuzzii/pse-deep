@@ -152,7 +152,7 @@ class AttentionBlock(nn.Module):
                 diagonal=1
             )
         
-        print(mask_y, safe_mask_y)
+        print(attn_mask, safe_mask_y)
 
         attn_out, attn_weights = self.attention(
             norm_x, norm_y, norm_y,
