@@ -24,15 +24,8 @@ import gc
 #    del stock_data
 #    gc.collect()
 
-#import torch
-
-#d = torch.load('experiments/data/stock_transformer_30m_train.pt', map_location=torch.device('cpu'))
-
-#print(d['timestamps'][0, 0])
-#print(d['timestamps'][0, 1])
-
-import joblib
 import torch
 
-d = joblib.load('data/processed/ac_30m.joblib')
-print(torch.from_numpy(d.df['elapsed_time'].values))
+d = torch.load('experiments/data/stock_transformer_30m_train.pt', map_location=torch.device('cpu'))
+
+print(d['timestamps'][0, 0] == d['timestamps'][0, 1])
