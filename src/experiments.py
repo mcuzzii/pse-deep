@@ -337,7 +337,7 @@ class Experiment:
 
         resume_step = None
         if path.exists():
-            checkpoint = torch.load(ckpt_path, map_location=device)
+            checkpoint = torch.load(path, map_location=device)
 
             model.load_state_dict(checkpoint["model"])
             optimizer.load_state_dict(checkpoint["optimizer"])
