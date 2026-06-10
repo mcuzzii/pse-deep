@@ -133,6 +133,7 @@ def main():
         stock_lookback=60
     )
     stock_transformer.build_dataset()
+    stock_transformer.train(3)
 
 if __name__ == '__main__':
     main()
