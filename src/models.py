@@ -90,17 +90,12 @@ class FinEmbedding(nn.Module):
         self.time_embed = Time2Vec(temporal_embedding_dim)
     
     def forward(self, x, t):
+
+        # shape of x: (batch_size, num_stocks, window_size, num_features)
+        # shape of t: (batch_size, num_stocks, window_size)
         
-        stock_vector = self.linear(x) # [batch_size, 30, 60, embedding_dim]
-        time_vector = self.time_embed(t) # [60, temporal_embedding_dim]
-    
-        # [B, 60, T_dim] -> [B, 1, 60, T_dim]
-        time_vector = time_vector.unsqueeze(1)
-            
-        # Expand into [batch_size, 30, 60, temporal_embedding_dim]
-        batch_size = x.size(0)
-        num_stocks = x.size(1)
-        time_vector = time_vector.expand(batch_size, num_stocks, -1, -1)
+        stock_vector = self.linear(x) # (batch_size, num_stocks, window_size, embedding_dim)
+        time_vector = self.time_embed(t) # (batch_size, num_stocks, window_size, temporal_embedding_dim]
         
         return torch.cat([stock_vector, time_vector], dim=-1)
 
