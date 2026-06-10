@@ -2,6 +2,12 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+def top_k_one_hot(tensor, k, dim=-1):
+    one_hot = torch.zeros_like(tensor)
+    top_k_indices = torch.topk(tensor, k, dim=dim).indices
+    one_hot.scatter_(dim, top_k_indices, 1)
+    return one_hot
+
 class PerturbedTopK(nn.Module):
     def __init__(self, k: int, num_samples: int = 1000, sigma: float = 0.05):
         super().__init__()
@@ -11,6 +17,9 @@ class PerturbedTopK(nn.Module):
 
     def __call__(self, x):
         return PerturbedTopKFunction.apply(x, self.k, self.num_samples, self.sigma)
+    
+    def set_sigma(self, sigma: float):
+        self.sigma = max(sigma, 1e-6)  # clamp to avoid division by zero in backward
 
 class PerturbedTopKFunction(torch.autograd.Function):
     @staticmethod
@@ -227,21 +236,23 @@ class StockTransformer(nn.Module):
 
         self.fin_embed = FinEmbedding(input_dim, embedding_dim, temporal_embedding_dim)
 
-        model_dim = self.fin_embed.dim
+        self.dim = self.fin_embed.dim
         self.time_series_transformer = TransformerLayers(
-            model_dim, num_heads, num_layers,
+            self.dim, num_heads, num_layers,
             expansion, dropout, True
         )
         self.inter_stock_transformer = TransformerLayers(
-            model_dim, num_heads, 1,
+            self.dim, num_heads, 1,
             expansion, dropout
         )
-        self.projection = nn.Linear(model_dim, 2)
+        self.projection = nn.Linear(self.dim, 2)
     
-    def forward(self, x, t, mask):
+    def time_series_transform(self, x, t, mask):
         x = self.fin_embed(x, t)
         x = self.time_series_transformer(x, x, mask, mask)
-
+        return x
+    
+    def inter_stock_transform(self, x, mask):
         x = x.transpose(-3, -2).contiguous() # Becomes [B, 60, 30, 512]
         perm_mask = mask.transpose(-2, -1).contiguous() if mask is not None else None
         x = self.inter_stock_transformer(x, x, perm_mask, perm_mask)
@@ -278,28 +289,109 @@ class StockTransformer(nn.Module):
         out = self.projection(last_timestamp) # [B, 30, 2]
 
         return out
+    
+    def forward(self, x, t, mask):
+        x = self.time_series_transform(x, t, mask)
+        return self.inter_stock_transform(x, mask)
+
+class NewsEmbedding(nn.Module):
+    def __init__(self, embedding_dim, temporal_embedding_dim):
+        super().__init__()
+
+        self.dim = embedding_dim + temporal_embedding_dim
+
+        self.time_embed = Time2Vec(temporal_embedding_dim)
+    
+    def forward(self, x, t):
+        time_vector = self.time_embed(t) # [B, N, temporal_embedding_dim]
+        
+        return torch.cat([x, time_vector], dim=-1) # [B, N, embedding_dim, temporal_embedding_dim]
 
 class DynamicSelection(nn.Module):
     def __init__(self, input_dim, K):
-
+        super().__init__()
         self.down_project = nn.Linear(input_dim, input_dim // 2)
         self.score = nn.Linear(2 * (input_dim // 2), 1)
-        self.topk = PerturbedTopK
+        self.topk = PerturbedTopK(K, 500, 0.05)
+
+    def forward(self, x, mask):  # x: (B, N, D), mask: (B, N)
+        mask_3d = mask.unsqueeze(-1)  # (B, N, 1)
+
+        projected = self.down_project(x) # (B, N, D // 2)
+        masked_projected = projected * mask_3d # (B, N, D // 2)
+
+        embeddings_sum = masked_projected.sum(dim=1) # (B, D // 2)
+        valid_count = mask.sum(dim=-1, keepdim=True).clamp(min=1) # (B, 1)
+        masked_mean = (embeddings_sum / valid_count) # (B, D // 2)
+        masked_mean = masked_mean.unsqueeze(1).expand_as(masked_projected)  # (B, N, D // 2)
+
+        combined = torch.cat([masked_mean, masked_projected], dim=-1) * mask_3d  # (B, N, D)
+
+        scores = self.score(combined).squeeze(-1)                 # (B, N)
+        scores = scores.masked_fill(mask == 0, float('-inf'))     # mask out padding before topk
+
+        indicators = self.topk(scores)                            # (B, K, N)
+
+        selected = torch.einsum("bkn,bnd->bkd", indicators, x)   # (B, K, D)
+
+        return selected
+
+class StockNewsTransformer(StockTransformer):
+    def __init__(
+        self,
+        input_dim,
+        embedding_dim,
+        temporal_embedding_dim,
+        num_heads,
+        K,
+        num_layers=1,
+        expansion=4,
+        dropout=0.1
+    ):
+        super().__init__(
+            input_dim,
+            embedding_dim,
+            temporal_embedding_dim,
+            num_heads,
+            num_layers,
+            expansion,
+            dropout
+        )
+
+        self.news_embed = NewsEmbedding(embedding_dim, temporal_embedding_dim)
+        self.news_selection = DynamicSelection(self.dim, K)
+
+        self.news_fusion_layer = TransformerLayers(
+            self.dim, num_heads, num_layers,
+            expansion, dropout, True
+        )
     
-    def forward(self, x, mask):    # Expecting (batch_size, max_num_embeddings, embedding_dim)
-        masked_embeddings = self.down_project(x) * mask
-        embeddings_sum = torch.sum(masked_embeddings, dim=-2)
-        valid_count = torch.sum(mask, dim=-1).clamp(min=1)
-        masked_mean = embeddings_sum / valid_count
+    def news_fusion_transform(self, x, news, mask):
+        news = news.unsqueeze(1) # (B, K, D) -> # (B, 1, K, D)
 
-        masked_mean = masked_mean.unsqueeze(0).unsqueeze(0).expand_as(masked_embeddings)
+        num_stocks = x.size(1)
+        news = news.expand(-1, num_stocks, -1, -1) # (B, 1, K, D) -> (B, 30, K, D)
 
-        masked_embeddings = torch.cat([masked_mean, masked_embeddings], dim=-1) * mask
+        return self.news_fusion_layer(x, news, mask)
+    
+    def forward(self, x, news, t, mask):
+        x = self.time_series_transform(x, t, mask)
+        x = self.news_fusion_transform(x, news, mask)
+        return self.inter_stock_transform(x, mask)
 
-        scores = self.score(masked_embeddings) * mask
+class SigmaAnnealer:
+    def __init__(self, model: DynamicSelection, sigma_start=0.05, sigma_end=1e-4, num_epochs=50):
+        self.module = model.topk
+        self.sigma_start = sigma_start
+        self.sigma_end = sigma_end
+        self.num_epochs = num_epochs
 
+    def step(self, epoch: int):
+        t = epoch / self.num_epochs
+        sigma = self.sigma_start * (self.sigma_end / self.sigma_start) ** t
 
-
+        self.module.set_sigma(sigma)
+        return sigma
 
 if __name__ == "__main__":
     # Fake configuration matching your specs
