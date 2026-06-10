@@ -115,7 +115,7 @@ class Experiment:
     def _get_val_split(self, df):
         last_train_idx = df.index.get_loc(self.train_cutoff)
 
-        non_train_split = df.iloc[last_train_idx - self.window_size + 2:]
+        non_train_split = df.iloc[last_train_idx - self.stock_lookback + 2:]
         non_test_mask = non_train_split.index.get_level_values('local_time') <= self.val_cutoff
 
         return non_train_split.loc[non_test_mask]
@@ -123,7 +123,7 @@ class Experiment:
     def _get_test_split(self, df):
         last_val_idx = df.index.get_loc(self.val_cutoff)
 
-        return df.iloc[last_val_idx - self.window_size + 2:]
+        return df.iloc[last_val_idx - self.stock_lookback + 2:]
     
     def build_model(
         self,
