@@ -310,8 +310,8 @@ class Experiment:
         self,
         num_epochs,
         batch_size=32,
-        lr=1e-3,
-        val_every=500,
+        lr=1e-5,
+        val_every=50,
         ckpt_path=None
     ):
         path = ckpt_path if ckpt_path else self.experiment_path / f'{self.experiment_name}.pt'

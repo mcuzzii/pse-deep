@@ -139,7 +139,7 @@ def main():
         temporal_embedding_dim=32,
         dropout=0.1
     )
-    stock_transformer.train(3)
+    stock_transformer.train(2)
 
 if __name__ == '__main__':
     main()
