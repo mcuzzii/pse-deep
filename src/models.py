@@ -157,7 +157,6 @@ class AttentionBlock(nn.Module):
             norm_x, norm_y, norm_y,
             key_padding_mask=safe_mask_y,
             attn_mask=attn_mask,
-            is_causal=self.is_causal,
             need_weights=True,
             average_attn_weights=False
         )
