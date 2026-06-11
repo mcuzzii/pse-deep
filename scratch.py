@@ -6,7 +6,7 @@ sys.path.append(str(Path.cwd() / 'src'))
 from models import AttentionBlock
 
 model = nn.MultiheadAttention(
-    embedding_dim=512,
+    embed_dim=512,
     num_heads=8,
     batch_first=True
 )
