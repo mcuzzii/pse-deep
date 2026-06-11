@@ -143,10 +143,20 @@ class AttentionBlock(nn.Module):
         else:
             all_masked_y = None
             safe_mask_y = None
+        
+        attn_mask = None
+        if self.is_causal:
+            x_sz = x.size(1)
+            y_sz = y.size(1)
+            attn_mask = torch.triu(
+                torch.ones(y_sz, x_sz, dtype=torch.bool, device=x.device),
+                diagonal=1
+            ) == 0
 
         attn_out, attn_weights = self.attention(
             norm_x, norm_y, norm_y,
             key_padding_mask=safe_mask_y,
+            attn_mask=attn_mask,
             is_causal=self.is_causal,
             need_weights=True,
             average_attn_weights=False
