@@ -115,24 +115,30 @@ class AttentionBlock(nn.Module):
         self.is_causal = is_causal
     
     def forward(self, x, y, mask_x=None, mask_y=None):
+        # x shape: (b, n, x_seq, e)
+        # y shape: (b, n, y_seq, e)
+
         orig_shape = x.shape
-        x = x.flatten(0, 1)
-        y = y.flatten(0, 1)
+        x = x.flatten(0, 1)         # (b * n, x_seq, e)
+        y = y.flatten(0, 1)         # (b * n, y_seq, e)
+
+        # mask_x shape: (b, n, x_seq)
+        # mask_y shape: (b, n, y_seq)
         
         if mask_x is not None:
-            mask_x = mask_x.flatten(0, 1).bool()
+            mask_x = mask_x.flatten(0, 1).bool()    # (b * n, x_seq)
         if mask_y is not None:
-            mask_y = mask_y.flatten(0, 1).bool()
+            mask_y = mask_y.flatten(0, 1).bool()    # (b * n, y_seq)
 
-        norm_x = self.norm_q(x)
-        norm_y = self.norm_kv(y)
+        norm_x = self.norm_q(x)     # (b * n, x_seq, e)
+        norm_y = self.norm_kv(y)    # (b * n, x_seq, e)
         _nan_check("attn after norm_q", norm_x)
         _nan_check("attn after norm_kv", norm_y)
 
         if mask_y is not None:
-            all_masked_y = mask_y.all(dim=-1).bool()
-            safe_mask_y = mask_y.clone()
-            safe_mask_y[all_masked_y, 0] = False
+            all_masked_y = mask_y.all(dim=-1).bool()                                # (b * n,)
+            safe_mask_y = mask_y.clone()                                            # (b * n, y_seq)
+            safe_mask_y[all_masked_y, 0] = False                                    # (b * n, y_seq)
             print(f"  [attn] all_masked_y count: {all_masked_y.sum().item()}")
         else:
             all_masked_y = None
