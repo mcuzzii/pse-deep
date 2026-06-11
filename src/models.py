@@ -131,7 +131,7 @@ class AttentionBlock(nn.Module):
             mask_y = mask_y.flatten(0, 1).bool()    # (b * n, y_seq)
 
         norm_x = self.norm_q(x)     # (b * n, x_seq, e)
-        norm_y = self.norm_kv(y)    # (b * n, x_seq, e)
+        norm_y = self.norm_kv(y)    # (b * n, y_seq, e)
         _nan_check("attn after norm_q", norm_x)
         _nan_check("attn after norm_kv", norm_y)
 
@@ -146,9 +146,10 @@ class AttentionBlock(nn.Module):
         
         attn_mask = None
         if self.is_causal:
-            sz = x.size(1)
+            x_sz = x.size(1)
+            y_sz = y.size(1)
             attn_mask = torch.triu(
-                torch.ones(sz, sz, dtype=torch.bool, device=x.device),
+                torch.ones(y_sz, x_sz, dtype=torch.bool, device=x.device),
                 diagonal=1
             )
 
