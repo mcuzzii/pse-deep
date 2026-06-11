@@ -13,7 +13,7 @@ model = AttentionBlock(
 
 x = torch.randn(3, 2, 4, 512)
 y = torch.randn(3, 2, 5, 512)
-y_mask = (torch.rand(3, 2, 5) >= 0.5).flatten(0, 1)
+y_mask = (torch.rand(3, 2, 5) >= 0.5)
 
 out = model(x, y, mask_y=y_mask)[1].detach().numpy()
 
