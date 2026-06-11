@@ -16,5 +16,5 @@ x_mask = torch.rand(3, 2, 4) >= 0.5
 
 out = model(x, x, x_mask, x_mask)
 
-print(out)
-print(out.shape)
+print(out.numpy())
+print(out.numpy().shape)
