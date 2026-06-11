@@ -166,6 +166,9 @@ def train(
 
             for *args, target in loaders['train']:
 
+                print(args[0].shape)
+                print(target.shape)
+
                 if interrupted:
                     raise KeyboardInterrupt
                 
