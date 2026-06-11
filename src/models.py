@@ -177,7 +177,7 @@ class AttentionBlock(nn.Module):
         if mask_x is not None:
             attn_out[mask_x.flatten(0, 1).bool()] = 0.0
         
-        out = x + attn_out
+        out = x.flatten(0, 1) + attn_out
         _nan_check("attn residual output", out)
 
         return out.view(orig_shape), attn_weights.to(torch.float32)
