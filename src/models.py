@@ -88,9 +88,10 @@ class FinEmbedding(nn.Module):
         return out
 
 class AttentionBlock(nn.Module):
-    def __init__(self, embedding_dim, num_heads, dropout=0.1):
+    def __init__(self, embedding_dim, num_heads, dropout=0.1, is_causal=False):
         super().__init__()
         self.num_heads = num_heads
+        self.is_causal = is_causal
 
         self.norm_q = nn.LayerNorm(embedding_dim)
         self.norm_kv = nn.LayerNorm(embedding_dim)
@@ -118,16 +119,19 @@ class AttentionBlock(nn.Module):
             return tensor.transpose(-2, -1)
         return tensor
     
-    def forward(self, tx, ty, x, y, mask_x=None, mask_y=None):
+    def forward(self, x, y, tx=None, ty=None, mask_x=None, mask_y=None):
         orig_shape = x.shape
 
         norm_x = self.norm_q(x.flatten(0, 1))     # (b * n, x_seq, e)
         norm_y = self.norm_kv(y.flatten(0, 1))    # (b * n, y_seq, e)
         
-        tx_copies = self._expand(tx, x, y, transpose=True)
-        ty_copies = self._expand(ty, x, y)
-        
-        attn_mask = tx_copies + 1e-6 < ty_copies
+        if self.is_causal:
+            tx_copies = self._expand(tx, x, y, transpose=True)
+            ty_copies = self._expand(ty, x, y)
+            
+            attn_mask = tx_copies + 1e-6 < ty_copies
+        else:
+            attn_mask = torch.zeros(x.size(2), y.size(2)).bool()
 
         if mask_x is not None:
             attn_mask = attn_mask | self._expand(mask_x, x, y, transpose=True).bool()
@@ -135,10 +139,9 @@ class AttentionBlock(nn.Module):
             attn_mask = attn_mask | self._expand(mask_y, x, y).bool()
         
         all_masked_y = attn_mask.all(dim=-1)
-        
         attn_mask[all_masked_y, 0] = False
 
-        attn_mask.to(device)
+        attn_mask = attn_mask.to(device)
 
         attn_out, attn_weights = self.attention(
             norm_x, norm_y, norm_y,
@@ -186,28 +189,28 @@ class FeedForward(nn.Module):
         return out
 
 class TransformerLayer(nn.Module):
-    def __init__(self, embedding_dim, num_heads, expansion=4, dropout=0.1):
+    def __init__(self, embedding_dim, num_heads, expansion=4, dropout=0.1, is_causal=False):
         super().__init__()
-        self.attn_blk = AttentionBlock(embedding_dim, num_heads, dropout)
+        self.attn_blk = AttentionBlock(embedding_dim, num_heads, dropout, is_causal)
         self.ffnn = FeedForward(embedding_dim, expansion, dropout)
 
-    def forward(self, tx, ty, x, y, mask_x=None, mask_y=None):
+    def forward(self, x, y, tx=None, ty=None, mask_x=None, mask_y=None):
         x, attn_weights = self.attn_blk(tx, ty, x, y, mask_x, mask_y)
         x = self.ffnn(x, mask_x)
         return x, attn_weights
 
 class TransformerLayers(nn.Module):
-    def __init__(self, embedding_dim, num_heads, num_layers=1, expansion=4, dropout=0.1):
+    def __init__(self, embedding_dim, num_heads, num_layers=1, expansion=4, dropout=0.1, is_causal=False):
         super().__init__()
         self.transformer = nn.ModuleList([
-            TransformerLayer(embedding_dim, num_heads, expansion, dropout)
+            TransformerLayer(embedding_dim, num_heads, expansion, dropout, is_causal)
             for _ in range(num_layers)
         ])
     
-    def forward(self, tx, ty, x, y, mask_x=None, mask_y=None):
+    def forward(self, x, y, tx=None, ty=None, mask_x=None, mask_y=None):
         attn_blocks = []
         for i, layer in enumerate(self.transformer):
-            x, attn_weights = layer(tx, ty, x, y, mask_x, mask_y)
+            x, attn_weights = layer(x, y, tx, ty, mask_x, mask_y)
             attn_blocks.append(attn_weights)
         return x, torch.stack(attn_blocks, dim=0)
 
