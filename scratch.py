@@ -98,9 +98,8 @@ def _run_validation(model, loaders, device, criterion):
 
     return total_val_loss / len(loaders['val'])
 
-model = Time2Vec(32)
-
 def train(
+    model,
     num_epochs=3,
     batch_size=32,
     lr=1e-3,
@@ -236,4 +235,5 @@ def train(
         
         pbar.close()
 
-train()
+model = Time2Vec(32)
+train(model)
