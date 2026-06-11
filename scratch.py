@@ -16,4 +16,4 @@ x_mask = (torch.rand(3, 2, 4) >= 0.5).flatten(0, 1)
 
 out = model(x, x, x, key_padding_mask=x_mask, need_weights=True, average_attn_weights=False)[1].detach().numpy()
 
-print(out[5, 7])
+print(out[5, 7, 2, 0])
