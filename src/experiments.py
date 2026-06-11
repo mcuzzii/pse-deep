@@ -16,6 +16,9 @@ sys.path.append(str(Path.cwd() / 'src'))
 from models import StockTransformer
 from processing import DataSource, get_stocks, get_text_window
 
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+torch.set_default_device(device)
+
 def collate_fn(batch):
     args = list(zip(*batch))
     n = len(args)
@@ -314,8 +317,6 @@ class Experiment:
         ckpt_path=None
     ):
         path = ckpt_path if ckpt_path else self.experiment_path / f'{self.experiment_name}.pt'
-
-        device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
         loaders = {
             split: DataLoader(

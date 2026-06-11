@@ -2,6 +2,9 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+torch.set_default_device(device)
+
 def top_k_one_hot(tensor, k, dim=-1):
     one_hot = torch.zeros_like(tensor)
     top_k_indices = torch.topk(tensor, k, dim=dim).indices
@@ -25,7 +28,7 @@ class PerturbedTopKFunction(torch.autograd.Function):
     @staticmethod
     def forward(ctx, x, k: int, num_samples: int = 1000, sigma: float = 0.05):
         b, d = x.shape
-        noise = torch.normal(mean=0.0, std=1.0, size=(b, num_samples, d)).to(x.device)
+        noise = torch.normal(mean=0.0, std=1.0, size=(b, num_samples, d))
         perturbed_x = x[:, None, :] + noise * sigma
         topk_results = torch.topk(perturbed_x, k=k, dim=-1, sorted=False)
         indices = topk_results.indices
@@ -279,7 +282,7 @@ class StockTransformer(nn.Module):
         if mask is not None:
             t_mask = mask.transpose(-2, -1).bool()
             active_mask = ~t_mask
-            time_indices = torch.arange(x.size(1), device=x.device).view(1, -1, 1)
+            time_indices = torch.arange(x.size(1)).view(1, -1, 1)
             masked_indices = active_mask * time_indices
             last_active_idx = masked_indices.argmax(dim=1)
             has_activity = active_mask.any(dim=1).bool()
