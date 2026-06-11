@@ -329,6 +329,7 @@ class Experiment:
                 )
                 for split in ('train', 'val', 'test')
             }
+            train_iterator = loaders['train']
 
         model = self.model.to(device)
         optimizer = torch.optim.Adam(model.parameters(), lr=lr)
@@ -373,7 +374,7 @@ class Experiment:
             for epoch in range(num_epochs):
                 model.train()
 
-                for *args, target in loaders['train']:
+                for *args, target in train_iterator:
 
                     if interrupted:
                         raise KeyboardInterrupt
