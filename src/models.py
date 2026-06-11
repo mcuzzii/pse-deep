@@ -170,8 +170,10 @@ class AttentionBlock(nn.Module):
         _nan_check("attn output", attn_out)
 
         attn_out = self.dropout(attn_out)
+
+        all_masked_y = all_masked_y.view(6, -1, *attn_out.shape[1:])[:, 0, :, :]
         
-        attn_out[all_masked_y[:, 0, :, :]] = 0.0
+        attn_out[all_masked_y] = 0.0
         if mask_x is not None:
             attn_out[mask_x.flatten(0, 1).bool()] = 0.0
         
