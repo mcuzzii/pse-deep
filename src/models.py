@@ -131,7 +131,15 @@ class AttentionBlock(nn.Module):
             
             attn_mask = tx_copies + 1e-6 < ty_copies
         else:
-            attn_mask = torch.zeros(x.size(2), y.size(2)).bool()
+            attn_mask = (
+                torch.zeros(x.size(2), y.size(2))
+                .unsqueeze(0)
+                .unsqueeze(0)
+                .unsqueeze(0)
+                .expand(x.size(0), x.size(1), self.num_heads, -1, -1)
+                .flatten(0, 2)
+                .bool()
+            )
 
         if mask_x is not None:
             attn_mask = attn_mask | self._expand(mask_x, x, y, transpose=True).bool()
@@ -149,7 +157,6 @@ class AttentionBlock(nn.Module):
             need_weights=True,
             average_attn_weights=False
         )
-        print(attn_weights)
 
         attn_out = self.dropout(attn_out)
 
