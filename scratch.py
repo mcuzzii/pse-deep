@@ -38,6 +38,7 @@ from experiments import Experiment
 
 class Time2VecDataset(Dataset):
     def __init__(self, path, stock_lookback):
+        super().__init__()
         self.stock_data = torch.load(path, map_location=torch.device('cpu'))
         self.stock_lookback = stock_lookback
     
