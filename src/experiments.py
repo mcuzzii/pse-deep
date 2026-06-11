@@ -392,13 +392,6 @@ class Experiment:
 
                     optimizer.zero_grad()
                     logits = model(*args)[0]       # (B, 30, 2)
-
-                    if torch.isnan(logits).any():
-                        print("NaN in logits")
-                        for i, a in enumerate(args):
-                            if torch.is_tensor(a):
-                                print(f"args[{i}] has NaN: {torch.isnan(a).any()}, shape: {a.shape}")
-                        break
                     logits = logits.permute(0, 2, 1)     # (B, 2, 30)
 
                     loss = criterion(logits, target)     # target (B, 30)

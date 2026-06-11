@@ -97,8 +97,8 @@ class FinEmbedding(nn.Module):
         stock_vector = self.linear(x) # (batch_size, num_stocks, window_size, embedding_dim)
         time_vector = self.time_embed(t) # (batch_size, num_stocks, window_size, temporal_embedding_dim]
 
-        print(stock_vector)
-        print(time_vector)
+        print(torch.isnan(stock_vector).any())
+        print(torch.isnan(time_vector).any())
         
         return torch.cat([stock_vector, time_vector], dim=-1)
 
