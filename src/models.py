@@ -132,14 +132,14 @@ class AttentionBlock(nn.Module):
             .unsqueeze(2)
             .expand(-1, -1, self.num_heads, y.size(2), x.size(2))
             .transpose(-2, -1)
-            .flatten(0, 1, 2)
+            .flatten(0, 2)
         )
         ty_copies = (
             ty
             .unsqueeze(2)
             .unsqueeze(2)
             .expand(-1, -1, self.num_heads, x.size(2), y.size(2))
-            .flatten(0, 1, 2)
+            .flatten(0, 2)
         )
         
         attn_mask = tx_copies + 1e-6 < ty_copies
