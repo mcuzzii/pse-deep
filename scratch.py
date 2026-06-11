@@ -109,145 +109,57 @@ def _run_validation(model, loaders, device, criterion):
 
     return total_val_loss / len(loaders['val'])
 
-def train(
-    model,
-    num_epochs=3,
-    batch_size=32,
-    lr=1e-3,
-    val_every=500
-):
-    path = Path('experiments/stock_transformer/stock_transformer_30.pt')
+device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+model = Time2VecModel(32).to(device)
+optimizer = torch.optim.Adam(model.parameters(), lr=1e-4)
+criterion = nn.CrossEntropyLoss()
 
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+loaders = {
+    split: DataLoader(
+        Time2VecDataset('experiments/data/stock_transformer_30m_train.pt', 60),
+        batch_size=32,
+        shuffle=True,
+        num_workers=2,
+        pin_memory=True,
+        collate_fn=collate_fn
+    )
+    for split in ('train', 'val', 'test')
+}
 
-    loaders = {
-        split: DataLoader(
-            Time2VecDataset('experiments/data/stock_transformer_30m_train.pt', 60),
-            batch_size=batch_size,
-            shuffle=True,
-            num_workers=2,
-            pin_memory=True,
-            collate_fn=collate_fn
-        )
-        for split in ('train', 'val', 'test')
-    }
+for *args, target in loaders['train']:
+    args = [a.to(device) for a in args]
+    t = args[0]
+    
+    print("t stats:", t.min().item(), t.max().item(), t.mean().item(), torch.isnan(t).any().item())
+    
+    out = model.time2vec(t)
+    print("after time2vec:", out.min().item(), out.max().item(), torch.isnan(out).any().item())
+    
+    out2 = model.linear(out[:, :, -1, :])
+    print("after linear:", out2.min().item(), out2.max().item(), torch.isnan(out2).any().item())
+    
+    loss = criterion(out2.permute(0, 2, 1), target.argmax(dim=-1).to(device))
+    print("loss:", loss.item())
+    
+    loss.backward()
+    
+    for name, param in model.named_parameters():
+        if param.grad is not None:
+            print(f"grad {name}:", param.grad.min().item(), param.grad.max().item(), torch.isnan(param.grad).any().item())
+    
+    optimizer.step()
+    
+    # check params after update
+    for name, param in model.named_parameters():
+        print(f"param {name} after update:", param.min().item(), param.max().item(), torch.isnan(param).any().item())
+    
+    # second batch
+    break
 
-    model = model.to(device)
-    optimizer = torch.optim.Adam(model.parameters(), lr=lr)
-    criterion = nn.CrossEntropyLoss()
-
-    global_step = 0
-    total_loss = 0
-    train_losses = []
-    val_losses = []
-
-    resume_step = None
-    if path.exists():
-        checkpoint = torch.load(path, map_location=device)
-
-        model.load_state_dict(checkpoint["model"])
-        optimizer.load_state_dict(checkpoint["optimizer"])
-
-        for state in optimizer.state.values():
-            for k, v in state.items():
-                if torch.is_tensor(v):
-                    state[k] = v.to(device)
-        
-        resume_step = checkpoint["global_step"]
-        train_losses = checkpoint["train_losses"]
-        val_losses = checkpoint["val_losses"]
-        total_loss = checkpoint["total_loss"]
-
-    pbar = tqdm(total=len(loaders['train']) * num_epochs, desc="Training")
-
-    interrupted = False
-
-    def handler(sig, frame):
-        nonlocal interrupted
-        interrupted = True
-        print("Interrupt received. Saving checkpoint...")
-
-    signal.signal(signal.SIGINT, handler)
-    signal.signal(signal.SIGTERM, handler)
-
-    # Training loop
-    try:
-        for epoch in range(num_epochs):
-            model.train()
-
-            for *args, target in loaders['train']:
-
-                print(args[0].shape)
-                print(target.shape)
-
-                if interrupted:
-                    raise KeyboardInterrupt
-                
-                if resume_step and global_step < resume_step:
-                    global_step += 1
-                    pbar.update(1)
-                    continue
-
-                elif resume_step and global_step >= resume_step:
-                    resume_step = None  # done catching up
-
-                target = target.argmax(dim=-1)       # (B, 30, 2) → (B, 30)
-
-                target = target.to(device)
-                args = [a.to(device) for a in args]
-
-                optimizer.zero_grad()
-                logits = model(*args)[0]       # (B, 30, 2)
-                logits = logits.permute(0, 2, 1)     # (B, 2, 30)
-
-                loss = criterion(logits, target)     # target (B, 30)
-                loss.backward()
-                clip_grad_norm_(model.parameters(), max_norm=1.0)
-                optimizer.step()
-
-                total_loss += loss.item()
-
-                global_step += 1
-
-                pbar.update(1)
-                pbar.set_postfix(loss=loss.item())
-
-                if global_step % val_every == 0:
-                    val_loss = _run_validation(model, loaders, device, criterion)
-                    val_losses.append(val_loss)
-
-                    train_loss = total_loss / val_every
-                    total_loss = 0
-                    train_losses.append(train_loss)
-
-                    pbar.set_postfix(train_loss=loss.item(), val_loss=val_loss)
-
-                    # optional checkpoint on validation
-                    torch.save({
-                        "model": model.state_dict(),
-                        "optimizer": optimizer.state_dict(),
-                        "global_step": global_step,
-                        "train_losses": train_losses,
-                        "val_losses": val_losses,
-                        "total_loss": total_loss
-                    }, path)
-            
-            print(f"Epoch {epoch + 1}/{num_epochs} ({len(loaders['train']) * (epoch + 1)} batches).")
-
-    except KeyboardInterrupt:
-        pass
-
-    finally:
-        torch.save({
-            "model": model.state_dict(),
-            "optimizer": optimizer.state_dict(),
-            "global_step": global_step,
-            "train_losses": train_losses,
-            "val_losses": val_losses,
-            "total_loss": total_loss
-        }, path)
-        
-        pbar.close()
-
-model = Time2VecModel(32)
-train(model)
+for *args, target in loaders['train']:
+    args = [a.to(device) for a in args]
+    t = args[0]
+    
+    out = model.time2vec(t)
+    print("second batch after time2vec:", torch.isnan(out).any().item())
+    break
