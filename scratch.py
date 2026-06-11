@@ -15,7 +15,7 @@ x = torch.randn(3, 2, 4, 512)
 x_mask = torch.rand(3, 2, 4) >= 0.5
 
 
-out = model(x, x, x_mask, x_mask)[1]
+out = model(x, x)[1]
 
 print(out.detach().numpy())
 print(out.detach().numpy().shape)
