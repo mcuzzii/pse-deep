@@ -101,68 +101,73 @@ class FinEmbedding(nn.Module):
         return out
 
 class AttentionBlock(nn.Module):
-    def __init__(self, embedding_dim, num_heads, dropout=0.1, is_causal=False):
+    def __init__(self, embedding_dim, num_heads, dropout=0.1):
         super().__init__()
+        self.num_heads = num_heads
+
         self.norm_q = nn.LayerNorm(embedding_dim)
         self.norm_kv = nn.LayerNorm(embedding_dim)
         self.attention = nn.MultiheadAttention(
             embed_dim=embedding_dim,
-            num_heads=num_heads,
+            num_heads=self.num_heads,
             dropout=dropout,
             batch_first=True
         )
         self.dropout = nn.Dropout(dropout)
-        self.is_causal = is_causal
     
-    def forward(self, x, y, mask_x=None, mask_y=None):
-        # x shape: (b, n, x_seq, e)
-        # y shape: (b, n, y_seq, e)
-
+    def forward(self, tx, ty, x, y, mask_x=None, mask_y=None):
         orig_shape = x.shape
-        x = x.flatten(0, 1)         # (b * n, x_seq, e)
-        y = y.flatten(0, 1)         # (b * n, y_seq, e)
 
-        # mask_x shape: (b, n, x_seq)
-        # mask_y shape: (b, n, y_seq)
+        norm_x = self.norm_q(x.flatten(0, 1))     # (b * n, x_seq, e)
+        norm_y = self.norm_kv(y.flatten(0, 1))    # (b * n, y_seq, e)
         
+        tx_copies = (
+            tx
+            .unsqueeze(2)
+            .unsqueeze(2)
+            .expand(-1, -1, self.num_heads, y.size(1), x.size(1))
+            .transpose(0, 1, 2, 4, 3)
+            .flatten(0, 1, 2)
+        )
+        ty_copies = (
+            ty
+            .unsqueeze(2)
+            .unsqueeze(2)
+            .expand(-1, -1, self.num_heads, x.size(1), y.size(1))
+            .flatten(0, 1, 2)
+        )
+        
+        attn_mask = tx_copies + 1e-6 < ty_copies
+        print(attn_mask[0])
+
         if mask_x is not None:
-            mask_x = mask_x.flatten(0, 1).bool()    # (b * n, x_seq)
+            attn_mask = attn_mask & ~(
+                mask_x
+                .flatten(0, 1)
+                .unsqueeze(1)
+                .expand(-1, y.size(1), x.size(1))
+                .transpose(0, 2, 1)
+            )
         if mask_y is not None:
-            mask_y = mask_y.flatten(0, 1).bool()    # (b * n, y_seq)
-
-        norm_x = self.norm_q(x)     # (b * n, x_seq, e)
-        norm_y = self.norm_kv(y)    # (b * n, y_seq, e)
-        _nan_check("attn after norm_q", norm_x)
-        _nan_check("attn after norm_kv", norm_y)
-
-        if mask_y is not None:
-            all_masked_y = mask_y.all(dim=-1).bool()                                # (b * n,)
-            safe_mask_y = mask_y.clone()                                            # (b * n, y_seq)
-            safe_mask_y[all_masked_y, 0] = False                                    # (b * n, y_seq)
-            print(f"  [attn] all_masked_y count: {all_masked_y.sum().item()}")
-        else:
-            all_masked_y = None
-            safe_mask_y = None
-        
-        attn_mask = None
-        if self.is_causal:
-            x_sz = x.size(1)
-            y_sz = y.size(1)
-            attn_mask = torch.triu(
-                torch.ones(x_sz, y_sz, dtype=torch.bool, device=x.device),
-                diagonal=1
+            attn_mask = attn_mask & ~(
+                mask_y
+                .flatten(0, 1)
+                .unsqueeze(1)
+                .expand(-1, x.size(1), y.size(1))
             )
         
-        print(attn_mask)
+        all_masked_y = attn_mask.all(dim=-1)
+        
+        attn_mask[all_masked_y, 0] = False
+        print(attn_mask[0])
 
         print(f'norm_x: {norm_x}')
         print(f'norm_y: {norm_y}')
-        print(f'key_padding_mask: {safe_mask_y}')
         print(f'attn_mask: {attn_mask}')
 
         attn_out, attn_weights = self.attention(
             norm_x, norm_y, norm_y,
-            key_padding_mask=safe_mask_y,
+            attn_weights=attn_weights,
             need_weights=True,
             average_attn_weights=False
         )
@@ -170,11 +175,10 @@ class AttentionBlock(nn.Module):
         _nan_check("attn output", attn_out)
 
         attn_out = self.dropout(attn_out)
-
-        if all_masked_y is not None:
-            attn_out[all_masked_y] = 0.0
+        
+        attn_out[all_masked_y] = 0.0
         if mask_x is not None:
-            attn_out[mask_x] = 0.0
+            attn_out[mask_x.flatten(0, 1).bool()] = 0.0
         
         out = x + attn_out
         _nan_check("attn residual output", out)
