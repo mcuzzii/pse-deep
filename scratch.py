@@ -12,11 +12,12 @@ model = nn.MultiheadAttention(
 )
 
 x = torch.randn(3, 2, 4, 512).flatten(0, 1)
-x_mask = (torch.rand(3, 2, 4) >= 0.5).flatten(0, 1)
+y = torch.randn(3, 2, 5, 512).flatten(0, 1)
+y_mask = (torch.rand(3, 2, 5) >= 0.5).flatten(0, 1)
 
-out = model(x, x, x, key_padding_mask=x_mask, need_weights=True, average_attn_weights=False)[1].detach().numpy()
+out = model(x, y, y, key_padding_mask=y_mask, need_weights=True, average_attn_weights=False)[1].detach().numpy()
 
 for i in range(3):
     for j in range(2):
         print(out[i * 2 + j, 0])
-        print(f'{x_mask[i * 2 + j]}\n')
+        print(f'{y_mask[i * 2 + j]}\n')
