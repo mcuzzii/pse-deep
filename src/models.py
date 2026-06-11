@@ -163,7 +163,6 @@ class AttentionBlock(nn.Module):
         attn_out, attn_weights = self.attention(
             norm_x, norm_y, norm_y,
             key_padding_mask=safe_mask_y,
-            attn_mask=attn_mask,
             need_weights=True,
             average_attn_weights=False
         )
