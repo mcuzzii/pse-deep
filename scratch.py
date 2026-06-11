@@ -6,7 +6,7 @@ sys.path.append(str(Path.cwd() / 'src'))
 from models import AttentionBlock
 
 model = AttentionBlock(
-    embed_dim=512,
+    embedding_dim=512,
     num_heads=8
 )
 
