@@ -36,8 +36,6 @@ from experiments import Experiment
 #    del stock_data
 #    gc.collect()
 
-d = torch.load('experiments/data/stock_transformer_30m_train.pt', map_location=torch.device('cpu'))
-
 class Time2VecDataset(Dataset):
     def __init__(self, path, stock_lookback):
         self.stock_data = torch.load(path, map_location=torch.device('cpu'))
@@ -108,13 +106,13 @@ def train(
     lr=1e-3,
     val_every=500
 ):
-    path = 'experiments/data/stock_transformer_30m_train.pt'
+    path = Path('experiments/stock_transformer/stock_transformer_30.pt')
 
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
     loaders = {
         split: DataLoader(
-            Time2VecDataset(60),
+            Time2VecDataset('experiments/data/stock_transformer_30m_train.pt', 60),
             batch_size=batch_size,
             shuffle=True,
             num_workers=2,
