@@ -13,7 +13,7 @@ model = AttentionBlock(
 x = torch.randn(3, 2, 6, 512)
 y = torch.randn(3, 2, 5, 512)
 
-tx = torch.arange(0, 4).unsqueeze(0).unsqueeze(0).expand(3, 2, 6)
+tx = torch.arange(0, 6).unsqueeze(0).unsqueeze(0).expand(3, 2, 6)
 ty = torch.arange(0, 5).unsqueeze(0).unsqueeze(0).expand(3, 2, 5)
 
 x_mask = (torch.rand(3, 2, 6) >= 0.75)
