@@ -155,6 +155,11 @@ class AttentionBlock(nn.Module):
         
         print(attn_mask)
 
+        print(f'norm_x: {norm_x}')
+        print(f'norm_y: {norm_y}')
+        print(f'key_padding_mask: {safe_mask_y}')
+        print(f'attn_mask: {attn_mask}')
+
         attn_out, attn_weights = self.attention(
             norm_x, norm_y, norm_y,
             key_padding_mask=safe_mask_y,
