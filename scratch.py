@@ -21,6 +21,7 @@ attn_mask = torch.triu(
     torch.ones(x_sz, y_sz, dtype=torch.bool, device=x.device),
     diagonal=1
 )
+print(attn_mask.shape)
 
 out = model(x, y, y, key_padding_mask=y_mask, attn_mask=attn_mask, need_weights=True, average_attn_weights=False)[1].detach().numpy()
 
