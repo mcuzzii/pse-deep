@@ -171,7 +171,7 @@ class AttentionBlock(nn.Module):
 
         attn_out = self.dropout(attn_out)
         
-        attn_out[all_masked_y] = 0.0
+        attn_out[all_masked_y[:, 0, :, :]] = 0.0
         if mask_x is not None:
             attn_out[mask_x.flatten(0, 1).bool()] = 0.0
         
