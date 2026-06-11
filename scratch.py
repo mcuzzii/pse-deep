@@ -27,6 +27,6 @@ out = model(x, y, y, key_padding_mask=y_mask, attn_mask=attn_mask, need_weights=
 
 for i in range(3):
     for j in range(2):
-        print(out[i, j, 0])
-        print(f'{y_mask[i, j]}\n')
+        print(out[i * 2 + j, 0])
+        print(f'{y_mask[i * 2 + j]}\n')
         print(out.shape)
