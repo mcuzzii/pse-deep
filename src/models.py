@@ -149,9 +149,9 @@ class AttentionBlock(nn.Module):
             x_sz = x.size(1)
             y_sz = y.size(1)
             attn_mask = torch.triu(
-                torch.ones(y_sz, x_sz, dtype=torch.bool, device=x.device),
+                torch.ones(x_sz, y_sz, dtype=torch.bool, device=x.device),
                 diagonal=1
-            ) == 0
+            )
         
         print(attn_mask)
 
