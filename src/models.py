@@ -195,7 +195,7 @@ class TransformerLayer(nn.Module):
         self.ffnn = FeedForward(embedding_dim, expansion, dropout)
 
     def forward(self, x, y, tx=None, ty=None, mask_x=None, mask_y=None):
-        x, attn_weights = self.attn_blk(tx, ty, x, y, mask_x, mask_y)
+        x, attn_weights = self.attn_blk(x, y, tx, ty, mask_x, mask_y)
         x = self.ffnn(x, mask_x)
         return x, attn_weights
 
@@ -229,7 +229,7 @@ class StockTransformer(nn.Module):
         self.fin_embed = FinEmbedding(input_dim, embedding_dim, temporal_embedding_dim)
         self.dim = self.fin_embed.dim
         self.time_series_transformer = TransformerLayers(
-            self.dim, num_heads, num_layers, expansion, dropout
+            self.dim, num_heads, num_layers, expansion, dropout, True
         )
         self.inter_stock_transformer = TransformerLayers(
             self.dim, num_heads, 1, expansion, dropout
@@ -239,13 +239,13 @@ class StockTransformer(nn.Module):
     def time_series_transform(self, x, t, mask):
         x = self.fin_embed(x, t)
 
-        x, attn_weights = self.time_series_transformer(t, t, x, x, mask, mask)
+        x, attn_weights = self.time_series_transformer(x, x, t, t, mask, mask)
         return x, attn_weights
     
-    def inter_stock_transform(self, x, t, mask):
+    def inter_stock_transform(self, x, mask):
         x = x.transpose(-3, -2).contiguous()
         perm_mask = mask.transpose(-2, -1).contiguous().bool() if mask is not None else None
-        x, attn_weights = self.inter_stock_transformer(t, t, x, x, perm_mask, perm_mask)
+        x, attn_weights = self.inter_stock_transformer(x, x, perm_mask, perm_mask)
 
         if mask is not None:
             t_mask = mask.transpose(-2, -1).bool()
@@ -268,7 +268,7 @@ class StockTransformer(nn.Module):
     def forward(self, t, x, mask):
 
         x, tst_attn_weights = self.time_series_transform(x, t, mask)
-        x, ist_attn_weights = self.inter_stock_transform(x, t, mask)
+        x, ist_attn_weights = self.inter_stock_transform(x, mask)
         return x, tst_attn_weights, ist_attn_weights
 
 class NewsEmbedding(nn.Module):
