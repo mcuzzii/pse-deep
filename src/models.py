@@ -130,7 +130,7 @@ class AttentionBlock(nn.Module):
             tx
             .unsqueeze(2)
             .unsqueeze(2)
-            .expand(-1, -1, self.num_heads, y.size(1), x.size(1))
+            .expand(-1, -1, self.num_heads, y.size(2), x.size(2))
             .transpose(0, 1, 2, 4, 3)
             .flatten(0, 1, 2)
         )
@@ -138,7 +138,7 @@ class AttentionBlock(nn.Module):
             ty
             .unsqueeze(2)
             .unsqueeze(2)
-            .expand(-1, -1, self.num_heads, x.size(1), y.size(1))
+            .expand(-1, -1, self.num_heads, x.size(2), y.size(2))
             .flatten(0, 1, 2)
         )
         
@@ -150,7 +150,7 @@ class AttentionBlock(nn.Module):
                 mask_x
                 .flatten(0, 1)
                 .unsqueeze(1)
-                .expand(-1, y.size(1), x.size(1))
+                .expand(-1, y.size(2), x.size(2))
                 .transpose(0, 2, 1)
             )
         if mask_y is not None:
@@ -158,7 +158,7 @@ class AttentionBlock(nn.Module):
                 mask_y
                 .flatten(0, 1)
                 .unsqueeze(1)
-                .expand(-1, x.size(1), y.size(1))
+                .expand(-1, x.size(2), y.size(2))
             )
         
         all_masked_y = attn_mask.all(dim=-1)
