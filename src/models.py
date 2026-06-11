@@ -53,12 +53,6 @@ class PerturbedTopKFunction(torch.autograd.Function):
         grad_input = torch.einsum("bkd,bkd->bd", grad_output, expected_gradient)
         return (grad_input,) + tuple([None] * 5)
 
-def _nan_check(name, tensor):
-    has_nan = torch.isnan(tensor).any().item()
-    has_inf = torch.isinf(tensor).any().item()
-    print(f"  [{name}] nan={has_nan}, inf={has_inf}, min={tensor.min().item():.4f}, max={tensor.max().item():.4f}, mean={tensor.mean().item():.4f}")
-    return has_nan or has_inf
-
 class Time2Vec(nn.Module):
     def __init__(self, embedding_dim):
         super().__init__()
@@ -70,16 +64,12 @@ class Time2Vec(nn.Module):
 
     def forward(self, t):
         t = t.unsqueeze(-1)
-        _nan_check("time2vec input t", t)
 
         linear = t * self.w0 + self.b0
-        _nan_check("time2vec linear", linear)
 
         periodic = torch.sin(t * self.w + self.b)
-        _nan_check("time2vec periodic", periodic)
 
         out = torch.cat([linear, periodic], dim=-1)
-        _nan_check("time2vec output", out)
         return out
 
 class FinEmbedding(nn.Module):
@@ -90,17 +80,12 @@ class FinEmbedding(nn.Module):
         self.time_embed = Time2Vec(temporal_embedding_dim)
     
     def forward(self, x, t):
-        _nan_check("fin_embed input x", x)
-        _nan_check("fin_embed input t", t)
 
         stock_vector = self.linear(x)
-        _nan_check("fin_embed after linear", stock_vector)
 
         time_vector = self.time_embed(t)
-        _nan_check("fin_embed after time2vec", time_vector)
 
         out = torch.cat([stock_vector, time_vector], dim=-1)
-        _nan_check("fin_embed output", out)
         return out
 
 class AttentionBlock(nn.Module):
@@ -138,8 +123,6 @@ class AttentionBlock(nn.Module):
 
         norm_x = self.norm_q(x.flatten(0, 1))     # (b * n, x_seq, e)
         norm_y = self.norm_kv(y.flatten(0, 1))    # (b * n, y_seq, e)
-
-        print(tx.shape)
         
         tx_copies = self._expand(tx, x, y, transpose=True)
         ty_copies = self._expand(ty, x, y)
@@ -154,11 +137,6 @@ class AttentionBlock(nn.Module):
         all_masked_y = attn_mask.all(dim=-1)
         
         attn_mask[all_masked_y, 0] = False
-        print(attn_mask[0])
-
-        print(f'norm_x: {norm_x}')
-        print(f'norm_y: {norm_y}')
-        print(f'attn_mask: {attn_mask}')
 
         attn_out, attn_weights = self.attention(
             norm_x, norm_y, norm_y,
@@ -167,7 +145,6 @@ class AttentionBlock(nn.Module):
             average_attn_weights=False
         )
         print(attn_weights)
-        _nan_check("attn output", attn_out)
 
         attn_out = self.dropout(attn_out)
 
@@ -197,42 +174,38 @@ class FeedForward(nn.Module):
     
     def forward(self, x, mask=None):
         norm_x = self.norm(x)
-        _nan_check("ffn after norm", norm_x)
 
         ffn_out = self.ff(norm_x)
-        _nan_check("ffn output", ffn_out)
 
         if mask is not None:
             ffn_out[mask.unsqueeze(-1).expand_as(ffn_out).bool()] = 0.0
         
         out = x + ffn_out
-        _nan_check("ffn residual output", out)
         return out
 
 class TransformerLayer(nn.Module):
-    def __init__(self, embedding_dim, num_heads, expansion=4, dropout=0.1, is_causal=False):
+    def __init__(self, embedding_dim, num_heads, expansion=4, dropout=0.1):
         super().__init__()
-        self.attn_blk = AttentionBlock(embedding_dim, num_heads, dropout, is_causal)
+        self.attn_blk = AttentionBlock(embedding_dim, num_heads, dropout)
         self.ffnn = FeedForward(embedding_dim, expansion, dropout)
 
-    def forward(self, x, y, mask_x=None, mask_y=None):
-        x, attn_weights = self.attn_blk(x, y, mask_x, mask_y)
+    def forward(self, tx, ty, x, y, mask_x=None, mask_y=None):
+        x, attn_weights = self.attn_blk(tx, ty, x, y, mask_x, mask_y)
         x = self.ffnn(x, mask_x)
         return x, attn_weights
 
 class TransformerLayers(nn.Module):
-    def __init__(self, embedding_dim, num_heads, num_layers=1, expansion=4, dropout=0.1, is_causal=False):
+    def __init__(self, embedding_dim, num_heads, num_layers=1, expansion=4, dropout=0.1):
         super().__init__()
         self.transformer = nn.ModuleList([
-            TransformerLayer(embedding_dim, num_heads, expansion, dropout, is_causal)
+            TransformerLayer(embedding_dim, num_heads, expansion, dropout)
             for _ in range(num_layers)
         ])
     
-    def forward(self, x, y, mask_x=None, mask_y=None):
+    def forward(self, tx, ty, x, y, mask_x=None, mask_y=None):
         attn_blocks = []
         for i, layer in enumerate(self.transformer):
-            x, attn_weights = layer(x, y, mask_x, mask_y)
-            _nan_check(f"transformer layer {i} output", x)
+            x, attn_weights = layer(tx, ty, x, y, mask_x, mask_y)
             attn_blocks.append(attn_weights)
         return x, torch.stack(attn_blocks, dim=0)
 
@@ -259,20 +232,15 @@ class StockTransformer(nn.Module):
         self.projection = nn.Linear(self.dim, 2)
     
     def time_series_transform(self, x, t, mask):
-        print("\n-- time_series_transform --")
         x = self.fin_embed(x, t)
-        _nan_check("after fin_embed", x)
 
-        x, attn_weights = self.time_series_transformer(x, x, mask, mask)
-        _nan_check("after tst", x)
+        x, attn_weights = self.time_series_transformer(t, t, x, x, mask, mask)
         return x, attn_weights
     
-    def inter_stock_transform(self, x, mask):
-        print("\n-- inter_stock_transform --")
+    def inter_stock_transform(self, x, t, mask):
         x = x.transpose(-3, -2).contiguous()
         perm_mask = mask.transpose(-2, -1).contiguous().bool() if mask is not None else None
-        x, attn_weights = self.inter_stock_transformer(x, x, perm_mask, perm_mask)
-        _nan_check("after ist", x)
+        x, attn_weights = self.inter_stock_transformer(t, t, x, x, perm_mask, perm_mask)
 
         if mask is not None:
             t_mask = mask.transpose(-2, -1).bool()
@@ -281,7 +249,6 @@ class StockTransformer(nn.Module):
             masked_indices = active_mask * time_indices
             last_active_idx = masked_indices.argmax(dim=1)
             has_activity = active_mask.any(dim=1).bool()
-            print(f"  [ist] stocks with no activity: {(~has_activity).sum().item()}")
             last_active_idx = torch.where(has_activity, last_active_idx, 0)
             gather_idx = last_active_idx.unsqueeze(1).unsqueeze(-1)
             model_dim = x.size(-1)
@@ -290,19 +257,13 @@ class StockTransformer(nn.Module):
         else:
             last_timestamp = x[:, -1, :, :]
 
-        _nan_check("last_timestamp", last_timestamp)
-
         out = self.projection(last_timestamp)
-        _nan_check("after projection", out)
         return out, attn_weights
     
     def forward(self, t, x, mask):
-        print("\n===== FORWARD PASS =====")
-        _nan_check("input x", x)
-        _nan_check("input t", t)
 
         x, tst_attn_weights = self.time_series_transform(x, t, mask)
-        x, ist_attn_weights = self.inter_stock_transform(x, mask)
+        x, ist_attn_weights = self.inter_stock_transform(x, t, mask)
         return x, tst_attn_weights, ist_attn_weights
 
 class NewsEmbedding(nn.Module):
@@ -360,13 +321,13 @@ class StockNewsTransformer(StockTransformer):
             self.dim, num_heads, num_layers, expansion, dropout, True
         )
     
-    def news_fusion_transform(self, x, news, t_news, x_mask, news_mask):
+    def news_fusion_transform(self, x, news, t, t_news, x_mask, news_mask):
         news = self.news_embed(news, t_news)
         news = self.news_selection(news, news_mask)
         news = news.unsqueeze(1)
         num_stocks = x.size(1)
         news = news.expand(-1, num_stocks, -1, -1)
-        x, attn_weights = self.news_fusion_layer(x, news, x_mask)
+        x, attn_weights = self.news_fusion_layer(t, t_news, x, news, x_mask)
         return x, attn_weights
     
     def forward(self, t, t_news, x, news, x_mask, news_mask):
