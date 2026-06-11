@@ -19,4 +19,4 @@ out = model(x, x, x, key_padding_mask=x_mask, need_weights=True, average_attn_we
 for i in range(3):
     for j in range(2):
         print(out[i * 2 + j, 0])
-        print(f'{x_mask[i, j]}\n')
+        print(f'{x_mask[i * 2 + j]}\n')
