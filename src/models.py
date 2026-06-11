@@ -131,7 +131,7 @@ class AttentionBlock(nn.Module):
             .unsqueeze(2)
             .unsqueeze(2)
             .expand(-1, -1, self.num_heads, y.size(2), x.size(2))
-            .transpose(0, 1, 2, 4, 3)
+            .transpose(-2, -1)
             .flatten(0, 1, 2)
         )
         ty_copies = (
@@ -151,7 +151,7 @@ class AttentionBlock(nn.Module):
                 .flatten(0, 1)
                 .unsqueeze(1)
                 .expand(-1, y.size(2), x.size(2))
-                .transpose(0, 2, 1)
+                .transpose(-2, -1)
             )
         if mask_y is not None:
             attn_mask = attn_mask & ~(
