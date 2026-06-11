@@ -4,7 +4,6 @@ import torch.nn as nn
 from torch.utils.data import Dataset
 from torch.utils.data import DataLoader
 from torch.nn.utils.rnn import pad_sequence
-from torch.nn.utils import clip_grad_norm_
 from tqdm import tqdm
 import sys
 import signal
@@ -397,7 +396,6 @@ class Experiment:
 
                     loss = criterion(logits, target)     # target (B, 30)
                     loss.backward()
-                    clip_grad_norm_(model.parameters(), max_norm=1.0)
                     optimizer.step()
 
                     total_loss += loss.item()
