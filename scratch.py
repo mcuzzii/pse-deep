@@ -52,7 +52,7 @@ class Time2VecDataset(Dataset):
 
         # print(f'Shapes: X: {x.shape}; y: {y.shape}; ts: {t.shape}; m: {m.shape}')
 
-        return t
+        return t, y
     
 def collate_fn(batch):
     args = list(zip(*batch))
