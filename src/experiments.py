@@ -322,6 +322,7 @@ class Experiment:
                 self._make_dataset(split),
                 batch_size=batch_size,
                 shuffle=True,
+                generator=torch.Generator(device='cpu'),
                 num_workers=2,
                 pin_memory=True,
                 collate_fn=collate_fn
