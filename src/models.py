@@ -162,11 +162,11 @@ class AttentionBlock(nn.Module):
 
         attn_out, attn_weights = self.attention(
             norm_x, norm_y, norm_y,
-            attn_weights=attn_weights,
+            attn_mask=attn_mask,
             need_weights=True,
             average_attn_weights=False
         )
-        print(attn_out)
+        print(attn_weights)
         _nan_check("attn output", attn_out)
 
         attn_out = self.dropout(attn_out)
