@@ -53,6 +53,16 @@ class Time2VecDataset(Dataset):
         # print(f'Shapes: X: {x.shape}; y: {y.shape}; ts: {t.shape}; m: {m.shape}')
 
         return t, y
+
+class Time2VecModel(nn.Module):
+    def __init__(self, input_dim):
+        self.time2vec = Time2Vec(input_dim)
+        self.linear = nn.Linear(input_dim, 2)
+
+    def forward(self, t):
+        t = self.time2vec(t) # (B, S, 60) -> (B, S, 60, 32)
+        return self.linear(t[:, :, -1, :]) # (B, S, 60, 32) -> (B, S, 32) -> (B, S, 2)
+
     
 def collate_fn(batch):
     args = list(zip(*batch))
@@ -238,5 +248,5 @@ def train(
         
         pbar.close()
 
-model = Time2Vec(32)
+model = Time2VecModel(32)
 train(model)
