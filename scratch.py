@@ -19,7 +19,7 @@ ty = torch.arange(0, 5).unsqueeze(0).unsqueeze(0).expand(3, 2, 5)
 x_mask = (torch.rand(3, 2, 6) >= 0.75)
 y_mask = (torch.rand(3, 2, 5) >= 0.75)
 
-out = model(tx, ty, x, y, mask_y=y_mask)
+out = model(tx, ty, x, y, mask_x=x_mask, mask_y=y_mask)
 
 for i in range(3):
     for j in range(2):
