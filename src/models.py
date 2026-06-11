@@ -150,15 +150,17 @@ class AttentionBlock(nn.Module):
                 mask_x
                 .flatten(0, 1)
                 .unsqueeze(1)
-                .expand(-1, y.size(2), x.size(2))
+                .unsqueeze(1)
+                .expand(-1, self.num_heads, y.size(2), x.size(2))
                 .transpose(-2, -1)
             )
         if mask_y is not None:
             attn_mask = attn_mask & ~(
-                mask_y
+                mask_y                              # (B, N, S)
                 .flatten(0, 1)
+                .unsqueeze(1)                       # (B * N, 1, S)
                 .unsqueeze(1)
-                .expand(-1, x.size(2), y.size(2))
+                .expand(-1, self.num_heads, x.size(2), y.size(2))   # (B * N, x_seq, y_seq)
             )
         
         all_masked_y = attn_mask.all(dim=-1)
