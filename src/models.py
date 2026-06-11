@@ -224,7 +224,7 @@ class StockTransformer(nn.Module):
         self.fin_embed = FinEmbedding(input_dim, embedding_dim, temporal_embedding_dim)
         self.dim = self.fin_embed.dim
         self.time_series_transformer = TransformerLayers(
-            self.dim, num_heads, num_layers, expansion, dropout, True
+            self.dim, num_heads, num_layers, expansion, dropout
         )
         self.inter_stock_transformer = TransformerLayers(
             self.dim, num_heads, 1, expansion, dropout
