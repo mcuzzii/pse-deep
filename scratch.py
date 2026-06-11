@@ -153,8 +153,6 @@ for *args, target in loaders['train']:
     for name, param in model.named_parameters():
         print(f"param {name} after update:", param.min().item(), param.max().item(), torch.isnan(param).any().item())
     
-    # second batch
-    break
 
 for *args, target in loaders['train']:
     args = [a.to(device) for a in args]
