@@ -112,6 +112,7 @@ class AttentionBlock(nn.Module):
                 *((y.size(2), x.size(2)) if transpose else (x.size(2), y.size(2)))
             )
             .flatten(0, 2)
+            .to(device)
         )
         if transpose:
             return tensor.transpose(-2, -1)
@@ -129,9 +130,9 @@ class AttentionBlock(nn.Module):
         attn_mask = tx_copies + 1e-6 < ty_copies
 
         if mask_x is not None:
-            attn_mask = attn_mask | self._expand(mask_x, x, y, transpose=True)
+            attn_mask = attn_mask | self._expand(mask_x, x, y, transpose=True).bool()
         if mask_y is not None:
-            attn_mask = attn_mask | self._expand(mask_y, x, y)
+            attn_mask = attn_mask | self._expand(mask_y, x, y).bool()
         
         all_masked_y = attn_mask.all(dim=-1)
         
