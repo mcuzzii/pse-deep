@@ -14,6 +14,6 @@ model = AttentionBlock(
 x = torch.randn(3, 10, 512)
 x_mask = torch.rand(3, 10) >= 0.5
 
-out = model(x, x, mask, mask)
+out = model(x, x, x_mask, x_mask)
 
 print(out)
