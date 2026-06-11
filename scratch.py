@@ -38,7 +38,6 @@ from experiments import Experiment
 
 class Time2VecDataset(Dataset):
     def __init__(self, path, stock_lookback):
-        super().__init__()
         self.stock_data = torch.load(path, map_location=torch.device('cpu'))
         self.stock_lookback = stock_lookback
     
@@ -57,6 +56,7 @@ class Time2VecDataset(Dataset):
 
 class Time2VecModel(nn.Module):
     def __init__(self, input_dim):
+        super().__init__()
         self.time2vec = Time2Vec(input_dim)
         self.linear = nn.Linear(input_dim, 2)
 
