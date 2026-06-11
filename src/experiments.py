@@ -317,18 +317,18 @@ class Experiment:
     ):
         path = ckpt_path if ckpt_path else self.experiment_path / f'{self.experiment_name}.pt'
 
-        loaders = {
-            split: DataLoader(
-                self._make_dataset(split),
-                batch_size=batch_size,
-                shuffle=True,
-                generator=torch.Generator(device='cpu'),
-                num_workers=2,
-                pin_memory=True,
-                collate_fn=collate_fn
-            )
-            for split in ('train', 'val', 'test')
-        }
+        with torch.device('cpu'):
+            loaders = {
+                split: DataLoader(
+                    self._make_dataset(split),
+                    batch_size=batch_size,
+                    shuffle=True,
+                    num_workers=2,
+                    pin_memory=True,
+                    collate_fn=collate_fn
+                )
+                for split in ('train', 'val', 'test')
+            }
 
         model = self.model.to(device)
         optimizer = torch.optim.Adam(model.parameters(), lr=lr)
