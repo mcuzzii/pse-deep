@@ -16,7 +16,6 @@ from models import StockTransformer
 from processing import DataSource, get_stocks, get_text_window
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-torch.set_default_device(device)
 
 def collate_fn(batch):
     args = list(zip(*batch))
@@ -317,19 +316,17 @@ class Experiment:
     ):
         path = ckpt_path if ckpt_path else self.experiment_path / f'{self.experiment_name}.pt'
 
-        with torch.device('cpu'):
-            loaders = {
-                split: DataLoader(
-                    self._make_dataset(split),
-                    batch_size=batch_size,
-                    shuffle=True,
-                    num_workers=2,
-                    pin_memory=True,
-                    collate_fn=collate_fn
-                )
-                for split in ('train', 'val', 'test')
-            }
-            train_iterator = loaders['train']
+        loaders = {
+            split: DataLoader(
+                self._make_dataset(split),
+                batch_size=batch_size,
+                shuffle=True,
+                num_workers=2,
+                pin_memory=True,
+                collate_fn=collate_fn
+            )
+            for split in ('train', 'val', 'test')
+        }
 
         model = self.model.to(device)
         optimizer = torch.optim.Adam(model.parameters(), lr=lr)
@@ -374,7 +371,7 @@ class Experiment:
             for epoch in range(num_epochs):
                 model.train()
 
-                for *args, target in train_iterator:
+                for *args, target in loaders['train']:
 
                     if interrupted:
                         raise KeyboardInterrupt
