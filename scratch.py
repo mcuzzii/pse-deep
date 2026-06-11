@@ -21,3 +21,4 @@ for i in range(3):
     for j in range(2):
         print(out[i * 2 + j, 0])
         print(f'{y_mask[i * 2 + j]}\n')
+        print(out.shape)
