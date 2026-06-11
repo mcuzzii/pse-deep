@@ -118,6 +118,21 @@ class AttentionBlock(nn.Module):
         )
         self.dropout = nn.Dropout(dropout)
     
+    def _expand(self, t, x, y, transpose=False):
+        tensor = (
+            t
+            .unsqueeze(2)
+            .unsqueeze(2)
+            .expand(
+                -1, -1, self.num_heads,
+                *((y.size(2), x.size(2)) if transpose else (x.size(2), y.size(2)))
+            )
+            .flatten(0, 2)
+        )
+        if transpose:
+            return tensor.transpose(-2, -1)
+        return tensor
+    
     def forward(self, tx, ty, x, y, mask_x=None, mask_y=None):
         orig_shape = x.shape
 
@@ -126,42 +141,15 @@ class AttentionBlock(nn.Module):
 
         print(tx.shape)
         
-        tx_copies = (
-            tx
-            .unsqueeze(2)
-            .unsqueeze(2)
-            .expand(-1, -1, self.num_heads, y.size(2), x.size(2))
-            .transpose(-2, -1)
-            .flatten(0, 2)
-        )
-        ty_copies = (
-            ty
-            .unsqueeze(2)
-            .unsqueeze(2)
-            .expand(-1, -1, self.num_heads, x.size(2), y.size(2))
-            .flatten(0, 2)
-        )
+        tx_copies = self._expand(tx, x, y, transpose=True)
+        ty_copies = self._expand(ty, x, y)
         
-        attn_mask = tx_copies + 1e-6 < ty_copies
-        print(attn_mask[0])
+        attn_mask = tx_copies + 1e-6 < ty_copies\
 
         if mask_x is not None:
-            attn_mask = attn_mask & ~(
-                mask_x
-                .flatten(0, 1)
-                .unsqueeze(1)
-                .unsqueeze(1)
-                .expand(-1, self.num_heads, y.size(2), x.size(2))
-                .transpose(-2, -1)
-            )
+            attn_mask = attn_mask | self._expand(mask_x, x, y, transpose=True)
         if mask_y is not None:
-            attn_mask = attn_mask & ~(
-                mask_y                              # (B, N, S)
-                .flatten(0, 1)
-                .unsqueeze(1)                       # (B * N, 1, S)
-                .unsqueeze(1)
-                .expand(-1, self.num_heads, x.size(2), y.size(2))   # (B * N, x_seq, y_seq)
-            )
+            attn_mask = attn_mask | self._expand(mask_y, x, y)
         
         all_masked_y = attn_mask.all(dim=-1)
         
