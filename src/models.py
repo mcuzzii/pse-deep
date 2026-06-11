@@ -123,6 +123,8 @@ class AttentionBlock(nn.Module):
 
         norm_x = self.norm_q(x.flatten(0, 1))     # (b * n, x_seq, e)
         norm_y = self.norm_kv(y.flatten(0, 1))    # (b * n, y_seq, e)
+
+        print(tx.shape)
         
         tx_copies = (
             tx
