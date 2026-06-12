@@ -256,28 +256,32 @@ class StockTransformer(nn.Module):
         x, attn_weights = self.inter_stock_transformer(x, x, mask_x=perm_mask, mask_y=perm_mask)
 
         if mask is not None:
-            t_mask = mask.transpose(-2, -1).bool()
-            active_mask = ~t_mask
-            time_indices = torch.arange(x.size(1), device=x.device).view(1, -1, 1)
-            masked_indices = active_mask * time_indices
-            last_active_idx = masked_indices.argmax(dim=1)
-            has_activity = active_mask.any(dim=1).bool()
-            last_active_idx = torch.where(has_activity, last_active_idx, 0)
-            gather_idx = last_active_idx.unsqueeze(1).unsqueeze(-1)
-            model_dim = x.size(-1)
-            gather_idx = gather_idx.expand(-1, -1, -1, model_dim)
-            last_timestamp = torch.gather(x, dim=1, index=gather_idx).squeeze(1)
+            t_mask = mask.transpose(-2, -1).bool()                                      # (B, S, T) -> (B, T, S)
+            active_mask = ~t_mask                                                       # (B, T, S)
+            time_indices = torch.arange(x.size(1), device=x.device).view(1, -1, 1)      # (1, T, 1)
+            masked_indices = active_mask * time_indices                                 # (B, T, S) with T as masked indices
+            last_active_idx = masked_indices.argmax(dim=1)                              # (B, S): for each B, S is a vector of the last active idx of each stock
+            has_activity = active_mask.any(dim=1).bool()                                # (B, S): for each B, S is a bool vector showing whether the stock has any activity at all
+            last_active_idx = torch.where(has_activity, last_active_idx, 0)             # (B, S): take either the last active index or the first timestamp if no activity
+            gather_idx = last_active_idx.unsqueeze(1).unsqueeze(-1)                     # (B, 1, S, 1)
+            model_dim = x.size(-1)                                                      # E
+            gather_idx = gather_idx.expand(-1, -1, -1, model_dim)                       # (B, 1, S, E)
+            last_timestamp = torch.gather(x, dim=1, index=gather_idx).squeeze(1)        # (B, T, S, E) -> (B, S, E): for every batch and every stock, the vector of the last active timestamp
         else:
-            last_timestamp = x[:, -1, :, :]
+            last_timestamp = x[:, -1, :, :]                                             # Just take the last timestep if no mask
 
         out = self.projection(last_timestamp)
         return out, attn_weights
     
-    def forward(self, t, x, mask):
+    def forward(self, t, x, mask, return_weights=False):
 
         x, tst_attn_weights = self.time_series_transform(x, t, mask)
         x, ist_attn_weights = self.inter_stock_transform(x, mask)
-        return x, tst_attn_weights, ist_attn_weights
+
+        if return_weights:
+            return x, tst_attn_weights, ist_attn_weights
+        else:
+            return x
 
 class NewsEmbedding(nn.Module):
     def __init__(self, embedding_dim, temporal_embedding_dim):
@@ -318,7 +322,7 @@ class StockNewsTransformer(StockTransformer):
         embedding_dim,
         temporal_embedding_dim,
         num_heads,
-        K,
+        K=500,
         num_layers=1,
         expansion=4,
         dropout=0.1
@@ -343,11 +347,15 @@ class StockNewsTransformer(StockTransformer):
         x, attn_weights = self.news_fusion_layer(t, t_news, x, news, x_mask)
         return x, attn_weights
     
-    def forward(self, t, t_news, x, news, x_mask, news_mask):
+    def forward(self, t, t_news, x, news, x_mask, news_mask, return_weights=False):
         x, tst_attn_weights = self.time_series_transform(x, t, x_mask)
         x, nft_attn_weights = self.news_fusion_transform(x, news, t_news, x_mask, news_mask)
         x, ist_attn_weights = self.inter_stock_transform(x, x_mask)
-        return x, tst_attn_weights, nft_attn_weights, ist_attn_weights
+
+        if return_weights:
+            return x, tst_attn_weights, nft_attn_weights, ist_attn_weights
+        else:
+            return x
 
 class SigmaAnnealer:
     def __init__(self, model: StockNewsTransformer, sigma_start=0.05, sigma_end=1e-4, num_epochs=50):

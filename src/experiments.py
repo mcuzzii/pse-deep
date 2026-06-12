@@ -351,6 +351,10 @@ class Experiment:
         best_path = self.experiment_path / f'{self.experiment_name}.pt' # <-- Target path for best weights
         path.parent.mkdir(parents=True, exist_ok=True)
 
+        if best_path.exists():
+            print(f"Model already saved in {best_path}. Skipping..")
+            return
+
         loaders = {
             split: DataLoader(
                 self._make_dataset(split),
@@ -445,7 +449,7 @@ class Experiment:
                     args = [a.to(device) for a in args]
 
                     optimizer.zero_grad()
-                    logits = model(*args)[0]       # (B, 30, 2)
+                    logits = model(*args)                # (B, 30, 2)
                     logits = logits.permute(0, 2, 1)     # (B, 2, 30)
 
                     loss = criterion(logits, target)     # target (B, 30)

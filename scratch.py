@@ -1,6 +1,8 @@
 import torch
 
-d = torch.load('experiments/stock_transformer_30/stock_transformer_30.pt', map_location=torch.device('cpu'))
-print(d['train_losses'])
-print(d['val_losses'])
-print(d['total_loss'])
+t = torch.tensor.randn(4,3,5)
+m = torch.tensor.rand(4,3) > 0.5
+
+t[m] = 0
+
+print(t)
