@@ -344,7 +344,8 @@ class Experiment:
         batch_size=32,
         lr=1e-5,
         val_every=50,
-        patience=10
+        patience=10,
+        weight_decay=1e-2
     ):
         path = self.experiment_path / 'checkpoints' / f'{self.experiment_name}.pt'
         best_path = self.experiment_path / f'{self.experiment_name}.pt' # <-- Target path for best weights
@@ -382,7 +383,7 @@ class Experiment:
         print(f"Computed Class Weights: Class 0: {weight_0:.4f}, Class 1: {weight_1:.4f}")
 
         model = self.model.to(device)
-        optimizer = torch.optim.Adam(model.parameters(), lr=lr)
+        optimizer = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=weight_decay)
         criterion = nn.CrossEntropyLoss(weight=class_weights)
 
         global_step = 0
