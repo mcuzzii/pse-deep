@@ -344,7 +344,7 @@ class Experiment:
         batch_size=32,
         lr=1e-5,
         val_every=50,
-        patience=5
+        patience=10
     ):
         path = self.experiment_path / 'checkpoints' / f'{self.experiment_name}.pt'
         best_path = self.experiment_path / f'{self.experiment_name}.pt' # <-- Target path for best weights
