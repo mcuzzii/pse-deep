@@ -115,7 +115,7 @@ class AttentionBlock(nn.Module):
             .flatten(0, 2)
         )
         if transpose:
-            return tensor.transpose(-2, -1)
+            return tensor.transpose(-2, -1).to(device)
         return tensor.to(device)
     
     def forward(self, x, y, tx=None, ty=None, mask_x=None, mask_y=None):
