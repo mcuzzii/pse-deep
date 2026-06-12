@@ -407,7 +407,7 @@ class Experiment:
             val_losses = checkpoint["val_losses"]
             total_loss = checkpoint["total_loss"]
         
-        early_stopper = EarlyStopping(patience=patience, min_delta=0.001)
+        early_stopper = EarlyStopping(patience=patience)
         pbar = tqdm(total=len(loaders['train']) * num_epochs, desc="Training")
 
         interrupted = False
