@@ -106,7 +106,7 @@ class StockNewsTransformerDataset(StockTransformerDataset):
         return t, timestamps[window], x, embeddings[window], m, y
 
 class EarlyStopping:
-    def __init__(self, patience=5, min_delta=0.0):
+    def __init__(self, patience=10, min_delta=0.0):
         """
         Args:
             patience (int): How many validation checks to wait before stopping after loss plateaus.
