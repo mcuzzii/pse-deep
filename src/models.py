@@ -128,7 +128,7 @@ class AttentionBlock(nn.Module):
             tx_copies = self._expand(tx, x, y, transpose=True)
             ty_copies = self._expand(ty, x, y)
             
-            attn_mask = tx_copies + 1e-6 < ty_copies
+            attn_mask = (tx_copies + 1e-6 < ty_copies).to(device)
         else:
             attn_mask = (
                 torch.zeros(x.size(2), y.size(2))
