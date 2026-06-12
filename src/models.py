@@ -81,10 +81,9 @@ class FinEmbedding(nn.Module):
     def forward(self, x, t):
 
         stock_vector = self.linear(x)
-
         time_vector = self.time_embed(t)
-
         out = torch.cat([stock_vector, time_vector], dim=-1)
+
         return out
 
 class AttentionBlock(nn.Module):
@@ -217,7 +216,7 @@ class TransformerLayers(nn.Module):
     
     def forward(self, x, y, tx=None, ty=None, mask_x=None, mask_y=None):
         attn_blocks = []
-        for i, layer in enumerate(self.transformer):
+        for _, layer in enumerate(self.transformer):
             x, attn_weights = layer(x, y, tx, ty, mask_x, mask_y)
             attn_blocks.append(attn_weights)
         return x, torch.stack(attn_blocks, dim=0)
@@ -339,17 +338,17 @@ class StockNewsTransformer(StockTransformer):
         )
     
     def news_fusion_transform(self, x, news, t, t_news, x_mask, news_mask):
-        news = self.news_embed(news, t_news)
-        news = self.news_selection(news, news_mask)
-        news = news.unsqueeze(1)
-        num_stocks = x.size(1)
-        news = news.expand(-1, num_stocks, -1, -1)
-        x, attn_weights = self.news_fusion_layer(t, t_news, x, news, x_mask)
+        news = self.news_embed(news, t_news)                # (B, N, E)
+        news = self.news_selection(news, news_mask)         # (B, Nf, E)
+        news = news.unsqueeze(1)                            # (B, 1, Nf, E)
+        num_stocks = x.size(1)                              # (B, S, T, E) -> S
+        news = news.expand(-1, num_stocks, -1, -1)          # (B, S, Nf, E)
+        x, attn_weights = self.news_fusion_layer(x, news, t, t_news, x_mask)
         return x, attn_weights
     
     def forward(self, t, t_news, x, news, x_mask, news_mask, return_weights=False):
         x, tst_attn_weights = self.time_series_transform(x, t, x_mask)
-        x, nft_attn_weights = self.news_fusion_transform(x, news, t_news, x_mask, news_mask)
+        x, nft_attn_weights = self.news_fusion_transform(x, news, t, t_news, x_mask, news_mask)
         x, ist_attn_weights = self.inter_stock_transform(x, x_mask)
 
         if return_weights:
