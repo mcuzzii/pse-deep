@@ -105,6 +105,32 @@ class StockNewsTransformerDataset(StockTransformerDataset):
 
         return t, timestamps[window], x, embeddings[window], m, y
 
+class EarlyStopping:
+    def __init__(self, patience=5, min_delta=0.0):
+        """
+        Args:
+            patience (int): How many validation checks to wait before stopping after loss plateaus.
+            min_delta (float): Minimum change in the monitored quantity to qualify as an improvement.
+        """
+        self.patience = patience
+        self.min_delta = min_delta
+        self.counter = 0
+        self.best_loss = float('inf')
+        self.early_stop = False
+
+    def __call__(self, val_loss):
+        # Check if the validation loss improved significantly
+        if val_loss < self.best_loss - self.min_delta:
+            self.best_loss = val_loss
+            self.counter = 0  # Reset patience counter
+            return True       # Signals a new best model found
+        else:
+            self.counter += 1
+            print(f"\nEarlyStopping counter: {self.counter} out of {self.patience}")
+            if self.counter >= self.patience:
+                self.early_stop = True
+            return False      # No improvement
+
 class Experiment:
     def __init__(
         self,
@@ -173,6 +199,12 @@ class Experiment:
                 expansion,
                 dropout
             )
+        
+        total_params = sum(p.numel() for p in self.model.parameters())
+        trainable_params = sum(p.numel() for p in self.model.parameters() if p.requires_grad)
+
+        print(f"Total Parameters:     {total_params:,}")
+        print(f"Trainable Parameters: {trainable_params:,}")
     
     def _get_stock_shapes(self, num_sequences):
         X_shape = (num_sequences, len(self.stock_dfs), self.stock_lookback, len(self.stock_dfs[0].features))
@@ -312,15 +344,17 @@ class Experiment:
         batch_size=32,
         lr=1e-5,
         val_every=50,
-        ckpt_path=None
+        patience=5
     ):
-        path = ckpt_path if ckpt_path else self.experiment_path / f'{self.experiment_name}.pt'
+        path = self.experiment_path / 'checkpoints' / f'{self.experiment_name}.pt'
+        best_path = self.experiment_path / f'{self.experiment_name}.pt' # <-- Target path for best weights
+        path.parent.mkdir(parents=True, exist_ok=True)
 
         loaders = {
             split: DataLoader(
                 self._make_dataset(split),
                 batch_size=batch_size,
-                shuffle=True,
+                shuffle=(split == 'train'),
                 num_workers=2,
                 pin_memory=True,
                 collate_fn=collate_fn
@@ -328,9 +362,28 @@ class Experiment:
             for split in ('train', 'val', 'test')
         }
 
+        print("Calculating class weights from training set...")
+        train_dataset = loaders['train'].dataset
+        
+        all_targets = []
+        for i in range(min(len(train_dataset), 5000)): # Scan a large sample or full dataset
+            *_, tgt = train_dataset[i]
+            all_targets.append(torch.tensor(tgt).argmax(dim=-1))
+        
+        flat_targets = torch.cat(all_targets)
+        count_0 = (flat_targets == 0).sum().item()
+        count_1 = (flat_targets == 1).sum().item()
+        total_counts = count_0 + count_1
+        
+        weight_0 = total_counts / (2.0 * count_0)
+        weight_1 = total_counts / (2.0 * count_1)
+        
+        class_weights = torch.tensor([weight_0, weight_1], dtype=torch.float, device=device)
+        print(f"Computed Class Weights: Class 0: {weight_0:.4f}, Class 1: {weight_1:.4f}")
+
         model = self.model.to(device)
         optimizer = torch.optim.Adam(model.parameters(), lr=lr)
-        criterion = nn.CrossEntropyLoss()
+        criterion = nn.CrossEntropyLoss(weight=class_weights)
 
         global_step = 0
         total_loss = 0
@@ -353,7 +406,8 @@ class Experiment:
             train_losses = checkpoint["train_losses"]
             val_losses = checkpoint["val_losses"]
             total_loss = checkpoint["total_loss"]
-
+        
+        early_stopper = EarlyStopping(patience=patience, min_delta=0.001)
         pbar = tqdm(total=len(loaders['train']) * num_epochs, desc="Training")
 
         interrupted = False
@@ -398,9 +452,7 @@ class Experiment:
                     optimizer.step()
 
                     total_loss += loss.item()
-
                     global_step += 1
-
                     pbar.update(1)
                     pbar.set_postfix(loss=loss.item())
 
@@ -409,20 +461,37 @@ class Experiment:
                         val_losses.append(val_loss)
 
                         train_loss = total_loss / val_every
-                        total_loss = 0
                         train_losses.append(train_loss)
 
-                        pbar.set_postfix(train_loss=loss.item(), val_loss=val_loss)
+                        print(f'train_loss: {train_loss}, val_loss: {val_loss}')
 
-                        # optional checkpoint on validation
-                        torch.save({
+                        is_best = early_stopper(val_loss)
+
+                        checkpoint_data = {
                             "model": model.state_dict(),
                             "optimizer": optimizer.state_dict(),
                             "global_step": global_step,
                             "train_losses": train_losses,
                             "val_losses": val_losses,
                             "total_loss": total_loss
-                        }, path)
+                        }
+
+                        # optional checkpoint on validation
+                        torch.save(checkpoint_data, path)
+
+                        if is_best:
+                            print(f"\nNew best validation loss achieved ({val_loss:.4f})! Saving best model weights...")
+                            torch.save(checkpoint_data, best_path)
+
+                        total_loss = 0
+
+                        if early_stopper.early_stop:
+                            print("\nEarly stopping triggered. Training halted.")
+                            interrupted = True
+                            break
+
+                if interrupted:
+                    break
                 
                 print(f"Epoch {epoch + 1}/{num_epochs} ({len(loaders['train']) * (epoch + 1)} batches).")
 

@@ -113,11 +113,10 @@ class AttentionBlock(nn.Module):
                 *((y.size(2), x.size(2)) if transpose else (x.size(2), y.size(2)))
             )
             .flatten(0, 2)
-            .to(device)
         )
         if transpose:
             return tensor.transpose(-2, -1)
-        return tensor
+        return tensor.to(device)
     
     def forward(self, x, y, tx=None, ty=None, mask_x=None, mask_y=None):
         orig_shape = x.shape
@@ -252,7 +251,7 @@ class StockTransformer(nn.Module):
     def inter_stock_transform(self, x, mask):
         x = x.transpose(-3, -2).contiguous()
         perm_mask = mask.transpose(-2, -1).contiguous().bool() if mask is not None else None
-        x, attn_weights = self.inter_stock_transformer(x, x, perm_mask, perm_mask)
+        x, attn_weights = self.inter_stock_transformer(x, x, mask_x=perm_mask, mask_y=perm_mask)
 
         if mask is not None:
             t_mask = mask.transpose(-2, -1).bool()
