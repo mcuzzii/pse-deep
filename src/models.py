@@ -113,10 +113,11 @@ class AttentionBlock(nn.Module):
                 *((y.size(2), x.size(2)) if transpose else (x.size(2), y.size(2)))
             )
             .flatten(0, 2)
+            .to(device)
         )
         if transpose:
-            return tensor.transpose(-2, -1).to(device)
-        return tensor.to(device)
+            return tensor.transpose(-2, -1)
+        return tensor
     
     def forward(self, x, y, tx=None, ty=None, mask_x=None, mask_y=None):
         orig_shape = x.shape
