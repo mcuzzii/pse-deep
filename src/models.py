@@ -192,30 +192,31 @@ class StockTransformer(nn.Module):
         )
         self.projection = nn.Linear(self.dim, 2)
     
-    def time_series_transform(self, x, t):
-        embeddings = self.fin_embed(x, t)
-
-        tst_out, attn_weights = self.time_series_transformer(embeddings)
-        return tst_out, attn_weights
-    
-    def inter_stock_transform(self, x):
+    def time_series_transform(self, x):
         x_transposed = x.transpose(-3, -2).contiguous()
-        ist_out, attn_weights = self.inter_stock_transformer(x_transposed)
+        tst_out, attn_weights = self.time_series_transformer(x)
 
-        last_vectors = ist_out[:, -1, :, :]
-
+        last_vectors = tst_out[:, -1, :, :]
         out = self.projection(last_vectors)
         return out, attn_weights
     
+    def inter_stock_transform(self, x, t):
+        embeddings = self.fin_embed(x, t)
+
+        x_transposed = embeddings.transpose(-3, -2).contiguous()
+        ist_out, attn_weights = self.inter_stock_transformer(x_transposed)
+
+        return ist_out, attn_weights
+    
     def forward(self, t, x, return_weights=False):
 
-        tst_out, tst_attn_weights = self.time_series_transform(x, t)
-        ist_out, ist_attn_weights = self.inter_stock_transform(tst_out)
+        ist_out, ist_attn_weights = self.inter_stock_transform(x, t)
+        tst_out, tst_attn_weights = self.time_series_transform(ist_out)
 
         if return_weights:
-            return ist_out, tst_attn_weights, ist_attn_weights
+            return tst_out, tst_attn_weights, ist_attn_weights
         else:
-            return ist_out
+            return tst_out
 
 class NewsEmbedding(nn.Module):
     def __init__(self, input_dim, embedding_dim, temporal_embedding_dim, time_vec_model, dropout=0.1):
