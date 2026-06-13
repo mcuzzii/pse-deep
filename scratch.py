@@ -1,8 +1,7 @@
 import torch
 
 m = torch.triu(
-    torch.ones(4, 5),
-    dtype=bool,
+    torch.ones(4, 5, dtype=bool),
     diagonal=1
 )
 
