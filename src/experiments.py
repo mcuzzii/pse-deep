@@ -29,10 +29,11 @@ def collate_fn(batch):
         if not (lengths == lengths[0]).all():
             args[i] = pad_sequence(arg, batch_first=True, padding_value=0.0)
 
-            L_max = args[i].shape[1]
-            arg_mask = torch.arange(L_max).unsqueeze(0) < lengths.unsqueeze(1)
+            if len(args[i].shape) == 3:
+                L_max = args[i].shape[1]
+                arg_mask = torch.arange(L_max).unsqueeze(0) < lengths.unsqueeze(1)
 
-            masks.append(arg_mask)
+                masks.append(arg_mask)
         
         else:
             args[i] = torch.stack(list(arg))

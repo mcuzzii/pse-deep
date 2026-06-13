@@ -5,4 +5,4 @@ m = torch.rand(4,3) > 0.5
 
 t[m] = 0
 
-print(t)
+print(t.shape[10])
