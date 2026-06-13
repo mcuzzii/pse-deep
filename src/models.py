@@ -107,9 +107,8 @@ class SelfAttentionBlock(nn.Module):
         if self.is_causal:
             num_t = x.size(2)
             attn_mask = torch.triu(
-                torch.ones(num_t, num_t, dtype=bool),
-                diagonal=1,
-                device=x.device
+                torch.ones(num_t, num_t, dtype=bool).to(x.device),
+                diagonal=1
             )
 
         attn_out, attn_weights = self.attention(      
