@@ -133,12 +133,26 @@ class EarlyStopping:
 
 class SigmaAnnealer:
     def __init__(self, model, sigma_start=0.05, sigma_end=1e-5, num_batches=500):
+
+        self.null = False
+        if not isinstance(model, (
+            StockNewsTransformer,
+            StockSocialTransformer,
+            StockNewsSocialTransformer
+        )):
+            self.null = True
+            return
+        
         self.topk = model.topk
         self.sigma_start = sigma_start
         self.sigma_end = sigma_end
         self.num_batches = num_batches
 
     def __call__(self, batches: int):
+
+        if self.null:
+            return
+
         t = batches / self.num_batches
         sigma = self.sigma_start * (self.sigma_end / self.sigma_start) ** t
         self.topk.set_sigma(sigma)
@@ -402,7 +416,7 @@ class Experiment:
         train_losses = []
         val_losses = []
         early_stopper = EarlyStopping(patience=patience)
-        sigma_annealer = SigmaAnnealer()
+        sigma_annealer = SigmaAnnealer(model)
 
         resume_step = None
         if path.exists():
