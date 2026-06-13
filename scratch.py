@@ -1,6 +1,9 @@
 import torch
 
-t = torch.randn(4,3,5)
-m = torch.rand(4,3) > 0.5
+m = torch.triu(
+    torch.ones(4, 5),
+    dtype=bool,
+    diagonal=1
+)
 
 print(m)
