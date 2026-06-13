@@ -1,5 +1,6 @@
 import torch
 
-m = torch.ones(4, 5)
-
-print(m)
+d = torch.load('experiments/stock_transformer_30/stock_transformer_30.pt', map_location=torch.device('cpu'))
+print(d['train_losses'])
+print(d['val_losses'])
+print(d['total_loss'])

@@ -202,9 +202,9 @@ class StockTransformer(nn.Module):
         x_transposed = x.transpose(-3, -2).contiguous()
         ist_out, attn_weights = self.inter_stock_transformer(x_transposed)
 
-        pooled_vectors = ist_out.mean(dim=1)
+        last_vectors = ist_out[:, -1, :, :]
 
-        out = self.projection(pooled_vectors)
+        out = self.projection(last_vectors)
         return out, attn_weights
     
     def forward(self, t, x, return_weights=False):
