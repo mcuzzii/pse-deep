@@ -55,8 +55,7 @@ def _run_validation(model, loaders, device, criterion):
 
                 args = [a.to(device) for a in args]
 
-                logits = model(*args)[0]
-                print(f'Validation: {logits.shape}')
+                logits = model(*args)
                 logits = logits.permute(0, 2, 1)
 
                 loss = criterion(logits, target)
@@ -476,7 +475,6 @@ class Experiment:
                     optimizer.zero_grad()
                     logits = model(*args)                # (B, 30, 2)
                     logits = logits.permute(0, 2, 1)     # (B, 2, 30)
-                    print(logits.shape)
 
                     loss = criterion(logits, target)     # target (B, 30)
                     loss.backward()
