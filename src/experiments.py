@@ -79,11 +79,10 @@ class StockTransformerDataset(Dataset):
         x = self.stock_data['features'][:, idx:idx + self.stock_lookback, :]
         y = self.stock_data['target'][:, :, idx]
         t = self.stock_data['timestamps'][:, idx:idx + self.stock_lookback]
-        m = self.stock_data['mask'][:, idx:idx + self.stock_lookback]
 
-        # print(f'Shapes: X: {x.shape}; y: {y.shape}; ts: {t.shape}; m: {m.shape}')
+        # print(f'Shapes: X: {x.shape}; y: {y.shape}; ts: {t.shape}')
 
-        return t, x, m, y
+        return t, x, y
 
 class StockNewsTransformerDataset(StockTransformerDataset):
     def __init__(self, stock_path, news_path, stock_lookback, pred_horizon, time_vec_input):
@@ -97,7 +96,7 @@ class StockNewsTransformerDataset(StockTransformerDataset):
         self.stock_data['features'].shape[0]
     
     def __getitem__(self, idx):
-        t, x, m, y = super().__getitem__(idx)
+        t, x, y = super().__getitem__(idx)
 
         idx = (self.time_vec_input - t[-1]).abs().idxmin()
         cutoff, _ = get_text_window(idx, self.time_vec_input.index, self.pred_horizon)
@@ -109,7 +108,7 @@ class StockNewsTransformerDataset(StockTransformerDataset):
 
         # print(f'Shapes: news_e: {embeddings[window].shape}; news_t: {timestamps[window].shape}')
 
-        return t, timestamps[window], x, embeddings[window], m, y
+        return t, timestamps[window], x, embeddings[window], y
 
 class EarlyStopping:
     def __init__(self, patience=10, min_delta=0.0):
@@ -247,8 +246,7 @@ class Experiment:
             tensors = {
                 'timestamps': list(),
                 'features': list(),
-                'target': list(),
-                'mask': list()
+                'target': list()
             }
 
             for stock_df in self.stock_dfs:
@@ -259,31 +257,26 @@ class Experiment:
                 stock_X = split[stock_df.features].values
                 stock_y = np.array([target, 1 - target])
                 stock_ts = split[stock_df.time_vec_input].values
-                stock_m = split[stock_df.no_activity_col].values
                 
                 tensors['features'].append(stock_X)
                 tensors['target'].append(stock_y)
                 tensors['timestamps'].append(stock_ts)
-                tensors['mask'].append(stock_m)
 
                 print(
                     f'Processed {stock_df.file_name} into arrays:\n'
                     f'- Timestamps: {stock_ts.shape},\n'
                     f'- Features: {stock_X.shape},\n'
-                    f'- Mask: {stock_m.shape},\n'
                     f'- Target: {stock_y.shape}.\n\n'
                 )
 
             tensors['features'] = torch.from_numpy(np.array(tensors['features'], dtype=np.float32))         # (30, B, 100)
             tensors['target'] = torch.from_numpy(np.array(tensors['target'], dtype=np.float32))          # (30, 2, B)
             tensors['timestamps'] = torch.from_numpy(np.array(tensors['timestamps'], dtype=np.float32))     # (30, B)
-            tensors['mask'] = torch.from_numpy(np.array(tensors['mask'], dtype=np.float32))                 # (30, B)
 
             print(
                 'Final dataset sizes:\n'
                 f'- Timestamps: {tensors['timestamps'].shape},\n'
                 f'- Features: {tensors['features'].shape},\n'
-                f'- Mask: {tensors['mask'].shape},\n'
                 f'- Target: {tensors['target'].shape}.\n\n'
             )
 

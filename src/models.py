@@ -1,3 +1,4 @@
+import math
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -20,14 +21,14 @@ class PerturbedTopK(nn.Module):
 class PerturbedTopKFunction(torch.autograd.Function):
     @staticmethod
     def forward(ctx, x, k: int, num_samples: int = 1000, sigma: float = 0.05):
-        b, d = x.shape
-        noise = torch.normal(mean=0.0, std=1.0, size=(b, num_samples, d)).to(x.device)
-        perturbed_x = x[:, None, :] + noise * sigma                                             # (b, num_samples, d) noise-perturbed scores
-        topk_results = torch.topk(perturbed_x, k=k, dim=-1, sorted=False)                       # indices: (B, num_samples, k)
+        b, c, d = x.shape                                                                       # b = B, d = Tn
+        noise = torch.normal(mean=0.0, std=1.0, size=(b, c, num_samples, d)).to(x.device)       # (B, Ts, num_samples, Tn)
+        perturbed_x = x[:, :, None, :] + noise * sigma                                          # (B, Ts, num_samples, Tn) noise-perturbed scores
+        topk_results = torch.topk(perturbed_x, k=k, dim=-1, sorted=False)                       # indices: (B, Ts, num_samples, K)
         indices = topk_results.indices
-        indices = torch.sort(indices, dim=-1).values                                            # (b, num_samples, k)
-        perturbed_output = torch.nn.functional.one_hot(indices, num_classes=d).float()          # (b, num_samples, k, d)
-        indicators = perturbed_output.mean(dim=1)                                               # (b, k, d) - probability scores of every article for each ordinal place
+        indices = torch.sort(indices, dim=-1).values                                            # (B, Ts, num_samples, K)
+        perturbed_output = torch.nn.functional.one_hot(indices, num_classes=d).float()          # (B, Ts, num_samples, K, Tn)
+        indicators = perturbed_output.mean(dim=2)                                               # (B, Ts, K, Tn) - probability scores of every article for each ordinal place
         ctx.k = k
         ctx.num_samples = num_samples
         ctx.sigma = sigma
@@ -50,27 +51,28 @@ class Time2Vec(nn.Module):
     def __init__(self, embedding_dim):
         super().__init__()
         self.dim = embedding_dim
-        self.w0 = nn.Parameter(torch.randn(1, 1))
-        self.b0 = nn.Parameter(torch.randn(1, 1))
-        self.w = nn.Parameter(torch.randn(1, self.dim - 1))
-        self.b = nn.Parameter(torch.randn(1, self.dim - 1))
+        self.w0 = nn.Parameter(torch.randn(1))
+        self.b0 = nn.Parameter(torch.randn(1))
+        self.w = nn.Parameter(torch.randn(self.dim - 1))
+        self.b = nn.Parameter(torch.randn(self.dim - 1))
 
     def forward(self, t):
-        t = t.unsqueeze(-1)
+        t_vec = t.unsqueeze(-1)
 
-        linear = t * self.w0 + self.b0
+        linear = t_vec * self.w0 + self.b0
 
-        periodic = torch.sin(t * self.w + self.b)
+        periodic = torch.sin(t_vec * self.w + self.b)
 
-        out = torch.cat([linear, periodic], dim=-1)
-        return out
+        t_vec = torch.cat([linear, periodic], dim=-1)
+        return t_vec
 
 class FinEmbedding(nn.Module):
-    def __init__(self, input_dim, embedding_dim, temporal_embedding_dim):
+    def __init__(self, input_dim, embedding_dim, temporal_embedding_dim, dropout=0.1):
         super().__init__()
         self.dim = embedding_dim + temporal_embedding_dim
         self.linear = nn.Linear(input_dim, embedding_dim)
         self.time_embed = Time2Vec(temporal_embedding_dim)
+        self.dropout = nn.Dropout(dropout)
     
     def forward(self, x, t):
 
@@ -78,16 +80,17 @@ class FinEmbedding(nn.Module):
         time_vector = self.time_embed(t)
         out = torch.cat([stock_vector, time_vector], dim=-1)
 
+        out = self.dropout(out)
+
         return out
 
-class AttentionBlock(nn.Module):
+class SelfAttentionBlock(nn.Module):
     def __init__(self, embedding_dim, num_heads, dropout=0.1, is_causal=False):
         super().__init__()
         self.num_heads = num_heads
         self.is_causal = is_causal
 
-        self.norm_q = nn.LayerNorm(embedding_dim)
-        self.norm_kv = nn.LayerNorm(embedding_dim)
+        self.norm_qkv = nn.LayerNorm(embedding_dim)
         self.attention = nn.MultiheadAttention(
             embed_dim=embedding_dim,
             num_heads=self.num_heads,
@@ -96,75 +99,32 @@ class AttentionBlock(nn.Module):
         )
         self.dropout = nn.Dropout(dropout)
     
-    def _expand(self, t, x, y, transpose=False):
-        tensor = (
-            t
-            .unsqueeze(2)
-            .unsqueeze(2)
-            .expand(
-                -1, -1, self.num_heads,
-                *((y.size(2), x.size(2)) if transpose else (x.size(2), y.size(2)))
-            )
-            .flatten(0, 2)
-            .to(device)
-        )
-        if transpose:
-            return tensor.transpose(-2, -1)
-        return tensor
-    
-    def forward(self, x, y, tx=None, ty=None, mask_x=None, mask_y=None):
+    def forward(self, x):
         orig_shape = x.shape
 
-        norm_x = self.norm_q(x.flatten(0, 1))     # (b * n, x_seq, e)
-        norm_y = self.norm_kv(y.flatten(0, 1))    # (b * n, y_seq, e)
-        
+        norm_x = self.norm_qkv(x.flatten(0, 1))     # (b * n, x_seq, e)
+
+        attn_mask = None
         if self.is_causal:
-            tx_copies = self._expand(tx, x, y, transpose=True)
-            ty_copies = self._expand(ty, x, y)
-            
-            attn_mask = tx_copies + 1e-6 < ty_copies
-        else:
-            attn_mask = (
-                torch.zeros(x.size(2), y.size(2))
-                .unsqueeze(0)
-                .unsqueeze(0)
-                .unsqueeze(0)
-                .expand(x.size(0), x.size(1), self.num_heads, -1, -1)
-                .flatten(0, 2)
-                .bool()
-                .to(device)
+            num_t = x.size(2)
+            attn_mask = torch.triu(
+                torch.ones(num_t, num_t, dtype=bool),
+                diagonal=1,
+                device=x.device
             )
 
-        if mask_x is not None:
-            attn_mask = attn_mask | self._expand(mask_x, x, y, transpose=True).bool()
-        if mask_y is not None:
-            attn_mask = attn_mask | self._expand(mask_y, x, y).bool()
-        
-        all_masked_y = attn_mask.all(dim=-1)
-        attn_mask[all_masked_y, 0] = False
-
-        attn_mask = attn_mask.to(device)
-
-        attn_out, attn_weights = self.attention(
-            norm_x, norm_y, norm_y,
+        attn_out, attn_weights = self.attention(      
+            norm_x, norm_x, norm_x,
             attn_mask=attn_mask,
             need_weights=True,
             average_attn_weights=False
         )
 
         attn_out = self.dropout(attn_out)
-
-        all_masked_y = all_masked_y.view(
-            attn_out.shape[0], self.num_heads, attn_out.shape[1]
-        ).any(dim=1)
-        
-        attn_out[all_masked_y] = 0.0
-        if mask_x is not None:
-            attn_out[mask_x.flatten(0, 1).bool()] = 0.0
         
         out = x.flatten(0, 1) + attn_out
 
-        return out.view(orig_shape), attn_weights.to(torch.float32)
+        return out.contiguous().view(orig_shape), attn_weights.to(torch.float32)
 
 class FeedForward(nn.Module):
     def __init__(self, embedding_dim, expansion=4, dropout=0.1):
@@ -178,42 +138,39 @@ class FeedForward(nn.Module):
             nn.Dropout(dropout)
         )
     
-    def forward(self, x, mask=None):
+    def forward(self, x):
         norm_x = self.norm(x)
-
         ffn_out = self.ff(norm_x)
-
-        if mask is not None:
-            ffn_out[mask.unsqueeze(-1).expand_as(ffn_out).bool()] = 0.0
         
         out = x + ffn_out
         return out
 
-class TransformerLayer(nn.Module):
+class SelfAttnTransformerLayer(nn.Module):
     def __init__(self, embedding_dim, num_heads, expansion=4, dropout=0.1, is_causal=False):
         super().__init__()
-        self.attn_blk = AttentionBlock(embedding_dim, num_heads, dropout, is_causal)
+        self.attn_blk = SelfAttentionBlock(embedding_dim, num_heads, dropout, is_causal)
         self.ffnn = FeedForward(embedding_dim, expansion, dropout)
 
-    def forward(self, x, y, tx=None, ty=None, mask_x=None, mask_y=None):
-        x, attn_weights = self.attn_blk(x, y, tx, ty, mask_x, mask_y)
-        x = self.ffnn(x, mask_x)
-        return x, attn_weights
+    def forward(self, x):
+        attn_out, attn_weights = self.attn_blk(x)
+        ffn_out = self.ffnn(attn_out)
+        return ffn_out, attn_weights
 
-class TransformerLayers(nn.Module):
+class SelfAttnTransformerLayers(nn.Module):
     def __init__(self, embedding_dim, num_heads, num_layers=1, expansion=4, dropout=0.1, is_causal=False):
         super().__init__()
         self.transformer = nn.ModuleList([
-            TransformerLayer(embedding_dim, num_heads, expansion, dropout, is_causal)
+            SelfAttnTransformerLayer(embedding_dim, num_heads, expansion, dropout, is_causal)
             for _ in range(num_layers)
         ])
     
-    def forward(self, x, y, tx=None, ty=None, mask_x=None, mask_y=None):
+    def forward(self, x):
         attn_blocks = []
+        str_out = x.clone()
         for _, layer in enumerate(self.transformer):
-            x, attn_weights = layer(x, y, tx, ty, mask_x, mask_y)
+            str_out, attn_weights = layer(str_out)
             attn_blocks.append(attn_weights)
-        return x, torch.stack(attn_blocks, dim=0)
+        return str_out, torch.stack(attn_blocks, dim=0)
 
 class StockTransformer(nn.Module):
     def __init__(
@@ -227,64 +184,58 @@ class StockTransformer(nn.Module):
         dropout=0.1
     ):
         super().__init__()
-        self.fin_embed = FinEmbedding(input_dim, embedding_dim, temporal_embedding_dim)
+        self.fin_embed = FinEmbedding(input_dim, embedding_dim, temporal_embedding_dim, dropout)
         self.dim = self.fin_embed.dim
-        self.time_series_transformer = TransformerLayers(
+        self.time_series_transformer = SelfAttnTransformerLayers(
             self.dim, num_heads, num_layers, expansion, dropout, True
         )
-        self.inter_stock_transformer = TransformerLayers(
+        self.inter_stock_transformer = SelfAttnTransformerLayers(
             self.dim, num_heads, 1, expansion, dropout
         )
         self.projection = nn.Linear(self.dim, 2)
     
-    def time_series_transform(self, x, t, mask):
-        x = self.fin_embed(x, t)
+    def time_series_transform(self, x, t):
+        embeddings = self.fin_embed(x, t)
 
-        x, attn_weights = self.time_series_transformer(x, x, t, t, mask, mask)
-        return x, attn_weights
+        tst_out, attn_weights = self.time_series_transformer(embeddings)
+        return tst_out, attn_weights
     
-    def inter_stock_transform(self, x, mask):
-        x = x.transpose(-3, -2).contiguous()
-        perm_mask = mask.transpose(-2, -1).contiguous().bool() if mask is not None else None
-        x, attn_weights = self.inter_stock_transformer(x, x, mask_x=perm_mask, mask_y=perm_mask)
+    def inter_stock_transform(self, x):
+        x_transposed = x.transpose(-3, -2).contiguous()
+        ist_out, attn_weights = self.inter_stock_transformer(x_transposed)
 
-        if mask is not None:
-            t_mask = mask.transpose(-2, -1).bool()                                      # (B, S, T) -> (B, T, S)
-            active_mask = ~t_mask                                                       # (B, T, S)
-            time_indices = torch.arange(x.size(1), device=x.device).view(1, -1, 1)      # (1, T, 1)
-            masked_indices = active_mask * time_indices                                 # (B, T, S) with T as masked indices
-            last_active_idx = masked_indices.argmax(dim=1)                              # (B, S): for each B, S is a vector of the last active idx of each stock
-            has_activity = active_mask.any(dim=1).bool()                                # (B, S): for each B, S is a bool vector showing whether the stock has any activity at all
-            last_active_idx = torch.where(has_activity, last_active_idx, 0)             # (B, S): take either the last active index or the first timestamp if no activity
-            gather_idx = last_active_idx.unsqueeze(1).unsqueeze(-1)                     # (B, 1, S, 1)
-            model_dim = x.size(-1)                                                      # E
-            gather_idx = gather_idx.expand(-1, -1, -1, model_dim)                       # (B, 1, S, E)
-            last_timestamp = torch.gather(x, dim=1, index=gather_idx).squeeze(1)        # (B, T, S, E) -> (B, S, E): for every batch and every stock, the vector of the last active timestamp
-        else:
-            last_timestamp = x[:, -1, :, :]                                             # Just take the last timestep if no mask
+        pooled_vectors = ist_out.mean(dim=1)
 
-        out = self.projection(last_timestamp)
+        out = self.projection(pooled_vectors)
         return out, attn_weights
     
-    def forward(self, t, x, mask, return_weights=False):
+    def forward(self, t, x, return_weights=False):
 
-        x, tst_attn_weights = self.time_series_transform(x, t, mask)
-        x, ist_attn_weights = self.inter_stock_transform(x, mask)
+        tst_out, tst_attn_weights = self.time_series_transform(x, t)
+        ist_out, ist_attn_weights = self.inter_stock_transform(tst_out)
 
         if return_weights:
-            return x, tst_attn_weights, ist_attn_weights
+            return ist_out, tst_attn_weights, ist_attn_weights
         else:
-            return x
+            return ist_out
 
 class NewsEmbedding(nn.Module):
-    def __init__(self, embedding_dim, temporal_embedding_dim):
+    def __init__(self, input_dim, embedding_dim, temporal_embedding_dim, time_vec_model, dropout=0.1):
         super().__init__()
         self.dim = embedding_dim + temporal_embedding_dim
-        self.time_embed = Time2Vec(temporal_embedding_dim)
+        self.time_embed = time_vec_model
+        self.linear = nn.Linear(input_dim, embedding_dim)
+        self.dropout = nn.Dropout(dropout)
+        self.norm = nn.LayerNorm(self.dim)
     
     def forward(self, x, t):
         time_vector = self.time_embed(t)
-        return torch.cat([x, time_vector], dim=-1)
+        news_vector = self.linear(x)
+        combined_embedding = torch.cat([news_vector, time_vector], dim=-1)
+        combined_embedding = self.dropout(combined_embedding)
+        norm_embedding = self.norm(combined_embedding)
+
+        return norm_embedding
 
 class DynamicSelection(nn.Module):
     def __init__(self, input_dim, K):
@@ -293,20 +244,94 @@ class DynamicSelection(nn.Module):
         self.score = nn.Linear(2 * (input_dim // 2), 1)
         self.topk = PerturbedTopK(K, 500, 0.05)
 
-    def forward(self, x, mask):
-        mask_3d = mask.unsqueeze(-1)                                                    # (B, T) -> (B, T, 1)
-        projected = self.down_project(x)                                                # (B, T, Ei) -> (B, T, E)
-        masked_projected = projected * mask_3d                                          # (B, T, E) where masked timesteps = 0
-        embeddings_sum = masked_projected.sum(dim=1)                                    # (B, E)
-        valid_count = mask.sum(dim=-1, keepdim=True).clamp(min=1)                       # (B,)
-        masked_mean = (embeddings_sum / valid_count)                                    # (B, E)
-        masked_mean = masked_mean.unsqueeze(1).expand_as(masked_projected)              # (B, E) -> (B, 1, E) -> (B, T, E)
-        combined = torch.cat([masked_mean, masked_projected], dim=-1) * mask_3d         # (B, T, Ei)
-        scores = self.score(combined).squeeze(-1)                                       # (B, T, Ei) -> (B, T, 1) -> (B, T)
-        scores = scores.masked_fill(mask == 0, float('-inf'))                           # (B, T)
-        indicators = self.topk(scores)                                                  # (B, K, T)
-        selected = torch.einsum("bkn,bnd->bkd", indicators, x)                          # (B, K, Ei)
+    def forward(self, x, news, t, t_news, mask):
+
+        stock_timestamps = t[:, 0, :].unsqueeze(-1)                                     # (B, Ts, 1)
+        news_timestamps = t_news.unsqueeze(1)                                           # (B, 1, Tn)
+        news_mask = news_timestamps <= stock_timestamps                                 # (B, Ts, Tn)
+        news_mask = news_mask * mask.unsqueeze(1)                                       # (B, Ts, Tn) * (B, 1, Tn) = (B, Ts, Tn)
+        news_mask_4d = news_mask.unsqueeze(-1)                                          # (B, Ts, Tn, 1)
+
+        projected = self.down_project(news)                                             # (B, Tn, En) -> (B, Tn, En/2)
+        projected = projected.unsqueeze(1).expand(-1, t.size(2), -1, -1)                # (B, Ts, Tn, En/2)
+        masked_projected = projected * news_mask_4d                                     # (B, Ts, Tn, En/2)
+
+        embeddings_sum = masked_projected.sum(dim=2)                                    # (B, Ts, En/2)
+        valid_count = news_mask.sum(dim=-1, keepdim=True).clamp(min=1)                  # (B, Ts, 1)
+        masked_mean = embeddings_sum / valid_count                                      # (B, Ts, En/2)
+        masked_mean = masked_mean.unsqueeze(2).expand_as(masked_projected)              # (B, Ts, Tn, En/2)
+        combined = torch.cat([masked_mean, masked_projected], dim=-1) * news_mask_4d    # (B, Ts, Tn, En)
+        scores = self.score(combined).squeeze(-1)                                       # (B, Ts, Tn, En) -> (B, Ts, Tn, 1) -> (B, Ts, Tn)
+        scores = scores.masked_fill(news_mask == 0, float('-inf'))                      # (B, Ts, Tn)
+        indicators = self.topk(scores)                                                  # (B, Ts, K, Tn)
+        news_4d = news.unsqueeze(1).expand_as(combined)                                 # (B, Ts, Tn, En)
+        selected = torch.einsum("btkn,btnd->btkd", indicators, news_4d)                 # (B, Ts, K, En)
         return selected
+
+class CrossAttentionBlock(nn.Module):
+    def __init__(self, embedding_dim, num_heads, dropout=0.1):
+        super().__init__()
+
+        self.embedding_dim = embedding_dim
+        self.num_heads = num_heads
+        self.head_dim = embedding_dim // num_heads
+
+        self.norm_q = nn.LayerNorm(embedding_dim)
+        self.norm_kv = nn.LayerNorm(embedding_dim)
+        
+        self.q_proj = nn.Linear(embedding_dim, embedding_dim)
+        self.k_proj = nn.Linear(embedding_dim, embedding_dim)
+        self.v_proj = nn.Linear(embedding_dim, embedding_dim)
+        
+        self.out_proj = nn.Linear(embedding_dim, embedding_dim)
+        
+        self.dropout = nn.Dropout(dropout)
+        
+    def forward(self, x, y):
+        # x: (B, S, Ts, Es)
+        # y: (B, Tn, En)
+
+        x_norm = self.norm_q(x.flatten(0, 1))                                       # (B*S, Ts, Es)
+        y_norm = self.norm_kv(y.flatten(0, 1))                                      
+
+        B, T_tgt, D = x_norm.shape                                                  # T_tgt = Ts
+        _, T_src, _ = y_norm.shape                                                  # T_src = K
+        
+        q = self.q_proj(x_norm)                                                     # (B*S, Ts, Es)
+        k = self.k_proj(y_norm)                                                     # (B*S, Ts, K, En)
+        v = self.v_proj(y_norm)                                                     # (B*S, Ts, K, En)
+        
+        q = q.view(B, T_tgt, self.num_heads, self.head_dim).transpose(1, 2)
+        k = k.view(B, T_src, self.num_heads, self.head_dim).transpose(1, 2)
+        v = v.view(B, T_src, self.num_heads, self.head_dim).transpose(1, 2)
+        
+        # 3. Calculate Scaled Dot-Product Attention Scores
+        # Q shape: (B, H, T_tgt, d_k) | K^T shape: (B, H, d_k, T_src)
+        # Product matrix shape: (B, H, T_tgt, T_src)
+        scaling_factor = math.sqrt(self.head_dim)
+        scores = torch.matmul(q, k.transpose(-2, -1)) / scaling_factor
+        
+        # 4. Apply Optional Masking (e.g., filtering out padded tokens or routing alignments)
+        if attn_mask is not None:
+            # If mask is boolean, fill False/True values with negative infinity
+            scores = scores.masked_fill(attn_mask == 0, float('-inf'))
+            
+        # 5. Softmax to create probability distribution along the source timeline
+        attn_weights = F.softmax(scores, dim=-1)
+        attn_weights = self.dropout(attn_weights)
+        
+        # 6. Weight the Values: (B, H, T_tgt, T_src) x (B, H, T_src, d_k) -> (B, H, T_tgt, d_k)
+        context = torch.matmul(attn_weights, v)
+        
+        # 7. Concatenate heads back together
+        # Transpose back: (B, H, T_tgt, d_k) -> (B, T_tgt, H, d_k)
+        # Flatten H and d_k: -> (B, T_tgt, D)
+        context = context.transpose(1, 2).contiguous().view(B, T_tgt, D)
+        
+        # 8. Output projection head
+        output = self.out_proj(context)
+        
+        return output, attn_weights
 
 class StockNewsTransformer(StockTransformer):
     def __init__(
@@ -324,26 +349,21 @@ class StockNewsTransformer(StockTransformer):
             input_dim, embedding_dim, temporal_embedding_dim,
             num_heads, num_layers, expansion, dropout
         )
-        self.news_embed = NewsEmbedding(embedding_dim, temporal_embedding_dim)
+        self.news_embed = NewsEmbedding(embedding_dim, temporal_embedding_dim, self.fin_embed.time_embed, dropout)
         self.news_selection = DynamicSelection(self.dim, K)
         self.topk = self.news_selection.topk
-        self.news_fusion_layer = TransformerLayers(
+        self.news_fusion_layer = SelfAttnTransformerLayers(
             self.dim, num_heads, num_layers, expansion, dropout, True
         )
     
-    def news_fusion_transform(self, x, news, t, t_news, x_mask, news_mask):
+    def news_fusion_transform(self, x, news, t, t_news, mask):
         news = self.news_embed(news, t_news)                # (B, N, E)
-        news = self.news_selection(news, news_mask)         # (B, K, E)
-        news = news.unsqueeze(1)                            # (B, 1, K, E)
-        num_stocks = x.size(1)                              # (B, S, T, E) -> S
-        news = news.expand(-1, num_stocks, -1, -1)          # (B, S, K, E)
-        x, attn_weights = self.news_fusion_layer(x, news, t, t_news, x_mask)
-        return x, attn_weights
+        news = self.news_selection(x, news, t, t_news, mask)         # (B, K, E)
     
-    def forward(self, t, t_news, x, news, x_mask, news_mask, return_weights=False):
-        x, tst_attn_weights = self.time_series_transform(x, t, x_mask)
-        x, nft_attn_weights = self.news_fusion_transform(x, news, t, t_news, x_mask, news_mask)
-        x, ist_attn_weights = self.inter_stock_transform(x, x_mask)
+    def forward(self, t, t_news, x, news, news_mask, return_weights=False):
+        x, tst_attn_weights = self.time_series_transform(x, t)
+        x, nft_attn_weights = self.news_fusion_transform(x, news, t, t_news, news_mask)
+        x, ist_attn_weights = self.inter_stock_transform(x)
 
         if return_weights:
             return x, tst_attn_weights, nft_attn_weights, ist_attn_weights
