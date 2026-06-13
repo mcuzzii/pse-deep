@@ -12,7 +12,7 @@ from pathlib import Path
 # Add the 'src' directory to the path
 sys.path.append(str(Path.cwd() / 'src'))
 
-from models import StockTransformer
+from models import StockTransformer, StockNewsTransformer, StockSocialTransformer, StockNewsSocialTransformer
 from processing import DataSource, get_stocks, get_text_window
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -39,7 +39,7 @@ def collate_fn(batch):
             args[i] = torch.stack(list(arg))
     
     for mask in masks:
-        args.insert(-1, mask)
+        args.insert(-1, mask.to(device))
 
     return tuple(args)
 
@@ -112,11 +112,6 @@ class StockNewsTransformerDataset(StockTransformerDataset):
 
 class EarlyStopping:
     def __init__(self, patience=10, min_delta=0.0):
-        """
-        Args:
-            patience (int): How many validation checks to wait before stopping after loss plateaus.
-            min_delta (float): Minimum change in the monitored quantity to qualify as an improvement.
-        """
         self.patience = patience
         self.min_delta = min_delta
         self.counter = 0
@@ -135,6 +130,19 @@ class EarlyStopping:
             if self.counter >= self.patience:
                 self.early_stop = True
             return False      # No improvement
+
+class SigmaAnnealer:
+    def __init__(self, model, sigma_start=0.05, sigma_end=1e-5, num_batches=500):
+        self.topk = model.topk
+        self.sigma_start = sigma_start
+        self.sigma_end = sigma_end
+        self.num_batches = num_batches
+
+    def __call__(self, batches: int):
+        t = batches / self.num_batches
+        sigma = self.sigma_start * (self.sigma_end / self.sigma_start) ** t
+        self.topk.set_sigma(sigma)
+        return sigma
 
 class Experiment:
     def __init__(
@@ -393,6 +401,8 @@ class Experiment:
         total_loss = 0
         train_losses = []
         val_losses = []
+        early_stopper = EarlyStopping(patience=patience)
+        sigma_annealer = SigmaAnnealer()
 
         resume_step = None
         if path.exists():
@@ -410,8 +420,9 @@ class Experiment:
             train_losses = checkpoint["train_losses"]
             val_losses = checkpoint["val_losses"]
             total_loss = checkpoint["total_loss"]
-        
-        early_stopper = EarlyStopping(patience=patience)
+            early_stopper = checkpoint["early_stopper"]
+            sigma_annealer = checkpoint["sigma_annealer"]
+
         pbar = tqdm(total=len(loaders['train']) * num_epochs, desc="Training")
 
         interrupted = False
@@ -470,6 +481,7 @@ class Experiment:
                         print(f'train_loss: {train_loss}, val_loss: {val_loss}')
 
                         is_best = early_stopper(val_loss)
+                        sigma_annealer(global_step)
 
                         checkpoint_data = {
                             "model": model.state_dict(),
@@ -477,7 +489,9 @@ class Experiment:
                             "global_step": global_step,
                             "train_losses": train_losses,
                             "val_losses": val_losses,
-                            "total_loss": total_loss
+                            "total_loss": total_loss,
+                            "early_stopper": early_stopper,
+                            "sigma_annealer": sigma_annealer
                         }
 
                         # optional checkpoint on validation

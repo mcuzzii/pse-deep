@@ -32,20 +32,19 @@ class PerturbedTopKFunction(torch.autograd.Function):
         ctx.k = k
         ctx.num_samples = num_samples
         ctx.sigma = sigma
-        ctx.perturbed_output = perturbed_output
-        ctx.noise = noise
+        ctx.save_for_backward(perturbed_output, noise)
         return indicators
 
     @staticmethod
     def backward(ctx, grad_output):
         if grad_output is None:
-            return tuple([None] * 5)
-        noise_gradient = ctx.noise
+            return None, None, None, None
+        perturbed_output, noise_gradient = ctx.saved_tensors
         expected_gradient = (
-            torch.einsum("bnkd,bnd->bkd", ctx.perturbed_output, noise_gradient) / ctx.num_samples / ctx.sigma
+            torch.einsum("btskd,btsd->btkd", perturbed_output, noise_gradient) / ctx.num_samples / ctx.sigma
         )
-        grad_input = torch.einsum("bkd,bkd->bd", grad_output, expected_gradient)
-        return (grad_input,) + tuple([None] * 5)
+        grad_input = torch.einsum("btkd,btkd->btd", grad_output, expected_gradient)
+        return grad_input, None, None, None
 
 class Time2Vec(nn.Module):
     def __init__(self, embedding_dim):
@@ -264,9 +263,9 @@ class DynamicSelection(nn.Module):
         scores = self.score(combined).squeeze(-1)                                       # (B, Ts, Tn, En) -> (B, Ts, Tn, 1) -> (B, Ts, Tn)
         scores = scores.masked_fill(news_mask == 0, float('-inf'))                      # (B, Ts, Tn)
         indicators = self.topk(scores)                                                  # (B, Ts, K, Tn)
-        news_4d = news.unsqueeze(1).expand_as(combined)                                 # (B, Ts, Tn, En)
-        selected = torch.einsum("btkn,btnd->btkd", indicators, news_4d)                 # (B, Ts, K, En)
-        return selected
+        indicators = indicators.unsqueeze(1).expand(-1, x.size(1), -1, -1, -1)          # (B, S, Ts, K, Tn)
+
+        return indicators
 
 class CrossAttentionBlock(nn.Module):
     def __init__(self, embedding_dim, num_heads, dropout=0.1):
@@ -287,51 +286,71 @@ class CrossAttentionBlock(nn.Module):
         
         self.dropout = nn.Dropout(dropout)
         
-    def forward(self, x, y):
+    def forward(self, x, y, indicators):
         # x: (B, S, Ts, Es)
         # y: (B, Tn, En)
+        # indicators: (B, S, Ts, K, Tn)
+
+        y_stock = y.unsqueeze(1).expand(-1, x.size(1), -1, -1)                      # (B, S, Tn, En)
 
         x_norm = self.norm_q(x.flatten(0, 1))                                       # (B*S, Ts, Es)
-        y_norm = self.norm_kv(y.flatten(0, 1))                                      
+        y_norm = self.norm_kv(y_stock.flatten(0, 1))                                # (B*S, Tn, En)
+        indicators_stock = indicators.flatten(0, 1)                                 # (B*S, Ts, K, Tn)
 
         B, T_tgt, D = x_norm.shape                                                  # T_tgt = Ts
-        _, T_src, _ = y_norm.shape                                                  # T_src = K
+        _, T_src, _ = y_norm.shape                                                  # T_src = Tn
         
         q = self.q_proj(x_norm)                                                     # (B*S, Ts, Es)
-        k = self.k_proj(y_norm)                                                     # (B*S, Ts, K, En)
-        v = self.v_proj(y_norm)                                                     # (B*S, Ts, K, En)
+        k = self.k_proj(y_norm)                                                     # (B*S, Tn, En)
+        v = self.v_proj(y_norm)                                                     # (B*S, Tn, En)
         
-        q = q.view(B, T_tgt, self.num_heads, self.head_dim).transpose(1, 2)
-        k = k.view(B, T_src, self.num_heads, self.head_dim).transpose(1, 2)
-        v = v.view(B, T_src, self.num_heads, self.head_dim).transpose(1, 2)
-        
-        # 3. Calculate Scaled Dot-Product Attention Scores
-        # Q shape: (B, H, T_tgt, d_k) | K^T shape: (B, H, d_k, T_src)
-        # Product matrix shape: (B, H, T_tgt, T_src)
+        q = q.view(B, T_tgt, self.num_heads, self.head_dim).transpose(1, 2)         # (B*S, H, Ts, Es/H)
+        k = k.view(B, T_src, self.num_heads, self.head_dim).transpose(1, 2)         # (B*S, H, Tn, En/H)
+        v = v.view(B, T_src, self.num_heads, self.head_dim).transpose(1, 2)         # (B*S, H, Tn, En/H)
+
+        k_selected = torch.einsum("btkm,bhmd->bhtkd", indicators_stock, k)          # (B*S, H, Ts, K, En/H)
+        v_selected = torch.einsum("btkm,bhmd->bhtkd", indicators_stock, v)          # (B*S, H, Ts, K, En/H)
+
         scaling_factor = math.sqrt(self.head_dim)
-        scores = torch.matmul(q, k.transpose(-2, -1)) / scaling_factor
-        
-        # 4. Apply Optional Masking (e.g., filtering out padded tokens or routing alignments)
-        if attn_mask is not None:
-            # If mask is boolean, fill False/True values with negative infinity
-            scores = scores.masked_fill(attn_mask == 0, float('-inf'))
+        scores = torch.einsum("bhtd,bhtkd->bhtk", q, k_selected) / scaling_factor   # (B*S, H, Ts, K)
             
-        # 5. Softmax to create probability distribution along the source timeline
-        attn_weights = F.softmax(scores, dim=-1)
-        attn_weights = self.dropout(attn_weights)
+        attn_weights = F.softmax(scores, dim=-1)                                    # (B*S, H, Ts, K)
+        attn_weights = self.dropout(attn_weights)                                   # (B*S, H, Ts, K)
+
+        context = torch.einsum("bhtk,bhtkd->bhtd", attn_weights, v_selected)        # (B*S, H, Ts, En/H)
+        context = context.transpose(1, 2).contiguous().view(B, T_tgt, D)            # (B*S, H, Ts, En/H) -> (B*S, Ts, H, En/H) -> (B*S, Ts, En)
         
-        # 6. Weight the Values: (B, H, T_tgt, T_src) x (B, H, T_src, d_k) -> (B, H, T_tgt, d_k)
-        context = torch.matmul(attn_weights, v)
-        
-        # 7. Concatenate heads back together
-        # Transpose back: (B, H, T_tgt, d_k) -> (B, T_tgt, H, d_k)
-        # Flatten H and d_k: -> (B, T_tgt, D)
-        context = context.transpose(1, 2).contiguous().view(B, T_tgt, D)
-        
-        # 8. Output projection head
-        output = self.out_proj(context)
+        output = self.out_proj(context)                                             # (B*S, Ts, En)
+        output = output.view(x.size(0), x.size(1), -1, -1)                          # (B, S, Ts, En) (note that En = Es)
         
         return output, attn_weights
+
+class CrossAttnTransformerLayer(nn.Module):
+    def __init__(self, embedding_dim, num_heads, expansion=4, dropout=0.1):
+        super().__init__()
+        self.attn_blk = CrossAttentionBlock(embedding_dim, num_heads, dropout)
+        self.ffnn = FeedForward(embedding_dim, expansion, dropout)
+
+    def forward(self, x, y, indicators):
+        attn_out, attn_weights = self.attn_blk(x, y, indicators)
+        ffn_out = self.ffnn(attn_out)
+        return ffn_out, attn_weights
+
+class CrossAttnTransformerLayers(nn.Module):
+    def __init__(self, embedding_dim, num_heads, num_layers=1, expansion=4, dropout=0.1):
+        super().__init__()
+        self.transformer = nn.ModuleList([
+            CrossAttnTransformerLayer(embedding_dim, num_heads, expansion, dropout)
+            for _ in range(num_layers)
+        ])
+    
+    def forward(self, x, y, indicators):
+        attn_blocks = []
+        str_out = x.clone()
+        for _, layer in enumerate(self.transformer):
+            str_out, attn_weights = layer(str_out, y, indicators)
+            attn_blocks.append(attn_weights)
+        return str_out, torch.stack(attn_blocks, dim=0)
 
 class StockNewsTransformer(StockTransformer):
     def __init__(
@@ -352,36 +371,34 @@ class StockNewsTransformer(StockTransformer):
         self.news_embed = NewsEmbedding(embedding_dim, temporal_embedding_dim, self.fin_embed.time_embed, dropout)
         self.news_selection = DynamicSelection(self.dim, K)
         self.topk = self.news_selection.topk
-        self.news_fusion_layer = SelfAttnTransformerLayers(
-            self.dim, num_heads, num_layers, expansion, dropout, True
+        self.news_fusion_layer = CrossAttnTransformerLayers(
+            self.dim, num_heads, 1, expansion, dropout
         )
     
     def news_fusion_transform(self, x, news, t, t_news, mask):
-        news = self.news_embed(news, t_news)                # (B, N, E)
-        news = self.news_selection(x, news, t, t_news, mask)         # (B, K, E)
+        news_embeddings = self.news_embed(news, t_news)                                               # (B, Tn, En)
+        indicators = self.news_selection(x, news_embeddings, t, t_news, mask)
+        news_embeddings, nft_attn_weights = self.news_fusion_layer(x, news, indicators)               # (B, S, Ts, Es)
+
+        return news_embeddings, nft_attn_weights
     
     def forward(self, t, t_news, x, news, news_mask, return_weights=False):
-        x, tst_attn_weights = self.time_series_transform(x, t)
-        x, nft_attn_weights = self.news_fusion_transform(x, news, t, t_news, news_mask)
-        x, ist_attn_weights = self.inter_stock_transform(x)
+        tst_out, tst_attn_weights = self.time_series_transform(x, t)
+        nft_out, nft_attn_weights = self.news_fusion_transform(tst_out, news, t, t_news, news_mask)
+        ist_out, ist_attn_weights = self.inter_stock_transform(nft_out)
 
         if return_weights:
-            return x, tst_attn_weights, nft_attn_weights, ist_attn_weights
+            return ist_out, tst_attn_weights, nft_attn_weights, ist_attn_weights
         else:
-            return x
+            return ist_out
 
-class SigmaAnnealer:
-    def __init__(self, model: StockNewsTransformer, sigma_start=0.05, sigma_end=1e-4, num_epochs=50):
-        self.topk = model.topk
-        self.sigma_start = sigma_start
-        self.sigma_end = sigma_end
-        self.num_epochs = num_epochs
+class StockSocialTransformer(StockTransformer):
+    def __init__(self):
+        super().__init__()
 
-    def step(self, epoch: int):
-        t = epoch / self.num_epochs
-        sigma = self.sigma_start * (self.sigma_end / self.sigma_start) ** t
-        self.topk.set_sigma(sigma)
-        return sigma
+class StockNewsSocialTransformer(StockNewsTransformer):
+    def __init__(self):
+        super().__init__()
 
 if __name__ == "__main__":
     B, num_stocks, num_timestamps, input_features = 16, 30, 60, 10
