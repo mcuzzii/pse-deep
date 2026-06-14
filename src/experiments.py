@@ -224,7 +224,7 @@ class Experiment:
             return df.df.loc[df.df.index.get_level_values('local_time') > cutoff]
         
         else:
-            return df.iloc[last_val_idx - self.stock_lookback + 2:]
+            return df.df.iloc[last_val_idx - self.stock_lookback + 2:]
     
     def build_model(
         self,
