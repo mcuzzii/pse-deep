@@ -220,6 +220,7 @@ class StockTransformer(nn.Module):
 class NewsEmbedding(nn.Module):
     def __init__(self, input_dim, embedding_dim, temporal_embedding_dim, time_vec_model, dropout=0.1):
         super().__init__()
+        print(temporal_embedding_dim)
         self.dim = embedding_dim + temporal_embedding_dim
         self.time_embed = time_vec_model
         self.linear = nn.Linear(input_dim, embedding_dim)
