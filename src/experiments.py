@@ -98,13 +98,15 @@ class StockNewsTransformerDataset(StockTransformerDataset):
     def __getitem__(self, idx):
         t, x, y = super().__getitem__(idx)
 
-        idx = (self.time_vec_input - t[0, -1]).abs().idxmin()
+        last_timestamp = float(t[0, -1])
+
+        idx = (self.time_vec_input - last_timestamp).abs().idxmin()
         cutoff, _ = get_text_window(idx, self.time_vec_input.index, self.pred_horizon)
         cutoff_scaled = self.time_vec_input[cutoff]
 
         embeddings = self.news_data['embeddings']
         timestamps = self.news_data['timestamps']
-        window = (cutoff_scaled < timestamps) & (timestamps <= t[0, -1])
+        window = (cutoff_scaled < timestamps) & (timestamps <= last_timestamp)
 
         # print(f'Shapes: news_e: {embeddings[window].shape}; news_t: {timestamps[window].shape}')
 
