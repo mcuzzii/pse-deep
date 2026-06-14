@@ -116,7 +116,7 @@ class EarlyStopping:
         self.min_delta = min_delta
         self.counter = 0
         self.best_loss = float('inf')
-        self.early_stop = False
+        self.stop = False
 
     def __call__(self, val_loss):
         # Check if the validation loss improved significantly
@@ -128,7 +128,7 @@ class EarlyStopping:
             self.counter += 1
             print(f"\nEarlyStopping counter: {self.counter} out of {self.patience}")
             if self.counter >= self.patience:
-                self.early_stop = True
+                self.stop = True
             return False      # No improvement
 
 class SigmaAnnealer:
@@ -401,15 +401,23 @@ class Experiment:
         lr=1e-5,
         val_every=50,
         patience=10,
-        weight_decay=1e-2
+        weight_decay=1e-2,
+        sigma_start=5e-2,
+        sigma_end=1e-5
     ):
+        interrupted = False
+
+        def handler(sig, frame):
+            nonlocal interrupted
+            interrupted = True
+            print("Interrupt received. Saving checkpoint...")
+
+        signal.signal(signal.SIGINT, handler)
+        signal.signal(signal.SIGTERM, handler)
+
         path = self.experiment_path / 'checkpoints' / f'{self.experiment_name}.pt'
         best_path = self.experiment_path / f'{self.experiment_name}.pt' # <-- Target path for best weights
         path.parent.mkdir(parents=True, exist_ok=True)
-
-        if best_path.exists():
-            print(f"Model already saved in {best_path}. Skipping..")
-            return
 
         loaders = {
             split: DataLoader(
@@ -423,39 +431,15 @@ class Experiment:
             for split in ('train', 'val', 'test')
         }
 
-        print("Calculating class weights from training set...")
-        train_dataset = loaders['train'].dataset
-        
-        all_targets = []
-        for i in range(min(len(train_dataset), 5000)): # Scan a large sample or full dataset
-            *_, tgt = train_dataset[i]
-            all_targets.append(torch.tensor(tgt).argmax(dim=-1))
-        
-        flat_targets = torch.cat(all_targets)
-        count_0 = (flat_targets == 0).sum().item()
-        count_1 = (flat_targets == 1).sum().item()
-        total_counts = count_0 + count_1
-        
-        weight_0 = total_counts / (2.0 * count_0)
-        weight_1 = total_counts / (2.0 * count_1)
-        
-        class_weights = torch.tensor([weight_0, weight_1], dtype=torch.float, device=device)
-        print(f"Computed Class Weights: Class 0: {weight_0:.4f}, Class 1: {weight_1:.4f}")
-
         model = self.model.to(device)
         optimizer = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=weight_decay)
-        criterion = nn.CrossEntropyLoss(weight=class_weights)
 
         global_step = 0
-        total_loss = 0
-        train_losses = []
-        val_losses = []
-        early_stopper = EarlyStopping(patience=patience)
-        sigma_annealer = SigmaAnnealer(model)
+        num_batches = len(loaders['train'])
 
         resume_step = None
         if path.exists():
-            checkpoint = torch.load(path, map_location=device)
+            checkpoint = torch.load(path, map_location=device, weights_only=False)
 
             model.load_state_dict(checkpoint["model"])
             optimizer.load_state_dict(checkpoint["optimizer"])
@@ -466,23 +450,52 @@ class Experiment:
                         state[k] = v.to(device)
             
             resume_step = checkpoint["global_step"]
+            class_weights = checkpoint["class_weights"]
             train_losses = checkpoint["train_losses"]
             val_losses = checkpoint["val_losses"]
             total_loss = checkpoint["total_loss"]
             early_stopper = checkpoint["early_stopper"]
-            sigma_annealer = checkpoint["sigma_annealer"]
+            sigma_annealer_args = checkpoint["sigma_annealer"]
 
-        pbar = tqdm(total=len(loaders['train']) * num_epochs, desc="Training")
+            if early_stopper.stop:
+                print(f"Model already saved in {best_path}. Skipping..")
+                return
+        
+        else:
+            resume_step = None
+            train_losses = []
+            val_losses = []
+            total_loss = 0
+            early_stopper = EarlyStopping(patience=patience)
+            sigma_annealer_args = {
+                'sigma_start': sigma_start,
+                'sigma_end': sigma_end,
+                'num_batches': num_batches
+            }
 
-        interrupted = False
+            print("Calculating class weights from training set...")
+            train_dataset = loaders['train'].dataset
+            
+            all_targets = []
+            for i in range(min(len(train_dataset), 5000)): # Scan a large sample or full dataset
+                *_, tgt = train_dataset[i]
+                all_targets.append(torch.tensor(tgt).argmax(dim=-1))
+            
+            flat_targets = torch.cat(all_targets)
+            count_0 = (flat_targets == 0).sum().item()
+            count_1 = (flat_targets == 1).sum().item()
+            total_counts = count_0 + count_1
+            
+            weight_0 = total_counts / (2.0 * count_0)
+            weight_1 = total_counts / (2.0 * count_1)
+            
+            class_weights = torch.tensor([weight_0, weight_1], dtype=torch.float, device=device)
+            print(f"Computed Class Weights: Class 0: {weight_0:.4f}, Class 1: {weight_1:.4f}")
 
-        def handler(sig, frame):
-            nonlocal interrupted
-            interrupted = True
-            print("Interrupt received. Saving checkpoint...")
+        sigma_annealer = SigmaAnnealer(model, **sigma_annealer_args)
+        pbar = tqdm(total=num_batches * num_epochs, desc="Training")
 
-        signal.signal(signal.SIGINT, handler)
-        signal.signal(signal.SIGTERM, handler)
+        criterion = nn.CrossEntropyLoss(weight=class_weights)
 
         # Training loop
         try:
@@ -536,11 +549,16 @@ class Experiment:
                             "model": model.state_dict(),
                             "optimizer": optimizer.state_dict(),
                             "global_step": global_step,
+                            "class_weights": class_weights,
                             "train_losses": train_losses,
                             "val_losses": val_losses,
                             "total_loss": total_loss,
                             "early_stopper": early_stopper,
-                            "sigma_annealer": sigma_annealer
+                            "sigma_annealer": {
+                                'sigma_start': sigma_start,
+                                'sigma_end': sigma_end,
+                                'num_batches': num_batches
+                            }
                         }
 
                         # optional checkpoint on validation
@@ -552,7 +570,7 @@ class Experiment:
 
                         total_loss = 0
 
-                        if early_stopper.early_stop:
+                        if early_stopper.stop:
                             print("\nEarly stopping triggered. Training halted.")
                             interrupted = True
                             break
@@ -560,7 +578,9 @@ class Experiment:
                 if interrupted:
                     break
                 
-                print(f"Epoch {epoch + 1}/{num_epochs} ({len(loaders['train']) * (epoch + 1)} batches).")
+                print(f"Epoch {epoch + 1}/{num_epochs} ({num_batches * (epoch + 1)} batches).")
+            
+            early_stopper.stop = True
 
         except KeyboardInterrupt:
             pass
@@ -570,9 +590,16 @@ class Experiment:
                 "model": model.state_dict(),
                 "optimizer": optimizer.state_dict(),
                 "global_step": global_step,
+                "class_weights": class_weights,
                 "train_losses": train_losses,
                 "val_losses": val_losses,
-                "total_loss": total_loss
+                "total_loss": total_loss,
+                "early_stopper": early_stopper,
+                "sigma_annealer": {
+                    'sigma_start': sigma_start,
+                    'sigma_end': sigma_end,
+                    'num_batches': num_batches
+                }
             }, path)
             
             pbar.close()
