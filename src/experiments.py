@@ -39,7 +39,7 @@ def collate_fn(batch):
             args[i] = torch.stack(list(arg))
     
     for mask in masks:
-        args.insert(-1, mask.to(device))
+        args.insert(-1, mask)
 
     return tuple(args)
 
