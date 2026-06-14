@@ -320,6 +320,8 @@ class CrossAttentionBlock(nn.Module):
         context = context.transpose(1, 2).contiguous().view(B, T_tgt, D)            # (B*S, H, Ts, En/H) -> (B*S, Ts, H, En/H) -> (B*S, Ts, En)
         
         output = self.out_proj(context)                                             # (B*S, Ts, En)
+        print(output.shape)
+        print((x.size(0), x.size(1), output.shape[-2], output.shape[-1]))
         output = output.view(x.size(0), x.size(1), -1, -1)                          # (B, S, Ts, En) (note that En = Es)
         
         return output, attn_weights
