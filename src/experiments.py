@@ -13,7 +13,7 @@ from pathlib import Path
 sys.path.append(str(Path.cwd() / 'src'))
 
 from models import StockTransformer, StockNewsTransformer, StockSocialTransformer, StockNewsSocialTransformer
-from processing import DataSource, get_stocks, get_text_window
+from processing import DataSource, get_stocks, get_text_window, get_elapsed_time
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -101,14 +101,8 @@ class StockNewsTransformerDataset(StockTransformerDataset):
         last_timestamp = float(t[0, -1])
 
         idx = (self.time_vec_input - last_timestamp).abs().idxmin()
-        print(idx)
         cutoff, _ = get_text_window(idx, self.time_vec_input.index, self.pred_horizon)
-        cutoff_scaled = None
-        try:
-            cutoff_scaled = self.time_vec_input[cutoff]
-        except:
-            print(self.time_vec_input)
-            raise
+        cutoff_scaled = get_elapsed_time(cutoff)
 
         embeddings = self.news_data['embeddings']
         timestamps = self.news_data['timestamps']

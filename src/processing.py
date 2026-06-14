@@ -159,6 +159,11 @@ def compute_news_stats(news_df, cutoffs, trading_minute):
 
     return pd.concat([means, stds, maximum, minimum, custom_indicators])
 
+def get_elapsed_time(timestamps):
+    reference = pd.Timestamp('2025-03-12 00:00:00')
+    num_seconds = (pd.Timestamp('2026-04-17 00:00:00') - reference).total_seconds()
+    return ((timestamps - reference).total_seconds() / num_seconds).astype('float32')
+
 class DataSource:
     """A class for storing and processing a dataset."""
 
@@ -1171,9 +1176,7 @@ class DataSource:
             json.dump(features, f, indent=4)
     
     def _add_elapsed_time(self):
-        reference = pd.Timestamp('2025-03-12 00:00:00')
-        num_seconds = (pd.Timestamp('2026-04-17 00:00:00') - reference).total_seconds()
-        self.df['elapsed_time'] = ((self.df.index - reference).total_seconds() / num_seconds).astype('float32')
+        self.df['elapsed_time'] = get_elapsed_time(self.df.index)
         self.time_vec_input = 'elapsed_time'
     
     @record_history
