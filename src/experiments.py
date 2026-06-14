@@ -101,6 +101,7 @@ class StockNewsTransformerDataset(StockTransformerDataset):
         last_timestamp = float(t[0, -1])
 
         idx = (self.time_vec_input - last_timestamp).abs().idxmin()
+        print(idx)
         cutoff, _ = get_text_window(idx, self.time_vec_input.index, self.pred_horizon)
         cutoff_scaled = None
         try:
