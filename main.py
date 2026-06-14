@@ -133,21 +133,21 @@ def main():
         social=False,
         stock_lookback=60
     )
-    stock_transformer.build_dataset()
+    stock_transformer.build_dataset(force=True)
     stock_transformer.build_model(
         input_dim=100,
         embedding_dim=128,
         temporal_embedding_dim=16,
         dropout=0.1
     )
-    stock_transformer.train(
-        num_epochs=2,
-        batch_size=32,
-        lr=1e-5,
-        weight_decay=1e-2,
-        val_every=50,
-        patience=10
-    )
+    #stock_transformer.train(
+    #    num_epochs=2,
+    #    batch_size=32,
+    #    lr=1e-5,
+    #    weight_decay=1e-2,
+    #    val_every=50,
+    #    patience=10
+    #)
 
     stock_news_transformer = Experiment(
         experiment_name='stock_news_transformer_30',
@@ -164,14 +164,14 @@ def main():
         temporal_embedding_dim=16,
         dropout=0.1
     )
-    stock_news_transformer.train(
-        num_epochs=2,
-        batch_size=32,
-        lr=1e-5,
-        weight_decay=1e-2,
-        val_every=50,
-        patience=10
-    )
+    #stock_news_transformer.train(
+    #    num_epochs=2,
+    #    batch_size=32,
+    #    lr=1e-5,
+    #    weight_decay=1e-2,
+    #    val_every=50,
+    #    patience=10
+    #)
 
 if __name__ == '__main__':
     main()
