@@ -21,6 +21,8 @@ def collate_fn(batch):
     args = list(zip(*batch))
     n = len(args)
 
+    print(n)
+
     masks = []
 
     for i, arg in enumerate(args[:n]):
