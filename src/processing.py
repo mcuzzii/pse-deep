@@ -112,7 +112,7 @@ def get_text_window(timestamp, T, pred_horizon, min_hours=24):
         if len(past_trading_minutes) <= min_trading_minutes:
             cutoff_270 = past_trading_minutes.min() - pd.Timedelta(minutes=1)
         else:
-            cutoff_270 = past_trading_minutes.iloc[-min_trading_minutes - 1]
+            cutoff_270 = past_trading_minutes[-min_trading_minutes - 1]
         
         final_cutoff = min(cutoff_24h, cutoff_270)
         window = past_trading_minutes[past_trading_minutes > final_cutoff]
