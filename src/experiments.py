@@ -527,6 +527,8 @@ class Experiment:
                     args = [a.to(device) for a in args]
 
                     optimizer.zero_grad()
+                    for arg in args:
+                        print(arg.shape)
                     logits = model(*args)                # (B, 30, 2)
                     logits = logits.permute(0, 2, 1)     # (B, 2, 30)
 
