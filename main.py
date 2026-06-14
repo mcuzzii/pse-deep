@@ -163,6 +163,9 @@ def main():
         news_input_dim=1024,
         embedding_dim=128,
         temporal_embedding_dim=16,
+        K=30,
+        num_samples=100,
+        sigma=5e-2,
         dropout=0.1
     )
     stock_news_transformer.train(

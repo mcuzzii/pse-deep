@@ -236,11 +236,11 @@ class NewsEmbedding(nn.Module):
         return norm_embedding
 
 class DynamicSelection(nn.Module):
-    def __init__(self, input_dim, K):
+    def __init__(self, input_dim, K, num_samples, sigma):
         super().__init__()
         self.down_project = nn.Linear(input_dim, input_dim // 2)
         self.score = nn.Linear(2 * (input_dim // 2), 1)
-        self.topk = PerturbedTopK(K, 500, 0.05)
+        self.topk = PerturbedTopK(K, num_samples, sigma)
 
     def forward(self, x, news, t, t_news, mask):
 
@@ -360,6 +360,8 @@ class StockNewsTransformer(StockTransformer):
         temporal_embedding_dim,
         num_heads,
         K=30,
+        num_samples=100,
+        sigma=5e-2,
         num_layers=1,
         expansion=4,
         dropout=0.1
@@ -369,7 +371,8 @@ class StockNewsTransformer(StockTransformer):
             num_heads, num_layers, expansion, dropout
         )
         self.news_embed = NewsEmbedding(news_input_dim, embedding_dim, temporal_embedding_dim, self.fin_embed.time_embed, dropout)
-        self.news_selection = DynamicSelection(self.dim, K)
+        self.news_selection = DynamicSelection(self.dim, K, num_samples, sigma)
+        self.sigma = sigma
         self.topk = self.news_selection.topk
         self.news_fusion_layer = CrossAttnTransformerLayers(
             self.dim, num_heads, 1, expansion, dropout

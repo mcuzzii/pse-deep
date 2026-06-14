@@ -236,6 +236,8 @@ class Experiment:
         embedding_dim: int | None = None,
         temporal_embedding_dim: int | None = None,
         K=30,
+        num_samples=100,
+        sigma=5e-2,
         num_heads: int = 8,
         num_layers: int = 1,
         expansion: int = 4,
@@ -259,6 +261,8 @@ class Experiment:
                 temporal_embedding_dim,
                 num_heads,
                 K,
+                num_samples,
+                sigma,
                 num_layers,
                 expansion,
                 dropout
@@ -404,7 +408,6 @@ class Experiment:
         val_every=50,
         patience=10,
         weight_decay=1e-2,
-        sigma_start=5e-2,
         sigma_end=1e-5
     ):
         interrupted = False
@@ -438,6 +441,7 @@ class Experiment:
 
         global_step = 0
         num_batches = len(loaders['train'])
+        sigma_start = getattr(model, 'sigma', 5e-2)
 
         resume_step = None
         if path.exists():
