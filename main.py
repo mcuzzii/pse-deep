@@ -175,7 +175,6 @@ def main():
         weight_decay=1e-2,
         val_every=50,
         patience=10,
-        sigma_start=5e-2,
         sigma_end=1e-5
     )
 
