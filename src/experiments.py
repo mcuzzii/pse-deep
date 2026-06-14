@@ -108,8 +108,6 @@ class StockNewsTransformerDataset(StockTransformerDataset):
         timestamps = self.news_data['timestamps']
         window = (cutoff_scaled < timestamps) & (timestamps <= last_timestamp)
 
-        print(idx)
-
         # print(f'Shapes: news_e: {embeddings[window].shape}; news_t: {timestamps[window].shape}')
 
         return t, timestamps[window], x, embeddings[window], y
