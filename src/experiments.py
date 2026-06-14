@@ -229,6 +229,7 @@ class Experiment:
     def build_model(
         self,
         input_dim: int,
+        news_input_dim: int,
         hidden_dim: int | None = None,
         embedding_dim: int | None = None,
         temporal_embedding_dim: int | None = None,
@@ -251,6 +252,7 @@ class Experiment:
         elif self.transformer and self.news and not self.social:
             self.model = StockNewsTransformer(
                 input_dim,
+                news_input_dim,
                 embedding_dim,
                 temporal_embedding_dim,
                 num_heads,

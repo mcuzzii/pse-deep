@@ -160,6 +160,7 @@ def main():
     stock_news_transformer.build_dataset()
     stock_news_transformer.build_model(
         input_dim=100,
+        news_input_dim=1024,
         embedding_dim=128,
         temporal_embedding_dim=16,
         dropout=0.1

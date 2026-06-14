@@ -355,6 +355,7 @@ class StockNewsTransformer(StockTransformer):
     def __init__(
         self,
         input_dim,
+        news_input_dim,
         embedding_dim,
         temporal_embedding_dim,
         num_heads,
@@ -363,13 +364,11 @@ class StockNewsTransformer(StockTransformer):
         expansion=4,
         dropout=0.1
     ):
-        print(temporal_embedding_dim)
         super().__init__(
             input_dim, embedding_dim, temporal_embedding_dim,
             num_heads, num_layers, expansion, dropout
         )
-        print(temporal_embedding_dim)
-        self.news_embed = NewsEmbedding(embedding_dim, temporal_embedding_dim, self.fin_embed.time_embed, dropout)
+        self.news_embed = NewsEmbedding(news_input_dim, embedding_dim, temporal_embedding_dim, self.fin_embed.time_embed, dropout)
         self.news_selection = DynamicSelection(self.dim, K)
         self.topk = self.news_selection.topk
         self.news_fusion_layer = CrossAttnTransformerLayers(
