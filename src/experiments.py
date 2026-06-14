@@ -21,12 +21,12 @@ def collate_fn(batch):
     args = list(zip(*batch))
     n = len(args)
 
-    print(n)
-
     masks = []
 
     for i, arg in enumerate(args[:n]):
         lengths = torch.tensor([len(f) for f in arg])
+
+        print(len(arg))
 
         if not (lengths == lengths[0]).all():
             args[i] = pad_sequence(arg, batch_first=True, padding_value=0.0)
