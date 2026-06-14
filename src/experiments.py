@@ -93,7 +93,7 @@ class StockNewsTransformerDataset(StockTransformerDataset):
         self.time_vec_input = time_vec_input
     
     def __len__(self):
-        self.stock_data['features'].shape[0]
+        return self.stock_data['features'].shape[0]
     
     def __getitem__(self, idx):
         t, x, y = super().__getitem__(idx)
