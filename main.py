@@ -133,7 +133,7 @@ def main():
         social=False,
         stock_lookback=60
     )
-    stock_transformer.build_dataset(force=True)
+    stock_transformer.build_dataset()
     stock_transformer.build_model(
         input_dim=100,
         embedding_dim=128,
