@@ -98,6 +98,8 @@ class StockNewsTransformerDataset(StockTransformerDataset):
     def __getitem__(self, idx):
         t, x, y = super().__getitem__(idx)
 
+        print(t.shape)
+
         idx = (self.time_vec_input - t[-1]).abs().idxmin()
         cutoff, _ = get_text_window(idx, self.time_vec_input.index, self.pred_horizon)
         cutoff_scaled = self.time_vec_input[cutoff]
