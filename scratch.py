@@ -10,4 +10,5 @@ d = torch.load('experiments/stock_transformer_30/stock_transformer_30.pt', map_l
 print(d['train_losses'])
 print(d['val_losses'])
 print(d['total_loss'])
-print(d)
+print(d['early_stopper'])
+print(d['sigma_annealer'])
