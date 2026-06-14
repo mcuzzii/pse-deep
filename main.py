@@ -164,7 +164,7 @@ def main():
         embedding_dim=128,
         temporal_embedding_dim=16,
         K=30,
-        num_samples=80,
+        num_samples=50,
         sigma=5e-2,
         dropout=0.1
     )
