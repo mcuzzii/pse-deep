@@ -18,6 +18,7 @@ from processing import DataSource, get_stocks, get_text_window, get_elapsed_time
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 def collate_fn(batch):
+    print(len(batch))
     args = list(zip(*batch))
     n = len(args)
 
@@ -25,8 +26,6 @@ def collate_fn(batch):
 
     for i, arg in enumerate(args[:n]):
         lengths = torch.tensor([len(f) for f in arg])
-
-        print(len(arg))
 
         if not (lengths == lengths[0]).all():
             args[i] = pad_sequence(arg, batch_first=True, padding_value=0.0)
