@@ -157,7 +157,7 @@ def main():
         social=False,
         stock_lookback=60
     )
-    stock_news_transformer.build_dataset()
+    stock_news_transformer.build_dataset(force=True)
     stock_news_transformer.build_model(
         input_dim=100,
         news_input_dim=1024,
@@ -170,7 +170,7 @@ def main():
     )
     stock_news_transformer.train(
         num_epochs=2,
-        batch_size=64,
+        batch_size=32,
         lr=1e-5,
         weight_decay=1e-2,
         val_every=50,
