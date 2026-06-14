@@ -381,7 +381,7 @@ class StockNewsTransformer(StockTransformer):
     def news_fusion_transform(self, x, news, t, t_news, mask):
         news_embeddings = self.news_embed(news, t_news)                                               # (B, Tn, En)
         indicators = self.news_selection(x, news_embeddings, t, t_news, mask)
-        news_embeddings, nft_attn_weights = self.news_fusion_layer(x, news, indicators)               # (B, S, Ts, Es)
+        news_embeddings, nft_attn_weights = self.news_fusion_layer(x, news_embeddings, indicators)               # (B, S, Ts, Es)
 
         return news_embeddings, nft_attn_weights
     
