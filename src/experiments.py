@@ -190,20 +190,41 @@ class Experiment:
         self.time_vec_input = reference_df.df[reference_df.time_vec_input]
     
     def _get_train_split(self, df):
-        return df.loc[df.index.get_level_values('local_time') <= self.train_cutoff]
+        return df.df.loc[df.df.index.get_level_values('local_time') <= self.train_cutoff]
 
     def _get_val_split(self, df):
-        last_train_idx = df.index.get_loc(self.train_cutoff)
+        last_train_idx = self.filtered_date_times.get_loc(self.train_cutoff)
 
-        non_train_split = df.iloc[last_train_idx - self.stock_lookback + 2:]
+        if df.file_name in ('news', 'social'):
+            cutoff, _ = get_text_window(
+                self.time_vec_input.index[last_train_idx + 1],
+                self.filtered_date_times,
+                self.pred_horizon,
+                24
+            )
+            non_train_split = df.df.loc[df.df.index.get_level_values('local_time') > cutoff]
+
+        else:
+            non_train_split = df.df.iloc[last_train_idx - self.stock_lookback + 2:]
+
         non_test_mask = non_train_split.index.get_level_values('local_time') <= self.val_cutoff
-
         return non_train_split.loc[non_test_mask]
 
     def _get_test_split(self, df):
-        last_val_idx = df.index.get_loc(self.val_cutoff)
+        last_val_idx = self.filtered_date_times.get_loc(self.val_cutoff)
 
-        return df.iloc[last_val_idx - self.stock_lookback + 2:]
+        if df.file_name in ('news', 'social'):
+            cutoff, _ = get_text_window(
+                self.time_vec_input.index[last_val_idx + 1],
+                self.filtered_date_times,
+                self.pred_horizon,
+                24
+            )
+
+            return df.df.loc[df.df.index.get_level_values('local_time') > cutoff]
+        
+        else:
+            return df.iloc[last_val_idx - self.stock_lookback + 2:]
     
     def build_model(
         self,
@@ -273,7 +294,7 @@ class Experiment:
 
             for stock_df in self.stock_dfs:
 
-                split = split_func(stock_df.df)
+                split = split_func(stock_df)
                 target = split[stock_df.target].iloc[self.stock_lookback - 1:].values
 
                 stock_X = split[stock_df.features].values
@@ -320,7 +341,7 @@ class Experiment:
             [train_path, val_path, test_path],
             [self._get_train_split, self._get_val_split, self._get_test_split]
         ):
-            split = split_func(news_df.df)
+            split = split_func(news_df)
 
             embeddings = torch.from_numpy(np.stack(split['embeddings'].values).astype(np.float32))
             timestamps = torch.from_numpy(split['elapsed_time'].values.astype(np.float32))
