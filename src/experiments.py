@@ -102,7 +102,12 @@ class StockNewsTransformerDataset(StockTransformerDataset):
 
         idx = (self.time_vec_input - last_timestamp).abs().idxmin()
         cutoff, _ = get_text_window(idx, self.time_vec_input.index, self.pred_horizon)
-        cutoff_scaled = self.time_vec_input[cutoff]
+        cutoff_scaled = None
+        try:
+            cutoff_scaled = self.time_vec_input[cutoff]
+        except:
+            print(self.time_vec_input)
+            raise
 
         embeddings = self.news_data['embeddings']
         timestamps = self.news_data['timestamps']
