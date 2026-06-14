@@ -18,7 +18,6 @@ from processing import DataSource, get_stocks, get_text_window, get_elapsed_time
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 def collate_fn(batch):
-    print(len(batch))
     args = list(zip(*batch))
     n = len(args)
 
@@ -94,7 +93,6 @@ class StockNewsTransformerDataset(StockTransformerDataset):
         self.time_vec_input = time_vec_input
     
     def __len__(self):
-        print(super().__len__())
         return super().__len__()
     
     def __getitem__(self, idx):
