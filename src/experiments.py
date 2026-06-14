@@ -232,6 +232,7 @@ class Experiment:
         hidden_dim: int | None = None,
         embedding_dim: int | None = None,
         temporal_embedding_dim: int | None = None,
+        K=30,
         num_heads: int = 8,
         num_layers: int = 1,
         expansion: int = 4,
@@ -243,6 +244,17 @@ class Experiment:
                 embedding_dim,
                 temporal_embedding_dim,
                 num_heads,
+                num_layers,
+                expansion,
+                dropout
+            )
+        elif self.transformer and self.news and not self.social:
+            self.model = StockNewsTransformer(
+                input_dim,
+                embedding_dim,
+                temporal_embedding_dim,
+                num_heads,
+                K,
                 num_layers,
                 expansion,
                 dropout

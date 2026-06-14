@@ -358,7 +358,7 @@ class StockNewsTransformer(StockTransformer):
         embedding_dim,
         temporal_embedding_dim,
         num_heads,
-        K=500,
+        K=30,
         num_layers=1,
         expansion=4,
         dropout=0.1
