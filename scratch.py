@@ -11,9 +11,12 @@ d = torch.load('experiments/stock_news_transformer_10/checkpoints/stock_news_tra
 
 import matplotlib.pyplot as plt
 
+num_checkpoints = len(d['train_losses'])
+scaled_x = [(8 * (x + 1)) ** 2 for x in range(num_checkpoints)]
+
 plt.figure(figsize=(8, 5))
-plt.plot(d['train_losses'], label='Train loss')
-plt.plot(d['val_losses'], label='Val loss', linestyle='--')
+plt.plot(scaled_x, d['train_losses'], label='Train loss')
+plt.plot(scaled_x, d['val_losses'], label='Val loss', linestyle='--')
 plt.xlabel('Validation checkpoint')
 plt.ylabel('Loss')
 plt.legend()
