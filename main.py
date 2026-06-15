@@ -171,6 +171,7 @@ def main():
     stock_news_transformer.train(
         num_epochs=2,
         batch_size=8,
+        accumulation_steps=4,
         lr=1e-5,
         weight_decay=1e-2,
         val_every=50,

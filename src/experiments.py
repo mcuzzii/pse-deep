@@ -441,7 +441,7 @@ class Experiment:
         optimizer.zero_grad()
 
         global_step = 0
-        num_batches = len(loaders['train'])
+        num_batches = len(loaders['train']) * num_epochs
         sigma_start = getattr(model, 'sigma', 5e-2)
 
         resume_step = None
