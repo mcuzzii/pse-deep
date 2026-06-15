@@ -1376,7 +1376,10 @@ class DataSource:
             index=self.filtered_date_times
         )
 
-        
+        self.df = pd.DataFrame(
+            [compute_social_stats(social_df, cutoffs, ts) for ts in self.filtered_date_times],
+            index=self.filtered_date_times
+        )
 
 
 

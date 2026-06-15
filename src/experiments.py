@@ -574,7 +574,7 @@ class Experiment:
                         val_losses.append(val_loss)
 
                         period_idx = val_periods.index(global_step)
-                        num_steps = (global_step - val_periods(period_idx - 1)) if period_idx > 0 else global_step
+                        num_steps = (global_step - val_periods[period_idx - 1]) if period_idx > 0 else global_step
 
                         train_loss = total_loss / num_steps
                         train_losses.append(train_loss)
