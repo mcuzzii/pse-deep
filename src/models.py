@@ -220,15 +220,16 @@ class StockTransformer(nn.Module):
 class NewsEmbedding(nn.Module):
     def __init__(self, input_dim, embedding_dim, temporal_embedding_dim, time_vec_model, dropout=0.1):
         super().__init__()
+        self.input_dim = input_dim
         self.dim = embedding_dim + temporal_embedding_dim
         self.time_embed = time_vec_model
-        self.linear = nn.Linear(input_dim, embedding_dim)
+        self.linear = nn.Linear(input_dim // 4, embedding_dim)
         self.dropout = nn.Dropout(dropout)
         self.norm = nn.LayerNorm(self.dim)
     
     def forward(self, x, t):
         time_vector = self.time_embed(t)
-        news_vector = self.linear(x)
+        news_vector = self.linear(x[:, :, :self.input_dim // 4])
         combined_embedding = torch.cat([news_vector, time_vector], dim=-1)
         combined_embedding = self.dropout(combined_embedding)
         norm_embedding = self.norm(combined_embedding)
@@ -381,7 +382,6 @@ class StockNewsTransformer(StockTransformer):
     def news_fusion_transform(self, x, news, t, t_news, mask):
         news_embeddings = self.news_embed(news, t_news)                                               # (B, Tn, En)
         indicators = self.news_selection(x, news_embeddings, t, t_news, mask)
-        print("Unique indicator values:", torch.unique(indicators)[:10])
         news_embeddings, nft_attn_weights = self.news_fusion_layer(x, news_embeddings, indicators)               # (B, S, Ts, Es)
 
         return news_embeddings, nft_attn_weights
