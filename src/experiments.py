@@ -19,7 +19,8 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 def collate_fn(batch):
     for item in batch:
-        print(item.shape)
+        for tensor in item:
+            print(tensor.shape)
     args = list(zip(*batch))
     n = len(args)
 
