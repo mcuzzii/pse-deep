@@ -164,13 +164,13 @@ def main():
         embedding_dim=128,
         temporal_embedding_dim=16,
         K=5,
-        num_samples=20,
+        num_samples=50,
         sigma=5e-2,
         dropout=0.1
     )
     stock_news_transformer.train(
         num_epochs=2,
-        batch_size=32,
+        batch_size=16,
         lr=1e-5,
         weight_decay=1e-2,
         val_every=50,
