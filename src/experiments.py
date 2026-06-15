@@ -404,6 +404,7 @@ class Experiment:
         self,
         num_epochs,
         batch_size=32,
+        accumulation_steps=1,
         lr=1e-5,
         val_every=50,
         patience=10,
@@ -438,6 +439,7 @@ class Experiment:
 
         model = self.model.to(device)
         optimizer = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=weight_decay)
+        optimizer.zero_grad()
 
         global_step = 0
         num_batches = len(loaders['train'])
@@ -508,7 +510,7 @@ class Experiment:
             for epoch in range(num_epochs):
                 model.train()
 
-                for *args, target in loaders['train']:
+                for i, (*args, target) in enumerate(loaders['train']):
 
                     if interrupted:
                         raise KeyboardInterrupt
@@ -526,15 +528,18 @@ class Experiment:
                     target = target.to(device)
                     args = [a.to(device) for a in args]
 
-                    optimizer.zero_grad()
                     logits = model(*args)                # (B, 30, 2)
                     logits = logits.permute(0, 2, 1)     # (B, 2, 30)
 
                     loss = criterion(logits, target)     # target (B, 30)
+                    loss = loss / accumulation_steps
                     loss.backward()
-                    optimizer.step()
 
-                    total_loss += loss.item()
+                    if (i + 1) % accumulation_steps == 0:
+                        optimizer.step()
+                        optimizer.zero_grad()
+
+                    total_loss += loss.item() * accumulation_steps
                     global_step += 1
                     pbar.update(1)
                     pbar.set_postfix(loss=loss.item())
@@ -580,7 +585,11 @@ class Experiment:
                             print("\nEarly stopping triggered. Training halted.")
                             interrupted = True
                             break
-
+                
+                if (i + 1) % accumulation_steps != 0:
+                    optimizer.step()
+                    optimizer.zero_grad()
+                
                 if interrupted:
                     break
                 
