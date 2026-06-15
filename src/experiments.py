@@ -18,13 +18,14 @@ from processing import DataSource, get_stocks, get_text_window, get_elapsed_time
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 def collate_fn(batch):
+    for item in batch:
+        print(item.shape)
     args = list(zip(*batch))
     n = len(args)
 
     masks = []
 
     for i, arg in enumerate(args[:n]):
-        print(arg[0].shape)
         if len(arg[0].shape) == 2 and arg[0].shape[1] == 1024:
             args[i] = pad_sequence(arg, batch_first=True, padding_value=0.0)
 
