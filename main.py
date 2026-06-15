@@ -150,7 +150,7 @@ def main():
         num_epochs=2,
         batch_size=8,
         accumulation_steps=4,
-        batch_lr=1e-5,
+        lr=1e-5,
         weight_decay=1e-2,
         val_every=50,
         patience=1000
@@ -179,7 +179,7 @@ def main():
         num_epochs=2,
         batch_size=2,
         accumulation_steps=16,
-        batch_lr=1e-5,
+        lr=1e-5,
         weight_decay=1e-2,
         val_every=lambda x: (8 * x) ** 2,
         patience=1000,

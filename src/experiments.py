@@ -412,7 +412,7 @@ class Experiment:
         num_epochs,
         batch_size=32,
         accumulation_steps=1,
-        batch_lr=1e-5,
+        lr=1e-5,
         val_every=1024,
         patience=10,
         weight_decay=1e-2,
@@ -447,7 +447,7 @@ class Experiment:
         }
 
         model = self.model.to(device)
-        optimizer = torch.optim.AdamW(model.parameters(), lr=batch_lr * accumulation_steps, weight_decay=weight_decay)
+        optimizer = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=weight_decay)
         optimizer.zero_grad()
 
         global_step = 0
