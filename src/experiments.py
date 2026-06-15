@@ -518,12 +518,12 @@ class Experiment:
 
         if isinstance(val_every, int):
             val_every = lambda x: val_every * x
-        val_every = lambda x: accumulation_steps * math.ceil(val_every(x) / accumulation_steps)
+        val_generator = lambda x: accumulation_steps * math.ceil(val_every(x) / accumulation_steps)
         
         val_periods = [
-            val_every(x)
+            val_generator(x)
             for x in range(num_batches)
-            if val_every(x) < num_batches
+            if val_generator(x) < num_batches
         ]
         val_periods.append(num_batches)
 
