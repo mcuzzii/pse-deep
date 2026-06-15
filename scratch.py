@@ -7,7 +7,7 @@ sys.path.append(str(Path.cwd() / 'src'))
 
 from experiments import Experiment, collate_fn
 
-d = torch.load('experiments/stock_news_transformer_30/checkpoints/stock_news_transformer_30.pt', map_location='cpu', weights_only=False)
+d = torch.load('experiments/stock_transformer_30/checkpoints/stock_transformer_30.pt', map_location='cpu', weights_only=False)
 
 import matplotlib.pyplot as plt
 
@@ -18,4 +18,4 @@ plt.xlabel('Validation checkpoint')
 plt.ylabel('Loss')
 plt.legend()
 plt.tight_layout()
-plt.savefig('experiments/stock_news_transformer_30/loss_curve.png')
+plt.savefig('experiments/stock_transformer_30/loss_curve.png')
