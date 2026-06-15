@@ -163,7 +163,7 @@ def main():
         news_input_dim=1024,
         embedding_dim=128,
         temporal_embedding_dim=16,
-        K=30,
+        K=5,
         num_samples=50,
         sigma=5e-2,
         dropout=0.1
