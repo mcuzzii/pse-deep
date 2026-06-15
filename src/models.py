@@ -14,37 +14,77 @@ class PerturbedTopK(nn.Module):
 
     def __call__(self, x):
         return PerturbedTopKFunction.apply(x, self.k, self.num_samples, self.sigma)
-    
+
     def set_sigma(self, sigma: float):
         self.sigma = max(sigma, 1e-6)
 
+
 class PerturbedTopKFunction(torch.autograd.Function):
+    """
+    Scatter-based implementation that avoids materializing the (N, num_samples, K, d)
+    one-hot tensor used by the naive implementation. Instead saves only
+    (N, num_samples, K) integer indices and (N, num_samples, d) noise --
+    memory O(N * S * (K + d)) instead of O(N * S * K * d).
+
+    Mathematically identical to:
+        perturbed_output = one_hot(indices, d)            # (N, S, K, d)
+        indicators = perturbed_output.mean(dim=1)          # (N, K, d)
+        expected_gradient = einsum("nskd,nsd->nkd", perturbed_output, noise) / S / sigma
+        grad_input = einsum("nkd,nkd->nd", grad_output, expected_gradient)
+    """
+
     @staticmethod
     def forward(ctx, x, k: int, num_samples: int = 1000, sigma: float = 0.05):
-        b, c, d = x.shape                                                                       # b = B, d = Tn
-        noise = torch.normal(mean=0.0, std=1.0, size=(b, c, num_samples, d)).to(x.device)       # (B, Ts, num_samples, Tn)
-        perturbed_x = x[:, :, None, :] + noise * sigma                                          # (B, Ts, num_samples, Tn) noise-perturbed scores
-        topk_results = torch.topk(perturbed_x, k=k, dim=-1, sorted=False)                       # indices: (B, Ts, num_samples, K)
-        indices = topk_results.indices
-        indices = torch.sort(indices, dim=-1).values                                            # (B, Ts, num_samples, K)
-        perturbed_output = torch.nn.functional.one_hot(indices, num_classes=d).float()          # (B, Ts, num_samples, K, Tn)
-        indicators = perturbed_output.mean(dim=2)                                               # (B, Ts, K, Tn) - probability scores of every article for each ordinal place
+        orig_shape = x.shape
+        d = orig_shape[-1]
+        x_flat = x.reshape(-1, d)                                                  # (N, d)
+        N = x_flat.size(0)
+
+        noise = torch.normal(mean=0.0, std=1.0, size=(N, num_samples, d), device=x.device, dtype=x.dtype)
+        perturbed_x = x_flat[:, None, :] + noise * sigma                          # (N, S, d)
+
+        topk_results = torch.topk(perturbed_x, k=k, dim=-1, sorted=False)
+        indices = topk_results.indices                                            # (N, S, K)
+        indices = torch.sort(indices, dim=-1).values                              # (N, S, K)
+
+        # indicators[n, k_, j] = (1/S) * sum_s [indices[n,s,k_] == j]
+        N_, S_, K_ = indices.shape
+        idx_for_scatter = indices.permute(0, 2, 1).reshape(N_ * K_, S_)           # (N*K, S)
+        src_for_scatter = torch.ones_like(idx_for_scatter, dtype=x.dtype)         # (N*K, S)
+        indicators_flat = torch.zeros(N_ * K_, d, device=x.device, dtype=x.dtype)
+        indicators_flat.scatter_add_(1, idx_for_scatter, src_for_scatter)
+        indicators = (indicators_flat / num_samples).reshape(N_, K_, d)
+
         ctx.k = k
         ctx.num_samples = num_samples
         ctx.sigma = sigma
-        ctx.save_for_backward(perturbed_output, noise)
-        return indicators
+        ctx.orig_shape = orig_shape
+        ctx.save_for_backward(indices, noise)                                     # (N,S,K) int64, (N,S,d) float
+
+        return indicators.reshape(*orig_shape[:-1], k, d)
 
     @staticmethod
     def backward(ctx, grad_output):
         if grad_output is None:
             return None, None, None, None
-        perturbed_output, noise_gradient = ctx.saved_tensors
-        expected_gradient = (
-            torch.einsum("btskd,btsd->btkd", perturbed_output, noise_gradient) / ctx.num_samples / ctx.sigma
-        )
-        grad_input = torch.einsum("btkd,btkd->btd", grad_output, expected_gradient)
-        return grad_input, None, None, None
+        indices, noise = ctx.saved_tensors                                        # (N,S,K), (N,S,d)
+        d = noise.size(-1)
+        k = ctx.k
+        N, S, K = indices.shape
+
+        # expected_gradient[n,k_,j] = (1/S) * sum_s [indices[n,s,k_]==j] * noise[n,s,j]
+        gathered = torch.gather(noise, dim=2, index=indices)                      # (N, S, K)
+
+        idx_for_scatter = indices.permute(0, 2, 1).reshape(N * K, S)              # (N*K, S)
+        src_for_scatter = gathered.permute(0, 2, 1).reshape(N * K, S)             # (N*K, S)
+        expected_gradient_flat = torch.zeros(N * K, d, device=noise.device, dtype=noise.dtype)
+        expected_gradient_flat.scatter_add_(1, idx_for_scatter, src_for_scatter)
+        expected_gradient = (expected_gradient_flat / ctx.num_samples / ctx.sigma).reshape(N, K, d)
+
+        grad_output_flat = grad_output.reshape(-1, k, d)                          # (N, K, d)
+        grad_input = torch.einsum("nkd,nkd->nd", grad_output_flat, expected_gradient)  # (N, d)
+
+        return grad_input.reshape(ctx.orig_shape), None, None, None
 
 class Time2Vec(nn.Module):
     def __init__(self, embedding_dim):
@@ -223,47 +263,62 @@ class NewsEmbedding(nn.Module):
         self.input_dim = input_dim
         self.dim = embedding_dim + temporal_embedding_dim
         self.time_embed = time_vec_model
+        self.norm = nn.LayerNorm(input_dim // 4)
         self.linear = nn.Linear(input_dim // 4, embedding_dim)
         self.dropout = nn.Dropout(dropout)
-        self.norm = nn.LayerNorm(self.dim)
     
     def forward(self, x, t):
         time_vector = self.time_embed(t)
-        news_vector = self.linear(x[:, :, :self.input_dim // 4])
+        norm_news_vector = self.norm(x[:, :, :self.input_dim // 4])
+        news_vector = self.linear(norm_news_vector)
         combined_embedding = torch.cat([news_vector, time_vector], dim=-1)
         combined_embedding = self.dropout(combined_embedding)
-        norm_embedding = self.norm(combined_embedding)
 
-        return norm_embedding
+        return combined_embedding
 
 class DynamicSelection(nn.Module):
     def __init__(self, input_dim, K, num_samples, sigma):
         super().__init__()
-        self.down_project = nn.Linear(input_dim, input_dim // 2)
+        self.norm_news = nn.LayerNorm(input_dim)
+        self.norm_stock = nn.LayerNorm(input_dim)
+        self.down_project_news = nn.Linear(input_dim, input_dim // 2)
+        self.down_project_stock = nn.Linear(input_dim, input_dim // 2)
         self.score = nn.Linear(2 * (input_dim // 2), 1)
         self.topk = PerturbedTopK(K, num_samples, sigma)
 
     def forward(self, x, news, t, t_news, mask):
+        # x:      (B, S, Ts, Es)
+        # news:   (B, Tn, En)
+        # t:      (B, S, Ts)
+        # t_news: (B, Tn)
+        # mask:   (B, Tn)
 
         stock_timestamps = t[:, 0, :].unsqueeze(-1)                                     # (B, Ts, 1)
         news_timestamps = t_news.unsqueeze(1)                                           # (B, 1, Tn)
         news_mask = news_timestamps <= stock_timestamps                                 # (B, Ts, Tn)
-        news_mask = news_mask * mask.unsqueeze(1)                                       # (B, Ts, Tn) * (B, 1, Tn) = (B, Ts, Tn)
-        news_mask_4d = news_mask.unsqueeze(-1)                                          # (B, Ts, Tn, 1)
+        news_mask = news_mask * mask.unsqueeze(1)                                       # (B, Ts, Tn)
 
-        projected = self.down_project(news)                                             # (B, Tn, En) -> (B, Tn, En/2)
-        projected = projected.unsqueeze(1).expand(-1, t.size(2), -1, -1)                # (B, Ts, Tn, En/2)
-        masked_projected = projected * news_mask_4d                                     # (B, Ts, Tn, En/2)
+        # expand mask across stocks: (B, S, Ts, Tn)
+        news_mask = news_mask.unsqueeze(1).expand(-1, x.size(1), -1, -1)
+        news_mask_5d = news_mask.unsqueeze(-1)                                          # (B, S, Ts, Tn, 1)
 
-        embeddings_sum = masked_projected.sum(dim=2)                                    # (B, Ts, En/2)
-        valid_count = news_mask.sum(dim=-1, keepdim=True).clamp(min=1)                  # (B, Ts, 1)
-        masked_mean = embeddings_sum / valid_count                                      # (B, Ts, En/2)
-        masked_mean = masked_mean.unsqueeze(2).expand_as(masked_projected)              # (B, Ts, Tn, En/2)
-        combined = torch.cat([masked_mean, masked_projected], dim=-1) * news_mask_4d    # (B, Ts, Tn, En)
-        scores = self.score(combined).squeeze(-1)                                       # (B, Ts, Tn, En) -> (B, Ts, Tn, 1) -> (B, Ts, Tn)
-        scores = scores.masked_fill(news_mask == 0, float('-inf'))                      # (B, Ts, Tn)
-        indicators = self.topk(scores)                                                  # (B, Ts, K, Tn)
-        indicators = indicators.unsqueeze(1).expand(-1, x.size(1), -1, -1, -1)          # (B, S, Ts, K, Tn)
+        # project news once, broadcast over stocks
+        news_proj = self.down_project_news(self.norm_news(news))                       # (B, Tn, En/2)
+        news_proj = news_proj.unsqueeze(1).unsqueeze(2).expand(
+            -1, x.size(1), x.size(2), -1, -1
+        )                                                                                # (B, S, Ts, Tn, En/2)
+
+        # project stock query per (stock, timestep), broadcast over Tn
+        stock_proj = self.down_project_stock(self.norm_stock(x))                        # (B, S, Ts, Es/2)
+        stock_proj = stock_proj.unsqueeze(3).expand(-1, -1, -1, news.size(1), -1)        # (B, S, Ts, Tn, Es/2)
+
+        masked_news_proj = news_proj * news_mask_5d                                     # (B, S, Ts, Tn, En/2)
+        combined = torch.cat([stock_proj, masked_news_proj], dim=-1) * news_mask_5d     # (B, S, Ts, Tn, En)
+
+        scores = self.score(combined).squeeze(-1)                                       # (B, S, Ts, Tn)
+        scores = scores.masked_fill(news_mask == 0, float('-inf'))                      # (B, S, Ts, Tn)
+
+        indicators = self.topk(scores)                                                  # (B, S, Ts, K, Tn)
 
         return indicators
 
@@ -382,9 +437,9 @@ class StockNewsTransformer(StockTransformer):
     def news_fusion_transform(self, x, news, t, t_news, mask):
         news_embeddings = self.news_embed(news, t_news)                                               # (B, Tn, En)
         indicators = self.news_selection(x, news_embeddings, t, t_news, mask)
-        news_embeddings, nft_attn_weights = self.news_fusion_layer(x, news_embeddings, indicators)               # (B, S, Ts, Es)
+        nft_out, nft_attn_weights = self.news_fusion_layer(x, news_embeddings, indicators)               # (B, S, Ts, Es)
 
-        return news_embeddings, nft_attn_weights
+        return nft_out, nft_attn_weights
     
     def forward(self, t, t_news, x, news, news_mask, return_weights=False):
         tst_out, tst_attn_weights = self.time_series_transform(x, t)
