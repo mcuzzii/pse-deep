@@ -21,6 +21,7 @@ def collate_fn(batch):
     for item in batch:
         for tensor in item:
             print(tensor.shape)
+        print()
     print()
     args = list(zip(*batch))
     n = len(args)
