@@ -153,7 +153,7 @@ def main():
         lr=1e-5,
         weight_decay=1e-2,
         val_every=50,
-        patience=100
+        patience=1000
     )
 
     stock_news_transformer = Experiment(
@@ -182,7 +182,7 @@ def main():
         lr=1e-5,
         weight_decay=1e-2,
         val_every=50,
-        patience=100,
+        patience=1000,
         sigma_end=1e-5
     )
 
