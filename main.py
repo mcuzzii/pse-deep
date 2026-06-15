@@ -181,7 +181,7 @@ def main():
         accumulation_steps=16,
         batch_lr=1e-5,
         weight_decay=1e-2,
-        val_every=50,
+        val_every=lambda x: (8 * x) ** 2,
         patience=1000,
         sigma_end=1e-5
     )

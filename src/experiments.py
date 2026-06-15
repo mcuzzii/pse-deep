@@ -413,7 +413,7 @@ class Experiment:
         batch_size=32,
         accumulation_steps=1,
         batch_lr=1e-5,
-        val_every=50,
+        val_every=1024,
         patience=10,
         weight_decay=1e-2,
         sigma_end=1e-5
@@ -516,6 +516,12 @@ class Experiment:
 
         criterion = nn.CrossEntropyLoss(weight=class_weights)
 
+        if isinstance(val_every, int):
+            val_every = lambda x: val_every * x
+        
+        val_periods = {val_every(x) for x in range(num_batches) if val_every(x) < num_batches}
+        val_periods.add(num_batches)
+
         if val_every % accumulation_steps:
             val_every = accumulation_steps * math.ceil(val_every / accumulation_steps)
 
@@ -561,7 +567,7 @@ class Experiment:
                     pbar.update(1)
                     pbar.set_postfix(loss=loss.item())
 
-                    if global_step % val_every == 0:
+                    if global_step in val_periods:
                         val_loss = _run_validation(model, loaders, device, criterion)
                         val_losses.append(val_loss)
 
