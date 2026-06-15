@@ -131,60 +131,36 @@ def preprocess():
 
 def main():
 
-    stock_transformer = Experiment(
-        experiment_name='stock_transformer_30',
-        transformer=True,
-        pred_30=True,
-        news=False,
-        social=False,
-        stock_lookback=60
-    )
-    stock_transformer.build_dataset()
-    stock_transformer.build_model(
-        input_dim=100,
-        embedding_dim=128,
-        temporal_embedding_dim=16,
-        dropout=0.1
-    )
-    stock_transformer.train(
-        num_epochs=2,
-        batch_size=8,
-        accumulation_steps=4,
-        lr=1e-5,
-        weight_decay=1e-2,
-        val_every=50,
-        patience=1000
-    )
-
-    stock_news_transformer = Experiment(
-        experiment_name='stock_news_transformer_30',
-        transformer=True,
-        pred_30=True,
-        news=True,
-        social=False,
-        stock_lookback=60
-    )
-    stock_news_transformer.build_dataset()
-    stock_news_transformer.build_model(
-        input_dim=100,
-        news_input_dim=1024,
-        embedding_dim=128,
-        temporal_embedding_dim=16,
-        K=5,
-        num_samples=500,
-        sigma=5e-2,
-        dropout=0.1
-    )
-    stock_news_transformer.train(
-        num_epochs=2,
-        batch_size=2,
-        accumulation_steps=16,
-        lr=1e-5,
-        weight_decay=1e-2,
-        val_every=lambda x: (8 * x) ** 2,
-        patience=1000,
-        sigma_end=1e-5
-    )
+    for pred_30 in (True, False):
+        for news in (True, False):
+            stock_transformer = Experiment(
+                experiment_name=f'stock_{'news_' if news else ''}transformer_{30 if pred_30 else 10}',
+                transformer=True,
+                pred_30=pred_30,
+                news=news,
+                social=False,
+                stock_lookback=60
+            )
+            stock_transformer.build_dataset()
+            stock_transformer.build_model(
+                input_dim=100,
+                news_input_dim=1024,
+                embedding_dim=128,
+                temporal_embedding_dim=16,
+                dropout=0.1,
+                K=5,
+                num_samples=500,
+                sigma=5e-2,
+            )
+            stock_transformer.train(
+                num_epochs=2,
+                batch_size=2,
+                accumulation_steps=16,
+                lr=1e-5,
+                val_every=lambda x: (8 * x) ** 2,
+                patience=1000,
+                sigma_end=1e-5
+            )
 
 if __name__ == '__main__':
     main()
