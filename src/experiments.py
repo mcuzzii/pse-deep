@@ -24,7 +24,7 @@ def collate_fn(batch):
     masks = []
 
     for i, arg in enumerate(args[:n]):
-
+        print(arg[0].shape)
         if len(arg[0].shape) == 2 and arg[0].shape[1] == 1024:
             args[i] = pad_sequence(arg, batch_first=True, padding_value=0.0)
 
