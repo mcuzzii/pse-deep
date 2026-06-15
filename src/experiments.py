@@ -8,6 +8,8 @@ from tqdm import tqdm
 import sys
 import signal
 from pathlib import Path
+import math
+import random
 
 # Add the 'src' directory to the path
 sys.path.append(str(Path.cwd() / 'src'))
@@ -16,6 +18,12 @@ from models import StockTransformer, StockNewsTransformer, StockSocialTransforme
 from processing import DataSource, get_stocks, get_text_window, get_elapsed_time
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+def seed_worker(worker_id):
+    worker_seed = (torch.initial_seed() + worker_id) % 2**32
+    
+    np.random.seed(worker_seed)
+    random.seed(worker_seed)
 
 def collate_fn(batch):
     args = list(zip(*batch))
@@ -430,6 +438,8 @@ class Experiment:
                 batch_size=batch_size,
                 shuffle=(split == 'train'),
                 num_workers=2,
+                worker_init_fn=seed_worker,
+                generator=torch.Generator().manual_seed(42),
                 pin_memory=True,
                 collate_fn=collate_fn
             )
@@ -500,9 +510,12 @@ class Experiment:
             print(f"Computed Class Weights: Class 0: {weight_0:.4f}, Class 1: {weight_1:.4f}")
 
         sigma_annealer = SigmaAnnealer(model, **sigma_annealer_args)
-        pbar = tqdm(total=num_batches * num_epochs, desc="Training")
+        pbar = tqdm(total=num_batches, desc="Training")
 
         criterion = nn.CrossEntropyLoss(weight=class_weights)
+
+        if val_every % accumulation_steps:
+            val_every = accumulation_steps * math.ceil(val_every / accumulation_steps)
 
         # Training loop
         try:
@@ -592,7 +605,7 @@ class Experiment:
                 if interrupted:
                     break
                 
-                print(f"Epoch {epoch + 1}/{num_epochs} ({num_batches * (epoch + 1)} batches).")
+                print(f"Epoch {epoch + 1}/{num_epochs}.")
             
             early_stopper.stop = True
 

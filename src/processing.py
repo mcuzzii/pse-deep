@@ -1356,6 +1356,25 @@ class DataSource:
 
         self.df = self.df[self.selected_features]
         print(f'Selected features: {self.selected_features}...')
+    
+    @record_history
+    def _social_indicators(
+        self,
+        ignore_history: bool = False
+    ):
+        from sklearn.preprocessing import StandardScaler
+        from mrmr import mrmr_classif
+
+        reference_df = joblib.load(self.processed_path / f'ac_{self._target}m.joblib')
+        self.train_cutoff = reference_df.train_cutoff
+        self.filtered_date_times = reference_df.filtered_date_times
+
+        news_df = joblib.load(self.processed_path / 'news.joblib')
+
+        cutoffs = pd.Series(
+            [get_text_window(ts, self.filtered_date_times, self._target)[0] for ts in self.filtered_date_times],
+            index=self.filtered_date_times
+        )
 
     
     @record_history
