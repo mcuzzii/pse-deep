@@ -25,7 +25,7 @@ def collate_fn(batch):
 
     for i, arg in enumerate(args[:n]):
 
-        if arg[0].shape[1] == 1024:
+        if len(arg[0].shape) == 2 and arg[0].shape[1] == 1024:
             args[i] = pad_sequence(arg, batch_first=True, padding_value=0.0)
 
             lengths = torch.tensor([len(f) for f in arg])
