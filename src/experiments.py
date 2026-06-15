@@ -518,12 +518,14 @@ class Experiment:
 
         if isinstance(val_every, int):
             val_every = lambda x: val_every * x
+        val_every = lambda x: accumulation_steps * math.ceil(val_every(x) / accumulation_steps)
         
-        val_periods = {val_every(x) for x in range(num_batches) if val_every(x) < num_batches}
-        val_periods.add(num_batches)
-
-        if val_every % accumulation_steps:
-            val_every = accumulation_steps * math.ceil(val_every / accumulation_steps)
+        val_periods = [
+            val_every(x)
+            for x in range(num_batches)
+            if val_every(x) < num_batches
+        ]
+        val_periods.append(num_batches)
 
         # Training loop
         try:
@@ -571,7 +573,10 @@ class Experiment:
                         val_loss = _run_validation(model, loaders, device, criterion)
                         val_losses.append(val_loss)
 
-                        train_loss = total_loss / val_every
+                        period_idx = val_periods.index(global_step)
+                        num_steps = (global_step - val_periods(period_idx - 1)) if period_idx > 0 else global_step
+
+                        train_loss = total_loss / num_steps
                         train_losses.append(train_loss)
 
                         print(f'train_loss: {train_loss}, val_loss: {val_loss}')
