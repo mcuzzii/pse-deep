@@ -142,11 +142,12 @@ def main():
     )
     stock_transformer.train(
         num_epochs=2,
-        batch_size=32,
+        batch_size=8,
+        accumulation_steps=4,
         lr=1e-5,
         weight_decay=1e-2,
         val_every=50,
-        patience=10
+        patience=100
     )
 
     stock_news_transformer = Experiment(
@@ -175,7 +176,7 @@ def main():
         lr=1e-5,
         weight_decay=1e-2,
         val_every=50,
-        patience=10,
+        patience=100,
         sigma_end=1e-5
     )
 
