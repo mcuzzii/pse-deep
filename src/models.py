@@ -443,11 +443,11 @@ class StockNewsTransformer(StockTransformer):
     
     def forward(self, t, t_news, x, news, news_mask, return_weights=False):
         tst_out, tst_attn_weights = self.time_series_transform(x, t)
-        nft_out, nft_attn_weights = self.news_fusion_transform(tst_out, news, t, t_news, news_mask)
-        ist_out, ist_attn_weights = self.inter_stock_transform(nft_out)
+        #nft_out, nft_attn_weights = self.news_fusion_transform(tst_out, news, t, t_news, news_mask)
+        ist_out, ist_attn_weights = self.inter_stock_transform(tst_out)
 
         if return_weights:
-            return ist_out, tst_attn_weights, nft_attn_weights, ist_attn_weights
+            return ist_out, tst_attn_weights, ist_attn_weights
         else:
             return ist_out
 
