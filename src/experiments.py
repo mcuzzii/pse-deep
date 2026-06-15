@@ -508,6 +508,8 @@ class Experiment:
             
             class_weights = torch.tensor([weight_0, weight_1], dtype=torch.float, device=device)
             print(f"Computed Class Weights: Class 0: {weight_0:.4f}, Class 1: {weight_1:.4f}")
+        
+        accumulation_loss = 0
 
         sigma_annealer = SigmaAnnealer(model, **sigma_annealer_args)
         pbar = tqdm(total=num_batches, desc="Training")
@@ -525,6 +527,7 @@ class Experiment:
                 for i, (*args, target) in enumerate(loaders['train']):
 
                     if interrupted:
+                        global_step = accumulation_steps * (global_step // accumulation_steps)
                         raise KeyboardInterrupt
                     
                     if resume_step and global_step < resume_step:
@@ -546,12 +549,14 @@ class Experiment:
                     loss = criterion(logits, target)     # target (B, 30)
                     loss = loss / accumulation_steps
                     loss.backward()
+                    accumulation_loss += loss.item() * accumulation_steps
 
                     if (i + 1) % accumulation_steps == 0:
+                        total_loss += accumulation_loss
+                        accumulation_loss = 0
                         optimizer.step()
                         optimizer.zero_grad()
-
-                    total_loss += loss.item() * accumulation_steps
+                    
                     global_step += 1
                     pbar.update(1)
                     pbar.set_postfix(loss=loss.item())
@@ -599,6 +604,8 @@ class Experiment:
                             break
                 
                 if (i + 1) % accumulation_steps != 0:
+                    total_loss += accumulation_loss
+                    accumulation_loss = 0
                     optimizer.step()
                     optimizer.zero_grad()
                 
