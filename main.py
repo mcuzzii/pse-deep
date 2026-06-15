@@ -1,8 +1,14 @@
+# main.py
+
 import sys
 from pathlib import Path
 
 # Add the 'src' directory to the path
 sys.path.append(str(Path.cwd() / 'src'))
+
+from utils import seed_everything
+
+seed_everything(42)
 
 from processing import DataSource, get_unique_instruments, get_stocks
 from experiments import Experiment
