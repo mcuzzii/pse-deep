@@ -19,25 +19,20 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 def collate_fn(batch):
     args = list(zip(*batch))
-
-    for item in args:
-        for tensor in item:
-            print(tensor.shape)
-        print()
-    print()
     n = len(args)
 
     masks = []
 
     for i, arg in enumerate(args[:n]):
-        if len(arg[0].shape) == 2 and arg[0].shape[1] == 1024:
+        if len(arg[0].shape)== 1 or (len(arg[0].shape) == 2 and arg[0].shape[1] == 1024):
             args[i] = pad_sequence(arg, batch_first=True, padding_value=0.0)
 
-            lengths = torch.tensor([len(f) for f in arg])
-            L_max = args[i].shape[1]
-            arg_mask = torch.arange(L_max).unsqueeze(0) < lengths.unsqueeze(1)
+            if len(args[i].shape) == 3:
+                lengths = torch.tensor([len(f) for f in arg])
+                L_max = args[i].shape[1]
+                arg_mask = torch.arange(L_max).unsqueeze(0) < lengths.unsqueeze(1)
 
-            masks.append(arg_mask)
+                masks.append(arg_mask)
         
         else:
             args[i] = torch.stack(list(arg))
