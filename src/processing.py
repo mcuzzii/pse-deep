@@ -118,46 +118,77 @@ def get_text_window(timestamp, T, pred_horizon, min_hours=24):
         window = past_trading_minutes[past_trading_minutes > final_cutoff]
         return final_cutoff, window
 
-def compute_news_stats(news_df, cutoffs, trading_minute):
+def get_agg_keys(features, agg):
+    return [k for k in features.keys() if agg in features[k]]
+
+def get_aggregates(data, features, agg):
+    if not get_agg_keys(features, agg):
+        return dict()
+    if agg != 'follower_weighted_mean':
+        str = f"data[get_agg_keys(features)].astype('float32').{agg}().add_suffix('_{agg}')"
+        return eval(str, dict(), {'data': data, 'features': features})
+    else:
+        return data[get_agg_keys(features)].astype('float32').apply(
+            lambda col: col * data['author_followers']
+        ).sum() / data['author_followers'].sum()
+
+def get_sentiment(data, k, pos=True):
+    sentiment = data[k].value_counts()
+    fin_sentiment = sentiment.get('bullish' if pos else 'bearish', 0)
+    intense_sentiment = sentiment.get('Very Positive' if pos else 'Very Negative', 0)
+    mild_sentiment = sentiment.get('Positive' if pos else 'Negative', 0)
+
+    return fin_sentiment + intense_sentiment + 0.5 * mild_sentiment
+
+def get_custom_indicator(data, k, i):
+
+    if i == 'intensity':
+        return (get_sentiment(data, k, True) - get_sentiment(data, k, False)) / (data.shape[0] + 1e-4)
+    
+    elif i == 'strong':
+        return (data[k] > 0.7).sum() / (data.shape[0] + 1e-4)
+    
+    elif i == 'momentum':
+        return data[k].iloc[-data.shape[0] // 3:].mean() - data[k].mean()
+    
+    elif i == 'short_momentum':
+        return data[k].iloc[-data.shape[0] // 6:].mean() - data[k].iloc[-data.shape[0] // 2].mean()
+    
+    elif i == 'pos_neg_ratio':
+        return get_sentiment(data, k, True) / (get_sentiment(data, k, False) + 1e-4)
+    
+    elif i == 'net':
+        return (data[k] > 0).sum() / (data.shape[0] + 1e-4)
+    
+    elif i == 'prop':
+        return (
+            (sentiment := data[k].value_counts()).get('neutral', 0) + sentiment.get('Neutral', 0)
+        ) / (data.shape[0] + 1e-4)
+    
+    elif i == 'viral_coeff':
+        return (data[k] + data['reply_count']) / (data.shape[0] + 1e-4)
+
+def compute_text_stats(text_df, features, cutoffs, trading_minute):
     cutoff = cutoffs[trading_minute]
     
-    mask = (news_df.index > cutoff) & (news_df.index <= trading_minute)
-    window_data = news_df[mask]
+    mask = (text_df.index > cutoff) & (text_df.index <= trading_minute)
+    window_data = text_df[mask]
+
+    sums = get_aggregates(window_data, features, 'sum')
+    means = get_aggregates(window_data, features, 'mean')
+    stds = get_aggregates(window_data, features, 'std')
+    maxs = get_aggregates(window_data, features, 'max')
+    mins = get_aggregates(window_data, features, 'min')
+
+    custom_indicators = dict()
+
+    for k in features:
+        for i in features[k]:
+            custom_indicators[f'{k}_{i}'] = get_custom_indicator(window_data, k, i)
     
-    means = window_data[['bearish', 'neutral', 'bullish', 'finbert_combined_score']].mean().add_suffix('_mean')
-    stds = window_data[['bearish', 'bullish', 'finbert_combined_score']].std().add_suffix('_std')
-    
-    sentiment_counts = window_data['sentiment'].value_counts()
+    custom_indicators = pd.Series(custom_indicators)
 
-    custom_indicators = pd.Series({
-        'sentiment_intensity': (
-            sentiment_counts.get('bullish', 0) - sentiment_counts.get('bearish', 0)
-        ) / sentiment_counts.sum(),
-        'strongly_bullish': (window_data['bullish'] > 0.7).sum() / (window_data.shape[0] + 1e-4),
-        'strongly_bearish': (window_data['bearish'] > 0.7).sum() / (window_data.shape[0] + 1e-4),
-        'overall_momentum': (
-            window_data['finbert_combined_score'].iloc[-1] - window_data['finbert_combined_score'].iloc[0]
-            if not window_data.empty else 0
-        ),
-        'bullish_momentum': (
-            window_data['bullish'].iloc[-1] - window_data['bullish'].iloc[0]
-        ),
-        'bearish_momentum': (
-            window_data['bearish'].iloc[-1] - window_data['bearish'].iloc[0]
-        ),
-        'short_momentum': (
-            window_data['finbert_combined_score'].iloc[-1] - window_data['finbert_combined_score'].iloc[-window_data.shape[0] // 3]
-        ),
-        'bull_to_bear_ratio': sentiment_counts.get('bullish', 0) / (sentiment_counts.get('bearish', 0) + 1e-4),
-        'net_bullish': (window_data['finbert_combined_score'] > 0).sum() / (window_data.shape[0] + 1e-4),
-        'net_bearish': (window_data['finbert_combined_score'] < 0).sum() / (window_data.shape[0] + 1e-4),
-        'prop_neutral': sentiment_counts.get('neutral', 0) / (window_data.shape[0] + 1e-4)
-    })
-
-    maximum = window_data[['finbert_combined_score']].max().add_suffix('_max')
-    minimum = window_data[['finbert_combined_score']].min().add_suffix('_min')
-
-    return pd.concat([means, stds, maximum, minimum, custom_indicators])
+    return pd.concat([means, stds, maxs, mins, custom_indicators])
 
 def get_elapsed_time(timestamps):
     reference = pd.Timestamp('2025-03-12 00:00:00')
@@ -1281,7 +1312,7 @@ class DataSource:
         self.data_source_path = self.processed_path / f'{self.file_name}.joblib'
     
     @record_history
-    def _news_sentiment_indicators(
+    def _text_indicators(
         self,
         ignore_history: bool = False
     ):
@@ -1292,41 +1323,53 @@ class DataSource:
         self.train_cutoff = reference_df.train_cutoff
         self.filtered_date_times = reference_df.filtered_date_times
 
-        news_df = joblib.load(self.processed_path / 'news.joblib')
+        text_df = joblib.load(self.processed_path / f'{self.file_name}.joblib')
 
         cutoffs = pd.Series(
             [get_text_window(ts, self.filtered_date_times, self._target)[0] for ts in self.filtered_date_times],
             index=self.filtered_date_times
         )
 
-        self.sentiment_indicators = [
-            'bearish_mean',
-            'bullish_mean',
-            'neutral_mean',
-            'finbert_combined_score_mean',
-            'bearish_std',
-            'bullish_std',
-            'finbert_combined_score_std',
-            'sentiment_intensity',
-            'strongly_bullish',
-            'strongly_bearish',
-            'overall_momentum',
-            'bullish_momentum',
-            'bearish_momentum',
-            'short_momentum',
-            'bull_to_bear_ratio',
-            'net_bullish',
-            'net_bearish',
-            'prop_neutral',
-            'finbert_combined_score_max',
-            'finbert_combined_score_min'
-        ]
+        indicator_instructions = {
+            'bearish': ('mean', 'std', 'momentum', 'strong', 'net'),
+            'bullish': ('mean', 'std', 'momentum', 'strong', 'net'),
+            'neutral': ('mean', 'prop'),
+            'finbert_combined_score': ('mean', 'std', 'momentum', 'short_momentum', 'max', 'min'),
+            'sentiment': ('intensity', 'pos_neg_ratio')
+        } if self._medium == 'news_sentiment' else {
+            'very_negative': ('follower_weighted_mean', 'std', 'momentum', 'strong', 'net'),
+            'negative': ('follower_weighted_mean', 'std', 'momentum', 'strong', 'net'),
+            'neutral': ('follower_weighted_mean', 'prop'),
+            'positive': ('follower_weighted_mean', 'std', 'momentum', 'strong', 'net'),
+            'very_positive': ('follower_weighted_mean', 'std', 'momentum', 'strong', 'net'),
+            'sentiment_score': ('follower_weighted_mean', 'std', 'momentum', 'short_momentum', 'max', 'min'),
+            'sentiment': ('intensity', 'pos_neg_ratio'),
+            'retweet_count': ('sum', 'viral_coeff'),
+            'reply_count': ('sum',),
+            'like_count': ('sum',),
+            'quote_count': ('sum',),
+            'view_count': ('mean',),
+            'bookmark_count': ('sum',),
+            'author_is_blue_verified': ('sum',),
+            'author_followers': ('mean',),
+            'author_following': ('mean',),
+            'author_favourites_count': ('mean',),
+            'author_media_count': ('mean',),
+            'author_statuses_count': ('mean',),
+        }
 
         self.df = pd.DataFrame(
-            [compute_news_stats(news_df, cutoffs, ts) for ts in self.filtered_date_times],
+            [compute_text_stats(text_df, indicator_instructions, cutoffs, ts) for ts in self.filtered_date_times],
             index=self.filtered_date_times
         )
-        self.df = self.df[self.sentiment_indicators]
+
+        self.text_indicators = [
+            f'{k}_{i}'
+            for k in indicator_instructions
+            for i in indicator_instructions[k]
+        ]
+
+        self.df = self.df[self.text_indicators]
         self.df.index.name = 'local_time'
 
         self.scaler = StandardScaler()
@@ -1348,41 +1391,17 @@ class DataSource:
         mrmr_df = pd.concat(mrmr_df)
 
         self.selected_features, self.relevance, self.redundancy = mrmr_classif(
-            X=mrmr_df[self.sentiment_indicators],
+            X=mrmr_df[self.text_indicators],
             y=mrmr_df[f'stock_{self._target}m_return'],
-            K=10,
+            K=15,
             return_scores=True
         )
 
         self.df = self.df[self.selected_features]
         print(f'Selected features: {self.selected_features}...')
-    
-    @record_history
-    def _social_indicators(
-        self,
-        ignore_history: bool = False
-    ):
-        from sklearn.preprocessing import StandardScaler
-        from mrmr import mrmr_classif
 
-        reference_df = joblib.load(self.processed_path / f'ac_{self._target}m.joblib')
-        self.train_cutoff = reference_df.train_cutoff
-        self.filtered_date_times = reference_df.filtered_date_times
-
-        social_df = joblib.load(self.processed_path / 'social_media.joblib')
-
-        cutoffs = pd.Series(
-            [get_text_window(ts, self.filtered_date_times, self._target)[0] for ts in self.filtered_date_times],
-            index=self.filtered_date_times
-        )
-
-        self.df = pd.DataFrame(
-            [compute_social_stats(social_df, cutoffs, ts) for ts in self.filtered_date_times],
-            index=self.filtered_date_times
-        )
-
-
-
+        self.file_name = f'{self.file_name}_{self._target}m'
+        self.data_source_path = self.processed_path / f'{self.file_name}.joblib'
     
     @record_history
     def _finalized_text(
@@ -1462,8 +1481,8 @@ class DataSource:
         elif self._medium == 'final_text':
             self._finalized_text(ignore_history=ignore_history)
 
-        elif self._medium == 'news_sentiment':
-            self._news_sentiment_indicators(ignore_history=ignore_history)
+        elif self._medium == 'news_sentiment' or self._medium == 'social_indicators':
+            self._text_indicators(ignore_history=ignore_history)
 
         if self._history != init_history:
             joblib.dump(self, self.data_source_path)
