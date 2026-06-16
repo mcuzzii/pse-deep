@@ -1359,7 +1359,7 @@ class DataSource:
         }
 
         self.df = pd.DataFrame(
-            [compute_text_stats(text_df, indicator_instructions, cutoffs, ts) for ts in self.filtered_date_times],
+            [compute_text_stats(text_df.df, indicator_instructions, cutoffs, ts) for ts in self.filtered_date_times],
             index=self.filtered_date_times
         )
 
@@ -1369,7 +1369,7 @@ class DataSource:
             for i in indicator_instructions[k]
         ]
 
-        self.df = self.df[self.text_indicators]
+        self.df = self.df[self.text_indicators].astype('float32')
         self.df.index.name = 'local_time'
 
         self.scaler = StandardScaler()
@@ -1385,7 +1385,7 @@ class DataSource:
         for stock in stocks:
             df = self.df.copy(deep=True)
             stock_df = joblib.load(f'{stock}_{self._target}m.joblib')
-            df[f'stock_{self._target}m_return'] = stock_df.df[f'{stock}_{self._target}m_return']
+            df[f'stock_{self._target}m_return'] = stock_df.df[f'{stock}_{self._target}m_return'].astype('float32')
             mrmr_df.append(df)
 
         mrmr_df = pd.concat(mrmr_df)
