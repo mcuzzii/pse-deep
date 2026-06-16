@@ -152,7 +152,7 @@ def get_custom_indicator(data, k, i):
         return data[k].iloc[-data.shape[0] // 3:].mean() - data[k].mean()
     
     elif i == 'short_momentum':
-        return data[k].iloc[-data.shape[0] // 6:].mean() - data[k].iloc[-data.shape[0] // 2].mean()
+        return data[k].iloc[-data.shape[0] // 6:].mean() - data[k].iloc[-data.shape[0] // 2:].mean()
     
     elif i == 'pos_neg_ratio':
         return get_sentiment(data, k, True) / (get_sentiment(data, k, False) + 1e-4)
@@ -188,7 +188,7 @@ def compute_text_stats(text_df, features, cutoffs, trading_minute):
     
     custom_indicators = pd.Series(custom_indicators)
 
-    return pd.concat([means, stds, maxs, mins, custom_indicators])
+    return pd.concat([sums, means, stds, maxs, mins, custom_indicators])
 
 def get_elapsed_time(timestamps):
     reference = pd.Timestamp('2025-03-12 00:00:00')
