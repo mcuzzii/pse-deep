@@ -126,7 +126,7 @@ def get_aggregates(data, features, agg):
         return dict()
     columns = data[get_agg_keys(features, agg)].astype('float32')
     if agg != 'follower_weighted_mean':
-        return columns.getattr(data, agg, None)().add_suffix(f'_{agg}')
+        return getattr(columns, agg, None)().add_suffix(f'_{agg}')
     else:
         return (columns.apply(
             lambda col: col * data['author_followers']
