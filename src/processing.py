@@ -125,7 +125,7 @@ def get_aggregates(data, features, agg):
     if not get_agg_keys(features, agg):
         return dict()
     columns = data[get_agg_keys(features, agg)].astype('float32')
-    print(columns.isna().sum)
+    print(columns.isna().sum())
     if agg != 'follower_weighted_mean':
         return getattr(columns, agg, None)().add_suffix(f'_{agg}')
     else:
