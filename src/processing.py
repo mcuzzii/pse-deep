@@ -188,7 +188,10 @@ def compute_text_stats(text_df, features, cutoffs, trading_minute):
     
     custom_indicators = pd.Series(custom_indicators)
 
-    return pd.concat([sums, means, stds, maxs, mins, custom_indicators])
+    data = pd.concat([sums, means, stds, maxs, mins, custom_indicators])
+    print(data.columns)
+
+    return data
 
 def get_elapsed_time(timestamps):
     reference = pd.Timestamp('2025-03-12 00:00:00')
@@ -1359,8 +1362,6 @@ class DataSource:
             'author_media_count': ('mean',),
             'author_statuses_count': ('mean',),
         }
-
-        print(self.filtered_date_times[self.filtered_date_times.duplicated()])
 
         self.df = pd.DataFrame(
             [
