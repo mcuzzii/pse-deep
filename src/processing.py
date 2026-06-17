@@ -1330,7 +1330,7 @@ class DataSource:
         cutoffs = pd.Series(
             [get_text_window(ts, self.filtered_date_times, self._target)[0] for ts in self.filtered_date_times],
             index=self.filtered_date_times
-        ).sample(1000)
+        )
 
         indicator_instructions = {
             'bearish': ('mean', 'std', 'momentum', 'strong', 'net'),
@@ -1363,7 +1363,7 @@ class DataSource:
         self.df = pd.DataFrame(
             [
                 compute_text_stats(text_df.df, indicator_instructions, cutoffs, ts)
-                for ts in tqdm(self.filtered_date_times, desc="Computing indicators...")
+                for ts in tqdm(self.filtered_date_times[:1000], desc="Computing indicators...")
             ],
             index=self.filtered_date_times
         )
