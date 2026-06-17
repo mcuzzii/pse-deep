@@ -1330,7 +1330,7 @@ class DataSource:
         cutoffs = pd.Series(
             [get_text_window(ts, self.filtered_date_times, self._target)[0] for ts in self.filtered_date_times],
             index=self.filtered_date_times
-        )
+        ).sample(1000)
 
         indicator_instructions = {
             'bearish': ('mean', 'std', 'momentum', 'strong', 'net'),
