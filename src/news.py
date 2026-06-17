@@ -77,8 +77,8 @@ def rescue_timestamp(headline, source_hint=""):
 # ==========================================
 if __name__ == "__main__":
     # Simulate a row in your LSEG dataset
-    sample_headline = "Apple Launches M4 Mac Mini with Smaller Design"
-    sample_source = "Reuters" 
+    sample_headline = "acen board greenlights capital stock hike"
+    sample_source = "BUSMIR" 
     
     true_timestamp = rescue_timestamp(sample_headline, sample_source)
     
