@@ -1365,7 +1365,7 @@ class DataSource:
                 compute_text_stats(text_df.df, indicator_instructions, cutoffs, ts)
                 for ts in tqdm(self.filtered_date_times[:1000], desc="Computing indicators...")
             ],
-            index=self.filtered_date_times
+            index=self.filtered_date_times[:1000]
         )
 
         self.text_indicators = [
