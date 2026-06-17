@@ -189,6 +189,7 @@ def compute_text_stats(text_df, features, cutoffs, trading_minute):
     custom_indicators = pd.Series(custom_indicators)
 
     data = pd.concat([sums, means, stds, maxs, mins, custom_indicators])
+    print(sums)
     print(data.index[data.index.duplicated()])
 
     return data
