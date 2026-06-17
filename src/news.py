@@ -309,8 +309,29 @@ def rescue_timestamps_batch(df, headline_col: str, source_col: str,
 # ------------------------------------------------------------------
 
 if __name__ == "__main__":
-    result = rescue_timestamp(
-        headline="acen board greenlights capital stock hike",
-        source_hint="BUSMIR",
-    )
-    print("\nFinal result:", result)
+    import base64
+    from urllib.parse import urlparse, parse_qs, unquote
+
+    # Your LSEG link
+    url = "https://go.refinitiv.com/?u=Y3B1cmw6Ly9hcHBzLmNwLi9hcHBzL25ld3MtbGlua3MtbmF2aWdhdGlvbi8/c3RvcnlJZD11cm46bmV3c21sOndlYm5ld3MucmVmaW5pdGl2LmNvbToyMDI1MDYzMDpuTlJBd3Vyd2JmOjAmdHlwZT1XZWJVcmwmaW5saW5lSW5XZWI9dHJ1ZQ=="
+
+    # Step 1: Parse the URL to get the 'u' query parameter
+    parsed_url = urlparse(url)
+    query_params = parse_qs(parsed_url.query)
+    encoded_payload = query_params.get('u', [None])[0]
+
+    if encoded_payload:
+        # Step 2: Fix padding for Base64 standard if required
+        # Base64 strings must be multiples of 4 bytes. We pad with '='
+        missing_padding = len(encoded_payload) % 4
+        if missing_padding:
+            encoded_payload += '=' * (4 - missing_padding)
+            
+        # Step 3: Decode the URL-safe Base64 payload
+        decoded_bytes = base64.urlsafe_b64decode(encoded_payload)
+        decoded_url = decoded_bytes.decode('utf-8')
+        
+        print("--- Decoded Real Destination ---")
+        print(decoded_url)
+    else:
+        print("No encoded parameter found in the URL.")
