@@ -125,7 +125,6 @@ def get_aggregates(data, features, agg):
     if not get_agg_keys(features, agg):
         return dict()
     columns = data[get_agg_keys(features, agg)].astype('float32')
-    print(data.shape)
     if agg != 'follower_weighted_mean':
         return getattr(columns, agg, None)().add_suffix(f'_{agg}')
     else:
@@ -190,8 +189,6 @@ def compute_text_stats(text_df, features, cutoffs, trading_minute):
     custom_indicators = pd.Series(custom_indicators)
 
     data = pd.concat([sums, means, stds, maxs, mins, custom_indicators])
-    print(means)
-    print(data.index[data.index.duplicated()])
 
     return data
 
@@ -1336,6 +1333,8 @@ class DataSource:
             [get_text_window(ts, self.filtered_date_times, self._target)[0] for ts in self.filtered_date_times],
             index=self.filtered_date_times
         )
+
+        print(cutoffs)
 
         indicator_instructions = {
             'bearish': ('mean', 'std', 'momentum', 'strong', 'net'),
