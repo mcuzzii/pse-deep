@@ -1360,7 +1360,7 @@ class DataSource:
             'author_statuses_count': ('mean',),
         }
 
-        print(self.filtered_date_times[self.filtered_date_times[:1000].duplicated()])
+        print(self.filtered_date_times[self.filtered_date_times.duplicated()])
 
         self.df = pd.DataFrame(
             [
