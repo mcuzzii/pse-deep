@@ -1323,6 +1323,8 @@ class DataSource:
         self.train_cutoff = reference_df.train_cutoff
         self.filtered_date_times = reference_df.filtered_date_times
 
+        print(f'Loading {self.file_name}...')
+
         text_df = joblib.load(self.processed_path / f'{self.file_name}.joblib')
 
         cutoffs = pd.Series(
@@ -1359,7 +1361,10 @@ class DataSource:
         }
 
         self.df = pd.DataFrame(
-            [compute_text_stats(text_df.df, indicator_instructions, cutoffs, ts) for ts in self.filtered_date_times],
+            [
+                compute_text_stats(text_df.df, indicator_instructions, cutoffs, ts)
+                for ts in tqdm(self.filtered_date_times, desc="Computing indicators...")
+            ],
             index=self.filtered_date_times
         )
 
@@ -1372,12 +1377,16 @@ class DataSource:
         self.df = self.df[self.text_indicators].astype('float32')
         self.df.index.name = 'local_time'
 
+        print('Standardizing...')
+
         self.scaler = StandardScaler()
 
         train_mask = self.df.index.get_level_values('local_time') <= self.train_cutoff
 
         self.df.loc[train_mask] = self.scaler.fit_transform(self.df.loc[train_mask]).astype('float32')
         self.df.loc[~train_mask] = self.scaler.transform(self.df.loc[~train_mask]).astype('float32')
+
+        print('Collating...')
 
         stocks = get_stocks()
 
@@ -1389,6 +1398,8 @@ class DataSource:
             mrmr_df.append(df)
 
         mrmr_df = pd.concat(mrmr_df)
+
+        print('Selecting features...')
 
         self.selected_features, self.relevance, self.redundancy = mrmr_classif(
             X=mrmr_df[self.text_indicators],
