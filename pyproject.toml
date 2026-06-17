@@ -6,6 +6,7 @@ readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
     "altair>=6.1.0",
+    "beautifulsoup4>=4.15.0",
     "cohere>=6.1.0",
     "datasets<4.0.0",
     "dotenv>=0.9.9",
@@ -14,7 +15,9 @@ dependencies = [
     "huggingface-hub>=1.12.0",
     "joblib>=1.5.3",
     "langid>=1.1.6",
+    "lxml>=6.1.1",
     "mrmr-selection>=0.2.8",
+    "newspaper3k>=0.2.8",
     "numpy==2.2.6",
     "nvidia-nccl-cu12>=2.30.4",
     "openpyxl>=3.1.5",
