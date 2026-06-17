@@ -172,6 +172,7 @@ def compute_text_stats(text_df, features, cutoffs, trading_minute):
     cutoff = cutoffs[trading_minute]
     
     mask = (text_df.index > cutoff) & (text_df.index <= trading_minute)
+    print(pd.concat([text_df.reset_index(), cutoffs], axis=1))
     window_data = text_df[mask]
 
     sums = get_aggregates(window_data, features, 'sum')
@@ -1333,8 +1334,6 @@ class DataSource:
             [get_text_window(ts, self.filtered_date_times, self._target)[0] for ts in self.filtered_date_times],
             index=self.filtered_date_times
         )
-
-        print(cutoffs)
 
         indicator_instructions = {
             'bearish': ('mean', 'std', 'momentum', 'strong', 'net'),
