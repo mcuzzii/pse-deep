@@ -23,7 +23,11 @@ custom_headers = {
 def extract_news_url(url):
 
     # Step 1: Parse the URL to get the 'u' query parameter
-    parsed_url = urlparse(url)
+    try:
+        parsed_url = urlparse(url)
+    except Exception as _:
+        return None
+    
     query_params = parse_qs(parsed_url.query)
     encoded_payload = query_params.get('u', [None])[0]
 
@@ -43,7 +47,7 @@ def extract_news_url(url):
         match = re.search(r'storyId=(.*)&type=([A-Za-z]*)', decoded_url)
         story_id = match.group(1)
         type = match.group(2)
-        if type != "Story":
+        if type == "WebUrl":
             try:
                 response = news.story.Definition(story_id).get_data()
 
@@ -177,11 +181,13 @@ if __name__ == '__main__':
 
     raw_path = Path('data/raw/news')
     processed_path = Path('data/processed/news')
-
     raw_path.mkdir(parents=True, exist_ok=True)
     processed_path.mkdir(parents=True, exist_ok=True)
 
-    news_df = pd.read_csv(raw_path / 'news.csv')
+    if (processed_path / 'news.csv').exists():
+        news_df = pd.read_csv(processed_path / 'news.csv', index_col=0)
+    else:
+        news_df = pd.read_csv(raw_path / 'news.csv', index_col=0)
 
     news_urls = []
     indices = news_df.index.tolist()
