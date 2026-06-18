@@ -40,3 +40,8 @@ managed = true
 
 [tool.uv.sources]
 perturbations-torch = { git = "https://github.com/nlml/perturbations-torch.git" }
+
+[tool.uv.workspace]
+members = [
+    "src/news",
+]

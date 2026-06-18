@@ -10,6 +10,7 @@ import functools
 import json
 import re
 from dotenv import load_dotenv
+import subprocess
 
 # Regex patterns.
 URL_PATTERN = r'(https?://[^\s<>"]+|www\.[^\s<>"]+|[a-zA-Z0-9.-]+\.[a-z]{2,6}/[^\s<>"]*)'
@@ -245,10 +246,10 @@ class DataSource:
         df.iloc[:, 1] = pd.to_datetime(df.iloc[:, 0].astype(str) + ' ' + df.iloc[:, 1].astype(str))
         
         # Drop extraneous columns.
-        df = df.iloc[:, 1:5]
+        df = df.iloc[:, 1:6]
 
         # Give column names.
-        df.columns = ['date_time', 'source', 'entities', 'text']
+        df.columns = ['date_time', 'source', 'entities', 'text', 'url']
 
         self.df = df
     
@@ -1471,6 +1472,9 @@ class DataSource:
             self._load_lseg_news(ignore_history=ignore_history)
             self.text_col = 'text'
             self.date_col = 'date_time'
+            self.df.to_csv('src/news/data/raw/news/news.csv')
+            subprocess.run(["uv", "run", "--directory", "src/news", "python", "main.py"])
+            self.df = pd.read_csv('src/news/data/raw/news/news.csv', index_col=0)
             self._text_preprocess(ignore_history=ignore_history)
         
         elif self._medium in ['stock', 'bond', 'copper', 'oil', 'fx']:

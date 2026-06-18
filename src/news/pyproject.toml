@@ -1,0 +1,17 @@
+[project]
+name = "news"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "bs4>=0.0.2",
+    "dateparser>=1.4.1",
+    "htmldate>=1.10.0",
+    "pytz>=2026.2",
+    "refinitiv-data>=1.6.2",
+    "requests>=2.34.2",
+]
+
+[tool.uv.workspace]
+exclude = ["news"]
