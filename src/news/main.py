@@ -10,6 +10,8 @@ import dateparser
 import pytz
 from bs4 import BeautifulSoup
 import pandas as pd
+from tqdm.auto import tqdm
+from pathlib import Path
 
 custom_headers = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
@@ -17,7 +19,7 @@ custom_headers = {
     "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8"
 }
 
-def extract_date(url):
+def extract_news_url(url):
 
     # Step 1: Parse the URL to get the 'u' query parameter
     parsed_url = urlparse(url)
@@ -37,30 +39,29 @@ def extract_date(url):
         
         print("--- Decoded Real Destination ---")
         print(decoded_url)
-        match = re.search(r'storyId=(.*)&type', decoded_url)
+        match = re.search(r'storyId=(.*)&type=([A-Z][a-z]*)', decoded_url)
         story_id = match.group(1)
-        try:
-            response = news.story.Definition(story_id).get_data()
+        type = match.group(2)
+        if type == "WebUrl":
+            try:
+                response = news.story.Definition(story_id).get_data()
 
-            # Check if we actually got a valid response payload
-            if response is not None and response.data is not None:
-                web_url = response.data.raw.get('webURL', None)
-                if web_url is None:
-                    date = response.data.raw['newsItem']['itemMeta']['firstCreated']['$']
-                    print(f'LSEG publication date: {date}')
+                if response is not None and response.data is not None:
+                    return response.data.raw.get('webURL', None)
                 else:
-                    response = requests.get(web_url, headers=custom_headers, timeout=10)
-                    article_date = find_date(response.text, outputformat="%Y-%m-%d %H:%M")
-                    print(f'Article publication date: {article_date}')
-            else:
-                print("Error: Received an empty data response. Your desktop session might be unresponsive.")
+                    print("Error: Received an empty data response. Your desktop session might be unresponsive.")
+                    return None
 
-        except Exception as e:
-            print(f"An unexpected error occurred: {e}")
-        finally:
-            rd.close_session()
+            except Exception as e:
+                print(f"An unexpected error occurred: {e}")
+            finally:
+                return None
+        else:
+            print('Type is not a URL')
+            return None
     else:
         print("No encoded parameter found in the URL.")
+        return None
 
 def get_fallback_timezone(url, response_headers):
     """
@@ -166,8 +167,25 @@ def extract_exact_timestamp(url):
     return None
 
 if __name__ == '__main__':
-    # rd.open_session()
-    print("Loading news...")
+    try:
+        rd.open_session()
+        print("Loading news...")
 
-    news = pd.read_csv('data/raw/news/news.csv')
-    print("Success!")
+        raw_path = Path('data/raw/news')
+        processed_path = Path('data/processed/news')
+
+        raw_path.mkdir(parents=True, exist_ok=True)
+        processed_path.mkdir(parents=True, exist_ok=True)
+
+        news = pd.read_csv(raw_path / 'news.csv')
+
+        tqdm.pandas()
+        news['news_urls'] = news['url'].progress_apply(extract_news_url)
+
+        news.to_csv(processed_path / 'news.csv')
+
+        print("Success!")
+    except BaseException as e:
+        
+    finally:
+        rd.close_session()
