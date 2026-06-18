@@ -12,6 +12,7 @@ from bs4 import BeautifulSoup
 import pandas as pd
 from tqdm.auto import tqdm
 from pathlib import Path
+import traceback
 
 custom_headers = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
@@ -39,25 +40,30 @@ def extract_news_url(url):
         
         print("--- Decoded Real Destination ---")
         print(decoded_url)
-        match = re.search(r'storyId=(.*)&type=([A-Z][a-z]*)', decoded_url)
+        match = re.search(r'storyId=(.*)&type=([A-Za-z]*)', decoded_url)
         story_id = match.group(1)
         type = match.group(2)
-        if type == "WebUrl":
+        if type != "Story":
             try:
                 response = news.story.Definition(story_id).get_data()
 
                 if response is not None and response.data is not None:
-                    return response.data.raw.get('webURL', None)
+                    url = response.data.raw.get('webURL', None)
+
+                    rate_limit = response.data._owner._http_headers['ratelimit-remaining']
+                    volume_limit = response.data._owner._http_headers['volumelimit-remaining']
+                    queue_limit = response.data._owner._http_headers['queuelimit-remaining']
+
+                    print(f'Rate limit: {rate_limit}; Volume limit: {volume_limit}; Queue limit: {queue_limit}')
+                    return url
                 else:
                     print("Error: Received an empty data response. Your desktop session might be unresponsive.")
                     return None
 
             except Exception as e:
                 print(f"An unexpected error occurred: {e}")
-            finally:
-                return None
         else:
-            print('Type is not a URL')
+            print(f'Type is not a URL; type = {type}')
             return None
     else:
         print("No encoded parameter found in the URL.")
@@ -167,25 +173,43 @@ def extract_exact_timestamp(url):
     return None
 
 if __name__ == '__main__':
+    print("Loading news...")
+
+    raw_path = Path('data/raw/news')
+    processed_path = Path('data/processed/news')
+
+    raw_path.mkdir(parents=True, exist_ok=True)
+    processed_path.mkdir(parents=True, exist_ok=True)
+
+    news_df = pd.read_csv(raw_path / 'news.csv')
+
+    news_urls = []
+    indices = news_df.index.tolist()
+
+    if 'news_urls' not in news_df.columns.tolist() or not news_df['news_urls'].notna().sum():
+        news_df['news_urls'] = None
+        to_extract = indices
+    else:
+        to_extract = indices[indices.index(news_df['news_urls'].last_valid_index()) + 1:]
+    
     try:
         rd.open_session()
-        print("Loading news...")
-
-        raw_path = Path('data/raw/news')
-        processed_path = Path('data/processed/news')
-
-        raw_path.mkdir(parents=True, exist_ok=True)
-        processed_path.mkdir(parents=True, exist_ok=True)
-
-        news = pd.read_csv(raw_path / 'news.csv')
-
-        tqdm.pandas()
-        news['news_urls'] = news['url'].progress_apply(extract_news_url)
-
-        news.to_csv(processed_path / 'news.csv')
+        for url in tqdm(news_df.loc[to_extract, 'url']):
+            news_url = extract_news_url(url)
+            news_urls.append(news_url)
 
         print("Success!")
-    except BaseException as e:
-        
+
+    except KeyboardInterrupt:
+        print("\nStopped by user.")
+
+    except Exception as e:
+        traceback.print_exc()
+        print(f'Error: {e}')
+    
     finally:
+        new_indices = to_extract[:len(news_urls)]
+        news_df.loc[new_indices, 'news_urls'] = pd.Series(news_urls, index=new_indices)
+
+        news_df.to_csv(processed_path / 'news.csv')
         rd.close_session()
