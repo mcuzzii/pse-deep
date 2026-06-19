@@ -1115,6 +1115,7 @@ class DataSource:
         common_date_times = None
         for stock in self._stocks:
             stock_df = joblib.load(self.processed_path / f'{stock}.joblib')
+            stock_df = stock_df.loc[stock_df.df.index > '2025-06-02']
             dates = stock_df.df.index
             common_date_times = dates if common_date_times is None else common_date_times.intersection(dates)
         
@@ -1138,6 +1139,8 @@ class DataSource:
 
             stock_df.df.drop(columns=[f'{stock}_{40 - self._target}m_return'], inplace=True)
 
+            volume_cols = ('_volume', '_rvol')
+
             for col in stock_df.df.columns:
                 prefix = col.split('_')[0]
                 if prefix in ('psfi', 'psin', 'psmo', 'pspr', 'psse', 'psho'):
@@ -1147,6 +1150,11 @@ class DataSource:
                 else:
                     new_col_name = col
                 stock_df.df.rename(columns={col: new_col_name}, inplace=True)
+
+                if col[len(prefix):] in volume_cols:
+                    stock_df[new_col_name] = np.log(1 + stock_df[new_col_name])
+                elif col[len(prefix):] == '_obv_change':
+                    stock_df[new_col_name] = np.sign(stock_df[new_col_name]) * np.log1p(np.abs(stock_df[new_col_name]))
             
             stock_df.df.index = pd.MultiIndex.from_product([[stock], stock_df.df.index], names=['stock', 'local_time'])
 
@@ -1167,9 +1175,8 @@ class DataSource:
             stock_df.df = stock_df.df.astype('float32')
 
             filtered = stock_df.df[stock_df.df.index.get_level_values('local_time').isin(self.filtered_date_times)]
-            sample = filtered.sample(43944)
 
-            stacked_df = sample if stacked_df is None else pd.concat([stacked_df, sample], axis=0)
+            stacked_df = filtered if stacked_df is None else pd.concat([stacked_df, filtered], axis=0)
 
         self.df = stacked_df
         self.train_cutoff = train_cutoff
@@ -1245,6 +1252,16 @@ class DataSource:
 
         self.df = self.df.loc[features_df.filtered_date_times, selected_cols]
 
+        volume_cols = ('_volume', '_rvol')
+
+        for col in self.df.columns:
+            prefix = col.split('_')[0]
+
+            if col[len(prefix):] in volume_cols:
+                self.df[col] = np.log(1 + self.df[col])
+            elif col[len(prefix):] == '_obv_change':
+                self.df[col] = np.sign(self.df[col]) * np.log1p(np.abs(self.df[col]))
+
         self.df["date_day_of_month_sin"] = np.sin(2 * np.pi * self.df.index.day / self.df.index.days_in_month)
         self.df["date_day_of_month_cos"] = np.cos(2 * np.pi * self.df.index.day / self.df.index.days_in_month)
 
@@ -1295,19 +1312,13 @@ class DataSource:
         
         features, continuous_cols, binary_cols = get_features(self.df)
 
-        ct = ColumnTransformer(
-            transformers=[
-                ('scaler', StandardScaler(), continuous_cols)
-            ],
-            remainder='passthrough'
-        )
+        ct = features_df.scalers[self.file_name]
 
         self.train_cutoff = features_df.train_cutoff
         train_mask = self.df.index.get_level_values('local_time') <= self.train_cutoff
 
         all_cols = continuous_cols + binary_cols
-        self.df.loc[train_mask, all_cols] = ct.fit_transform(self.df.loc[train_mask, features]).astype('float32')
-        self.df.loc[~train_mask, all_cols] = ct.transform(self.df.loc[~train_mask, features]).astype('float32')
+        self.df[all_cols] = ct.transform(self.df[features]).astype('float32')
 
         self.scaler = ct
 
