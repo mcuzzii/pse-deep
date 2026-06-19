@@ -117,15 +117,15 @@ class StockNewsTransformerDataset(StockTransformerDataset):
     def __getitem__(self, idx):
         t, x, y = super().__getitem__(idx)
 
-        last_timestamp = float(t[0, -1])
+        self.last_timestamp = float(t[0, -1])
 
-        idx = (self.time_vec_input - last_timestamp).abs().idxmin()
+        idx = (self.time_vec_input - self.last_timestamp).abs().idxmin()
         cutoff, _ = get_text_window(idx, self.time_vec_input.index, self.pred_horizon)
-        cutoff_scaled = get_elapsed_time(cutoff)
+        self.cutoff_scaled = get_elapsed_time(cutoff)
 
         embeddings = self.news_data['embeddings']
         timestamps = self.news_data['timestamps']
-        self.window = (cutoff_scaled < timestamps) & (timestamps <= last_timestamp)
+        self.window = (self.cutoff_scaled < timestamps) & (timestamps <= self.last_timestamp)
 
         # print(f'Shapes: news_e: {embeddings[window].shape}; news_t: {timestamps[window].shape}')
 
@@ -146,6 +146,35 @@ class StockSocialTransformerDataset(StockNewsTransformerDataset):
         impact = self.social_data['impact']
         
         return t, ts, x, impact[self.window], es, y
+
+class StockNewsSocialTransformerDataset(StockNewsTransformerDataset):
+    def __init__(
+        self,
+        stock_path,
+        social_path,
+        news_path,
+        stock_lookback,
+        pred_horizon,
+        time_vec_input
+    ):
+        super().__init__(stock_path, news_path, stock_lookback, pred_horizon, time_vec_input)
+        self.social_data = torch.load(social_path)
+    
+    def __len__(self):
+        return super().__len__()
+    
+    def __getitem__(self, idx):
+        t, tn, x, en, y = super().__getitem__(idx)
+
+        ts = self.social_media['timestamps']
+
+        window = (self.cutoff_scaled < ts) & (ts <= self.last_timestamp)
+
+        s = self.social_media['impact'][window]
+        ts = ts[window]
+        es = self.social_media['embeddings'][window]
+
+        return t, tn, ts, x, s, en, es
 
 
 class EarlyStopping:
@@ -267,7 +296,9 @@ class Experiment:
     def build_model(
         self,
         input_dim: int,
-        news_input_dim: int | None = None,
+        social_input_dim: int | None = None,
+        text_input_dim: int | None = None,
+        social_embedding_dim: int | None = None,
         hidden_dim: int | None = None,
         embedding_dim: int | None = None,
         temporal_embedding_dim: int | None = None,
@@ -292,7 +323,39 @@ class Experiment:
         elif self.transformer and self.news and not self.social:
             self.model = StockNewsTransformer(
                 input_dim,
-                news_input_dim,
+                text_input_dim,
+                embedding_dim,
+                temporal_embedding_dim,
+                num_heads,
+                K,
+                num_samples,
+                sigma,
+                num_layers,
+                expansion,
+                dropout
+            )
+        elif self.transformer and self.social and not self.news:
+            self.model = StockSocialTransformer(
+                input_dim,
+                social_input_dim,
+                text_input_dim,
+                social_embedding_dim,
+                embedding_dim,
+                temporal_embedding_dim,
+                num_heads,
+                K,
+                num_samples,
+                sigma,
+                num_layers,
+                expansion,
+                dropout
+            )
+        elif self.transformer and self.social and self.news:
+            self.model = StockNewsSocialTransformer(
+                input_dim,
+                social_input_dim,
+                text_input_dim,
+                social_embedding_dim,
                 embedding_dim,
                 temporal_embedding_dim,
                 num_heads,
