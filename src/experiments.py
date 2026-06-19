@@ -174,7 +174,7 @@ class StockNewsSocialTransformerDataset(StockNewsTransformerDataset):
         ts = ts[window]
         es = self.social_data['embeddings'][window]
 
-        return t, tn, ts, x, s, en, es
+        return t, tn, ts, x, s, en, es, y
 
 
 class EarlyStopping:
@@ -685,7 +685,6 @@ class Experiment:
             all_targets = []
             for i in range(min(len(train_dataset), 5000)): # Scan a large sample or full dataset
                 *_, tgt = train_dataset[i]
-                print(tgt.shape)
                 all_targets.append(torch.tensor(tgt).argmax(dim=-1))
             
             flat_targets = torch.cat(all_targets)
