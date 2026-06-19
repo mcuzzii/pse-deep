@@ -599,6 +599,47 @@ class StockNewsSocialTransformer(StockNewsTransformer):
         else:
             return ist_out
 
+class HiddenLayer(nn.Module):
+    def __init__(
+        self,
+        input_dim,
+        hidden_dim,
+        dropout=0.1
+    ):
+        super().__init__()
+        self.hidden_layer = nn.Sequential(
+            nn.Linear(input_dim, hidden_dim),
+            nn.GELU(),
+            nn.Dropout(dropout),
+        )
+    
+    def forward(self, x):
+        return self.hidden_layer(x)
+
+class MultiLayerPerceptron(nn.Module):
+    def __init__(
+        self,
+        input_dim,
+        hidden_dim,
+        num_layers=5,
+        dropout=0.1
+    ):
+        super().__init__()
+        self.input_layer = HiddenLayer(input_dim, hidden_dim)
+        self.layers = nn.ModuleList([
+            HiddenLayer(hidden_dim, hidden_dim, dropout)
+            for _ in range(num_layers - 1)
+        ])
+        self.output_layer = nn.Linear(hidden_dim, 2)
+    
+    def forward(self, x):
+        out = self.input_layer(x)
+        for _, layer in enumerate(self.layers):
+            out = layer(out)
+        out = self.output_layer(out)
+
+        return out
+
 if __name__ == "__main__":
     B, num_stocks, num_timestamps, input_features = 16, 30, 60, 10
     embed_dim, temp_dim = 512, 32

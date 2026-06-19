@@ -177,6 +177,12 @@ class StockNewsSocialTransformerDataset(StockNewsTransformerDataset):
 
         return t, tn, ts, x, s, en, es, y
 
+class StockMLP(Dataset):
+    def __init__(self, path):
+        self.stock_data = torch.load(path)
+
+    def __len__(self):
+        self.stock_data.shape[0]
 
 class EarlyStopping:
     def __init__(self, patience=10, min_delta=0.0):
@@ -527,6 +533,14 @@ class Experiment:
         ):
             split = split_func(social_df)
 
+            print("split len:", len(split))
+
+            if len(split) == 0:
+                raise ValueError("split is empty")
+
+            print("embeddings len:", len(split['embeddings']))
+            print("first few indices:", split.index[:5])
+
             embeddings = torch.from_numpy(np.stack(split['embeddings'].values).astype(np.float32))
             impact = torch.from_numpy(split[impact_features].values.astype(np.float32))
             timestamps = torch.from_numpy(split['elapsed_time'].values.astype(np.float32))
@@ -543,6 +557,31 @@ class Experiment:
                 f'Impact: {impact.shape},\n'
                 f'Timestamps: {timestamps.shape}.\n\n'
             )
+
+    def _build_stock_mlp_data(self, force=False):
+
+        train_path = self.data_path / f'stock_mlp_{self.pred_horizon}m_train.pt'
+        val_path = self.data_path / f'stock_mlp_{self.pred_horizon}m_val.pt'
+        test_path = self.data_path / f'stock_mlp_{self.pred_horizon}m_test.pt'
+
+        if train_path.exists() and val_path.exists() and test_path.exists() and not force:
+            return
+        
+        stocks = get_stocks()
+
+        stock_dfs = []
+        for stock in stocks:
+            stock_df = DataSource()
+            stock_df.create_df(f'{stock}_{self.pred_horizon}m')
+            stock_df.df = stock_df.df.sort_index()
+            stock_dfs.append(stock_df)
+        
+        for path, cutoff in zip(
+            [train_path, val_path, test_path],
+            [self.train_cutoff, self.val_cutoff, self.filtered_date_times.max()]
+        ):
+            return
+
     
     def build_dataset(self, force=False):
 
