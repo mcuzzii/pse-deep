@@ -561,13 +561,29 @@ class Experiment:
 
             if self.news:
                 news_path = self.data_path / f'news_transformer_{self.pred_horizon}m_{split}.pt'
+
+                if self.social:
+                    social_path = self.data_path / f'social_transformer_{self.pred_horizon}m_{split}.pt'
+
+                    return StockNewsSocialTransformerDataset(
+                        stock_path, social_path, news_path, self.stock_lookback,
+                        self.pred_horizon, self.time_vec_input
+                    )
+                
                 return StockNewsTransformerDataset(
                     stock_path, news_path, self.stock_lookback,
                     self.pred_horizon, self.time_vec_input
                 )
+
+            elif self.social:
+                social_path = self.data_path / f'social_transformer_{self.pred_horizon}m_{split}.pt'
+
+                return StockSocialTransformerDataset(
+                    stock_path, social_path, self.stock_lookback,
+                    self.pred_horizon, self.time_vec_input
+                )
             
-            else:
-                return StockTransformerDataset(stock_path, self.stock_lookback)
+            return StockTransformerDataset(stock_path, self.stock_lookback)
     
     def train(
         self,
@@ -810,6 +826,7 @@ class Experiment:
             }, path)
             
             pbar.close()
+            self.plot_loss_curves()
     
     def plot_loss_curves(self):
         model = torch.load(
