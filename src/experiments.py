@@ -667,8 +667,8 @@ class Experiment:
             map_location=device,
             weights_only=False
         )
-        train_losses = model.train_losses
-        val_losses = model.val_losses
+        train_losses = model['train_losses']
+        val_losses = model['val_losses']
 
         x = self.val_periods
         
