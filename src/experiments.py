@@ -535,6 +535,8 @@ class Experiment:
 
             print("split len:", len(split))
 
+            print(split_func)
+
             if len(split) == 0:
                 raise ValueError("split is empty")
 
