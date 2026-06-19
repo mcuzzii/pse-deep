@@ -36,7 +36,7 @@ def collate_fn(
         n = len(args)
 
         masks = []
-        for arg in batch:
+        for arg in batch[0]:
             print(arg.shape)
             import time
             time.sleep(0.001)
