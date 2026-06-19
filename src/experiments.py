@@ -36,6 +36,7 @@ def collate_fn(
         n = len(args)
 
         masks = []
+        print()
 
         for i, arg in enumerate(args[:n]):
             if len(arg[0].shape)== 1 or (len(arg[0].shape) == 2 and arg[0].shape[1] in (social_input_dim, text_input_dim)):
