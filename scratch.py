@@ -14,6 +14,4 @@ import numpy as np
 values, counts = np.unique(news.df.index.date, return_counts=True)
 d = dict(zip(values, counts))
 
-from collections import Counter
-
-print(Counter(d.values()))
+print(dict(sorted(d.items(), key=lambda x: x[1], reverse=True)))
