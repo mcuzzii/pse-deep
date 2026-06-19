@@ -1115,7 +1115,7 @@ class DataSource:
         common_date_times = None
         for stock in self._stocks:
             stock_df = joblib.load(self.processed_path / f'{stock}.joblib')
-            stock_df = stock_df.df.loc[stock_df.df.index > '2025-06-02']
+            stock_df.df = stock_df.df.loc[stock_df.df.index > '2025-06-02']
             dates = stock_df.df.index
             common_date_times = dates if common_date_times is None else common_date_times.intersection(dates)
         
@@ -1152,9 +1152,9 @@ class DataSource:
                 stock_df.df.rename(columns={col: new_col_name}, inplace=True)
 
                 if col[len(prefix):] in volume_cols:
-                    stock_df[new_col_name] = np.log(1 + stock_df[new_col_name])
+                    stock_df.df[new_col_name] = np.log(1 + stock_df.df[new_col_name])
                 elif col[len(prefix):] == '_obv_change':
-                    stock_df[new_col_name] = np.sign(stock_df[new_col_name]) * np.log1p(np.abs(stock_df[new_col_name]))
+                    stock_df.df[new_col_name] = np.sign(stock_df.df[new_col_name]) * np.log1p(np.abs(stock_df.df[new_col_name]))
             
             stock_df.df.index = pd.MultiIndex.from_product([[stock], stock_df.df.index], names=['stock', 'local_time'])
 
@@ -1312,13 +1312,19 @@ class DataSource:
         
         features, continuous_cols, binary_cols = get_features(self.df)
 
-        ct = features_df.scalers[self.file_name]
+        ct = ColumnTransformer(
+            transformers=[
+                ('scaler', StandardScaler(), continuous_cols)
+            ],
+            remainder='passthrough'
+        )
 
         self.train_cutoff = features_df.train_cutoff
         train_mask = self.df.index.get_level_values('local_time') <= self.train_cutoff
 
         all_cols = continuous_cols + binary_cols
-        self.df[all_cols] = ct.transform(self.df[features]).astype('float32')
+        self.df.loc[train_mask, all_cols] = ct.fit_transform(self.df.loc[train_mask, features]).astype('float32')
+        self.df.loc[~train_mask, all_cols] = ct.transform(self.df.loc[~train_mask, features]).astype('float32')
 
         self.scaler = ct
 
