@@ -161,6 +161,7 @@ def main():
                 patience=1000,
                 sigma_end=1e-5
             )
+            stock_transformer.plot_loss_curves()
 
 if __name__ == '__main__':
     main()
