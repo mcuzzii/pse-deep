@@ -207,12 +207,11 @@ def compute_text_stats(text_df, features, cutoffs, trading_minute):
             if name1 >= name2:
                 continue
 
-            overlap = s1.index.intersection(s2.index)
+            s = pd.concat([s1, s2])
 
-            if len(overlap):
-                print(f'{name1} vs {name2}:')
-                print(overlap.tolist())
-                print()
+            dupes = s.index[s.index.duplicated(kee=False)]
+            print(dupes)
+            time.sleep(0.001)
         return data
 
 def get_elapsed_time(timestamps):
