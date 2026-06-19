@@ -180,6 +180,7 @@ def compute_text_stats(text_df, features, cutoffs, trading_minute):
     stds = get_aggregates(window_data, features, 'std')
     maxs = get_aggregates(window_data, features, 'max')
     mins = get_aggregates(window_data, features, 'min')
+    follower_weighted_means = get_aggregates(window_data, features, 'follower_weighted_mean')
 
     custom_indicators = dict()
 
@@ -189,7 +190,15 @@ def compute_text_stats(text_df, features, cutoffs, trading_minute):
     
     custom_indicators = pd.Series(custom_indicators)
 
-    data = pd.concat([sums, means, stds, maxs, mins, custom_indicators])
+    data = pd.concat([sums, means, stds, maxs, mins, follower_weighted_means, custom_indicators])
+
+    print(f'sums: {sums}')
+    print(f'means: {means}')
+    print(f'stds: {stds}')
+    print(f'maxs: {maxs}')
+    print(f'mins: {mins}')
+    print(f'follower_weighted_means: {follower_weighted_means}')
+    print(f'custom_indicators: {custom_indicators}')
 
     return data
 
@@ -1367,7 +1376,7 @@ class DataSource:
 
         for ts in tqdm(self.filtered_date_times[:1000], desc="Computing indicators..."):
             s = compute_text_stats(text_df.df, indicator_instructions, cutoffs, ts)
-            print(s)
+            text_stats.append(s)
         
         self.df = pd.DataFrame(text_stats, index=self.filtered_date_times[:1000])
 
