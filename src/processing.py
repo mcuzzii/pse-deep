@@ -212,7 +212,8 @@ def compute_text_stats(text_df, features, cutoffs, trading_minute):
             dupes = s.index[s.index.duplicated(keep=False)]
             print(dupes)
             time.sleep(0.001)
-        return data
+    
+    return data
 
 def get_elapsed_time(timestamps):
     reference = pd.Timestamp('2025-03-12 00:00:00')
