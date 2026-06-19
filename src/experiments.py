@@ -670,7 +670,7 @@ class Experiment:
         train_losses = model['train_losses']
         val_losses = model['val_losses']
 
-        x = self.val_periods
+        x = self.val_periods[:len(train_losses)]
         
         topk = getattr(model, 'topk', None)
 
