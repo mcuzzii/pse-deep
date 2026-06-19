@@ -27,7 +27,8 @@ def seed_worker(worker_id):
     random.seed(worker_seed)
 
 def collate_fn(
-    input_dim: int | None = None,
+    social_input_dim: int | None = None,
+    text_input_dim: int | None = None,
     K: int | None = None
 ):
     def func(batch):
@@ -37,7 +38,7 @@ def collate_fn(
         masks = []
 
         for i, arg in enumerate(args[:n]):
-            if len(arg[0].shape)== 1 or (len(arg[0].shape) == 2 and arg[0].shape[1] == input_dim):
+            if len(arg[0].shape)== 1 or (len(arg[0].shape) == 2 and arg[0].shape[1] in (social_input_dim, text_input_dim)):
                 args[i] = pad_sequence(arg, batch_first=True, padding_value=0.0)
 
                 # arg.shape = (B, Tn) or (B, Tn, En)
@@ -46,7 +47,7 @@ def collate_fn(
                     zeros = torch.zeros(pad_shape, dtype=args[i].dtype, device=args[i].device)
                     args[i] = torch.cat([args[i], zeros], dim=1)
 
-                if len(args[i].shape) == 3:
+                if len(args[i].shape) == 3 and args[i].shape[2] == text_input_dim:
                     lengths = torch.tensor([len(f) for f in arg])
                     L_max = args[i].shape[1]
                     arg_mask = torch.arange(L_max).unsqueeze(0) < lengths.unsqueeze(1)
