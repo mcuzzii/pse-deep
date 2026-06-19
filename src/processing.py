@@ -143,7 +143,7 @@ def get_sentiment(data, k, pos=True):
 
 def get_custom_indicator(data, k, i):
 
-    if data.shape[0]:
+    if not data.shape[0]:
         return None
 
     if i == 'intensity':
