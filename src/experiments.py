@@ -125,11 +125,28 @@ class StockNewsTransformerDataset(StockTransformerDataset):
 
         embeddings = self.news_data['embeddings']
         timestamps = self.news_data['timestamps']
-        window = (cutoff_scaled < timestamps) & (timestamps <= last_timestamp)
+        self.window = (cutoff_scaled < timestamps) & (timestamps <= last_timestamp)
 
         # print(f'Shapes: news_e: {embeddings[window].shape}; news_t: {timestamps[window].shape}')
 
-        return t, timestamps[window], x, embeddings[window], y
+        return t, timestamps[self.window], x, embeddings[self.window], y
+
+class StockSocialTransformerDataset(StockNewsTransformerDataset):
+    def __init__(self, stock_path, social_path, stock_lookback, pred_horizon, time_vec_input):
+        super().__init__(stock_path, social_path, stock_lookback, pred_horizon, time_vec_input)
+
+        self.social_data = self.news_data
+    
+    def __len__(self):
+        return super().__len__()
+    
+    def __getitem__(self, idx):
+        t, ts, x, es, y = super().__getitem__(idx)
+
+        impact = self.social_data['impact']
+        
+        return t, ts, x, impact[self.window], es, y
+
 
 class EarlyStopping:
     def __init__(self, patience=10, min_delta=0.0):
