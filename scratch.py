@@ -5,9 +5,9 @@ import gc
 
 sys.path.append(str(Path.cwd() / 'src'))
 
-from processing import DataSource, get_unique_instruments
+from processing import DataSource, get_stocks
 
-stocks = get_unique_instruments('data/raw/stock')
+stocks = get_stocks()
 
 print("Selecting features...")
 features_30 = DataSource()
@@ -25,12 +25,12 @@ gc.collect()
 print("Finalizing datasets...")
 for stock in stocks:
     stock_data = DataSource()
-    stock_data.create_df(file_name=stock, medium='final', target=30)
+    stock_data.create_df(file_name=stock, medium='final', target=30, ignore_history=True)
     del stock_data
     gc.collect()
 
 for stock in stocks:
     stock_data = DataSource()
-    stock_data.create_df(file_name=stock, medium='final', target=10)
+    stock_data.create_df(file_name=stock, medium='final', target=10, ignore_history=True)
     del stock_data
     gc.collect()
