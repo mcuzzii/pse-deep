@@ -1363,13 +1363,13 @@ class DataSource:
             'author_statuses_count': ('mean',),
         }
 
-        self.df = pd.DataFrame(
-            [
-                compute_text_stats(text_df.df, indicator_instructions, cutoffs, ts)
-                for ts in tqdm(self.filtered_date_times[:1000], desc="Computing indicators...")
-            ],
-            index=self.filtered_date_times[:1000]
-        )
+        text_stats = list()
+
+        for ts in tqdm(self.filtered_date_times[:1000], desc="Computing indicators..."):
+            s = compute_text_stats(text_df.df, indicator_instructions, cutoffs, ts)
+            print(s.index.is_unique)
+        
+        self.df = pd.DataFrame(text_stats, index=self.filtered_date_times[:1000])
 
         self.text_indicators = [
             f'{k}_{i}'
