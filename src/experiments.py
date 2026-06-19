@@ -166,13 +166,13 @@ class StockNewsSocialTransformerDataset(StockNewsTransformerDataset):
     def __getitem__(self, idx):
         t, tn, x, en, y = super().__getitem__(idx)
 
-        ts = self.social_media['timestamps']
+        ts = self.social_data['timestamps']
 
         window = (self.cutoff_scaled < ts) & (ts <= self.last_timestamp)
 
-        s = self.social_media['impact'][window]
+        s = self.social_data['impact'][window]
         ts = ts[window]
-        es = self.social_media['embeddings'][window]
+        es = self.social_data['embeddings'][window]
 
         return t, tn, ts, x, s, en, es
 
