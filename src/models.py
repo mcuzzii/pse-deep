@@ -516,6 +516,7 @@ class StockSocialTransformer(StockTransformer):
             input_dim, embedding_dim, temporal_embedding_dim,
             num_heads, num_layers, expansion, dropout
         )
+        self.social_input_dim = social_input_dim
         self.text_embedding_dim = text_input_dim
         self.social_embed = SocialEmbedding(
             social_input_dim, text_input_dim, social_embedding_dim, embedding_dim - social_embedding_dim,
@@ -568,6 +569,7 @@ class StockNewsSocialTransformer(StockNewsTransformer):
             num_heads, K, num_samples, sigma, num_layers, expansion, dropout
         )
 
+        self.social_input_dim = social_input_dim
         self.social_embed = SocialEmbedding(
             social_input_dim, text_input_dim, social_embedding_dim, embedding_dim - social_embedding_dim,
             temporal_embedding_dim, self.fin_embed.time_embed, dropout
