@@ -276,7 +276,6 @@ class Experiment:
                 self.pred_horizon,
                 24
             )
-            print(cutoff)
             non_train_split = df.df.loc[df.df.index.get_level_values('local_time') > cutoff]
 
         else:
@@ -483,6 +482,27 @@ class Experiment:
                 f'Embeddings: {embeddings.shape},\n'
                 f'Timestamps: {timestamps.shape}.\n\n'
             )
+    
+    def test(self):
+
+        social_df = DataSource()
+        social_df.create_df('social_media')
+
+        val = self._get_val_split(social_df)
+        test = self._get_test_split(social_df)
+
+        print("train cutoff:", self.train_cutoff)
+        print("val cutoff:", self.val_cutoff)
+
+        print("\nVAL:")
+        print(val.index.min())
+        print(val.index.max())
+        print(len(val))
+
+        print("\nTEST:")
+        print(test.index.min())
+        print(test.index.max())
+        print(len(test))
     
     def _build_social_transformer_data(self, force=False):
 
