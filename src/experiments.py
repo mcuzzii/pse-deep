@@ -396,6 +396,73 @@ class Experiment:
                 f'Timestamps: {timestamps.shape}.\n\n'
             )
     
+    def _build_social_transformer_data(self, force=False):
+
+        train_path = self.data_path / f'social_transformer_{self.pred_horizon}m_train.pt'
+        val_path = self.data_path / f'social_transformer_{self.pred_horizon}m_val.pt'
+        test_path = self.data_path / f'social_transformer_{self.pred_horizon}m_test.pt'
+
+        if train_path.exists() and val_path.exists() and test_path.exists() and not force:
+            return
+        
+        social_df = DataSource()
+        social_df.create_df('social_media')
+
+        social_features = DataSource()
+        social_features.create_df(f'social_media_{self.pred_horizon}m')
+
+        selected_features = set(social_features.selected_features)
+
+        keywords = {
+            'retweet_count',
+            'reply_count',
+            'like_count',
+            'quote_count',
+            'view_count',
+            'bookmark_count',
+            'author_is_blue_verified',
+            'author_followers',
+            'author_following',
+            'author_favourites_count',
+            'author_media_count',
+            'author_statuses_count'
+        }
+
+        impact_features = set()
+        for key in keywords:
+            if any(s.startswith(key) for s in selected_features):
+                impact_features.add(s)
+        if any('follower_weighted_mean' in s for s in selected_features):
+            impact_features.add('author_followers')
+        if any('viral_coeff' in s for s in selected_features):
+            impact_features.add('reply_count')
+        
+        impact_features = list(impact_features)
+        print(f'Impact features: {impact_features}')
+
+        for path, split_func in zip(
+            [train_path, val_path, test_path],
+            [self._get_train_split, self._get_val_split, self._get_test_split]
+        ):
+            split = split_func(social_df)
+
+            embeddings = torch.from_numpy(np.stack(split['embeddings'].values).astype(np.float32))
+            impact = torch.from_numpy(split[impact_features].values).astype(np.float32)
+            timestamps = torch.from_numpy(split['elapsed_time'].values.astype(np.float32))
+
+            torch.save({
+                'embeddings': embeddings,
+                'impact': impact,
+                'timestamps': timestamps
+            }, path)
+
+            print(
+                f'Saved dataset to {path}:\n'
+                f'Embeddings: {embeddings.shape},\n'
+                f'Impact: {impact.shape},\n'
+                f'Timestamps: {timestamps.shape}.\n\n'
+            )
+    
     def build_dataset(self, force=False):
 
         if self.transformer:
@@ -403,6 +470,9 @@ class Experiment:
 
             if self.news:
                 self._build_news_transformer_data(force)
+            
+            if self.social:
+                self._build_social_transformer_data(force)
     
     def _make_dataset(self, split):
 
