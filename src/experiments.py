@@ -511,7 +511,7 @@ class Experiment:
         impact_features = set()
         for key in keywords:
             if any(s.startswith(key) for s in selected_features):
-                impact_features.add(s)
+                impact_features.add(key)
         if any('follower_weighted_mean' in s for s in selected_features):
             impact_features.add('author_followers')
         if any('viral_coeff' in s for s in selected_features):
