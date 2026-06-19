@@ -277,6 +277,35 @@ class NewsEmbedding(nn.Module):
 
         return combined_embedding
 
+class SocialEmbedding(nn.Module):
+    def __init__(
+        self,
+        social_input_dim,
+        text_input_dim,
+        social_embedding_dim,
+        text_embedding_dim,
+        temporal_embedding_dim,
+        time_vec_model,
+        dropout=0.1
+    ):
+        self.input_dim = text_input_dim
+        self.dim = social_embedding_dim + text_embedding_dim + temporal_embedding_dim
+        self.time_embed = time_vec_model
+        self.norm = nn.LayerNorm(text_input_dim // 4)
+        self.text_linear = nn.Linear(text_input_dim // 4, text_embedding_dim)
+        self.social_linear = nn.Linear(social_input_dim, social_embedding_dim)
+        self.dropout = nn.Dropout(dropout)
+    
+    def forward(self, x, s, t):
+        time_vector = self.time_embed(t)
+        norm_social_vector = self.norm(x[:, :, :self.input_dim // 4])
+        text_embedding = self.text_linear(norm_social_vector)
+        social_embedding = self.social_linear(s)
+        combined_embedding = torch.cat([text_embedding, social_embedding, time_vector], dim=-1)
+        combined_embedding = self.dropout(combined_embedding)
+
+        return combined_embedding
+
 class DynamicSelection(nn.Module):
     def __init__(self, input_dim, K, num_samples, sigma):
         super().__init__()
@@ -466,12 +495,106 @@ class StockNewsTransformer(StockTransformer):
             return ist_out
 
 class StockSocialTransformer(StockTransformer):
-    def __init__(self):
-        super().__init__()
+    def __init__(
+        self,
+        input_dim,                  # 100
+        social_input_dim,           # 5
+        text_input_dim,             # 1024
+        social_embedding_dim,       # 16
+        embedding_dim,              # 128
+        temporal_embedding_dim,     # 16
+        num_heads,                  # 8
+        K=30,
+        num_samples=100,
+        sigma=5e-2,
+        num_layers=1,
+        expansion=4,
+        dropout=0.1
+    ):
+        super().__init__(
+            input_dim, embedding_dim, temporal_embedding_dim,
+            num_heads, num_layers, expansion, dropout
+        )
+        self.text_embedding_dim = text_input_dim
+        self.social_embed = SocialEmbedding(
+            social_input_dim, text_input_dim, social_embedding_dim, embedding_dim - social_embedding_dim,
+            temporal_embedding_dim, self.fin_embed.time_embed, dropout
+        )
+        self.social_selection = DynamicSelection(self.dim, K, num_samples, sigma)
+        self.K = K
+        self.sigma = sigma
+        self.topk = self.social_selection.topk
+        self.social_fusion_layer = CrossAttnTransformerLayers(
+            self.dim, num_heads, num_layers, expansion, dropout
+        )
+    
+    def social_fusion_transform(self, x, s, es, t, ts, mask):
+        social_embeddings = self.social_embed(es, s, ts)                                               # (B, Tn, En)
+        indicators, social_mask = self.social_selection(x, social_embeddings, t, ts, mask)
+        sft_out, sft_attn_weights = self.social_fusion_layer(x, social_embeddings, indicators, social_mask)          # (B, S, Ts, Es)
+
+        return sft_out, sft_attn_weights, indicators
+    
+    def forward(self, t, ts, x, s, es, m, return_weights=False):
+        tst_out, tst_attn_weights = self.time_series_transform(x, t)
+        sft_out, sft_attn_weights, indicators = self.social_fusion_transform(tst_out, s, es, t, ts, m)
+        ist_out, ist_attn_weights = self.inter_stock_transform(sft_out)
+
+        if return_weights:
+            return ist_out, tst_attn_weights, sft_attn_weights, indicators, ist_attn_weights
+        else:
+            return ist_out
 
 class StockNewsSocialTransformer(StockNewsTransformer):
-    def __init__(self):
-        super().__init__()
+    def __init__(
+        self,
+        input_dim,                  # 100
+        social_input_dim,           # 5
+        text_input_dim,             # 1024
+        social_embedding_dim,       # 16
+        embedding_dim,              # 128
+        temporal_embedding_dim,     # 16
+        num_heads,                  # 8
+        K=30,
+        num_samples=100,
+        sigma=5e-2,
+        num_layers=1,
+        expansion=4,
+        dropout=0.1
+    ):
+        super().__init__(
+            input_dim, text_input_dim, embedding_dim, temporal_embedding_dim,
+            num_heads, K, num_samples, sigma, num_layers, expansion, dropout
+        )
+
+        self.social_embed = SocialEmbedding(
+            social_input_dim, text_input_dim, social_embedding_dim, embedding_dim - social_embedding_dim,
+            temporal_embedding_dim, self.fin_embed.time_embed, dropout
+        )
+        self.social_selection = DynamicSelection(self.dim, K, num_samples, sigma)
+        self.social_fusion_layer = CrossAttnTransformerLayers(
+            self.dim, num_heads, num_layers, expansion, dropout
+        )
+        self.down_project = nn.Linear(self.dim * 2, self.dim)
+
+    def social_fusion_transform(self, x, s, es, t, ts, mask):
+        social_embeddings = self.social_embed(es, s, ts)                                               # (B, Tn, En)
+        indicators, social_mask = self.social_selection(x, social_embeddings, t, ts, mask)
+        sft_out, sft_attn_weights = self.social_fusion_layer(x, social_embeddings, indicators, social_mask)          # (B, S, Ts, Es)
+
+        return sft_out, sft_attn_weights, indicators
+    
+    def forward(self, t, tn, ts, x, s, en, es, mn, ms, return_weights=False):
+        tst_out, tst_attn_weights = self.time_series_transform(x, t)
+        sft_out, sft_attn_weights, s_indicators = self.social_fusion_transform(tst_out, s, es, t, ts, ms)
+        nft_out, nft_attn_weights, n_indicators = self.news_fusion_transform(tst_out, en, t, tn, mn)
+        prj_out = self.down_project(torch.cat([sft_out, nft_out], dim=-1))
+        ist_out, ist_attn_weights = self.inter_stock_transform(prj_out)
+
+        if return_weights:
+            return ist_out, tst_attn_weights, sft_attn_weights, nft_attn_weights, ist_attn_weights, s_indicators, n_indicators
+        else:
+            return ist_out
 
 if __name__ == "__main__":
     B, num_stocks, num_timestamps, input_features = 16, 30, 60, 10
