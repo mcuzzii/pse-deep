@@ -6,12 +6,7 @@ sys.path.append(str(Path.cwd() / 'src'))
 
 from processing import DataSource
 
-news = DataSource()
-news.create_df('news')
-
-import numpy as np
-
-values, counts = np.unique(news.df.index.date, return_counts=True)
-d = dict(zip(values, counts))
-
-print(dict(sorted(d.items(), key=lambda x: x[1], reverse=True)))
+news_indicators_30 = DataSource()
+news_indicators_30.create_df('news', medium='news_sentiment', target=30)
+del news_indicators_30
+gc.collect()

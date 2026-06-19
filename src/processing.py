@@ -124,10 +124,10 @@ def get_agg_keys(features, agg):
 
 def get_aggregates(data, features, agg):
     if not get_agg_keys(features, agg):
-        return dict()
+        return pd.Series(dict()).astype('float32')
     columns = data[get_agg_keys(features, agg)].astype('float32')
     if agg != 'follower_weighted_mean':
-        return getattr(columns, agg, None)().add_suffix(f'_{agg}')
+        return getattr(columns, agg, None)().add_suffix(f'_{agg}').astype('float32')
     else:
         return (columns.apply(
             lambda col: col * data['author_followers']
@@ -143,11 +143,14 @@ def get_sentiment(data, k, pos=True):
 
 def get_custom_indicator(data, k, i):
 
+    if data.shape[0]:
+        return None
+
     if i == 'intensity':
-        return (get_sentiment(data, k, True) - get_sentiment(data, k, False)) / (data.shape[0] + 1e-4)
+        return (get_sentiment(data, k, True) - get_sentiment(data, k, False)) / (data.shape[0])
     
     elif i == 'strong':
-        return (data[k] > 0.7).sum() / (data.shape[0] + 1e-4)
+        return (data[k] > 0.7).sum() / (data.shape[0])
     
     elif i == 'momentum':
         return data[k].iloc[-data.shape[0] // 3:].mean() - data[k].mean()
@@ -156,18 +159,18 @@ def get_custom_indicator(data, k, i):
         return data[k].iloc[-data.shape[0] // 6:].mean() - data[k].iloc[-data.shape[0] // 2:].mean()
     
     elif i == 'pos_neg_ratio':
-        return get_sentiment(data, k, True) / (get_sentiment(data, k, False) + 1e-4)
+        return get_sentiment(data, k, True) / (get_sentiment(data, k, False) + get_sentiment(data, k, True))
     
     elif i == 'net':
-        return (data[k] > 0).sum() / (data.shape[0] + 1e-4)
+        return (data[k] > 0).sum() / (data.shape[0])
     
     elif i == 'prop':
         return (
             (sentiment := data[k].value_counts()).get('neutral', 0) + sentiment.get('Neutral', 0)
-        ) / (data.shape[0] + 1e-4)
+        ) / (data.shape[0])
     
     elif i == 'viral_coeff':
-        return (data[k] + data['reply_count']).sum() / (data.shape[0] + 1e-4)
+        return (data[k] + data['reply_count']).sum() / (data.shape[0])
 
 def compute_text_stats(text_df, features, cutoffs, trading_minute):
     cutoff = cutoffs[trading_minute]
@@ -191,7 +194,7 @@ def compute_text_stats(text_df, features, cutoffs, trading_minute):
     
     custom_indicators = pd.Series(custom_indicators)
 
-    data = pd.concat([sums, means, stds, maxs, mins, follower_weighted_means, custom_indicators])
+    data = pd.concat([sums, means, stds, maxs, mins, follower_weighted_means, custom_indicators]).astype('float32')
     
     return data
 
