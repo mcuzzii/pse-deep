@@ -276,6 +276,7 @@ class Experiment:
                 self.pred_horizon,
                 24
             )
+            print(cutoff)
             non_train_split = df.df.loc[df.df.index.get_level_values('local_time') > cutoff]
 
         else:
@@ -532,16 +533,6 @@ class Experiment:
             [self._get_train_split, self._get_val_split, self._get_test_split]
         ):
             split = split_func(social_df)
-
-            print("split len:", len(split))
-
-            print(split_func)
-
-            if len(split) == 0:
-                raise ValueError("split is empty")
-
-            print("embeddings len:", len(split['embeddings']))
-            print("first few indices:", split.index[:5])
 
             embeddings = torch.from_numpy(np.stack(split['embeddings'].values).astype(np.float32))
             impact = torch.from_numpy(split[impact_features].values.astype(np.float32))
