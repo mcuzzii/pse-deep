@@ -165,7 +165,7 @@ def main():
                 stock_transformer.build_dataset()
                 stock_transformer.build_model(
                     input_dim=100,
-                    social_input_dim=5,
+                    social_input_dim=6,
                     text_input_dim=1024,
                     social_embedding_dim=16,
                     embedding_dim=128,

@@ -527,7 +527,7 @@ class Experiment:
             split = split_func(social_df)
 
             embeddings = torch.from_numpy(np.stack(split['embeddings'].values).astype(np.float32))
-            impact = torch.from_numpy(split[impact_features].values).astype(np.float32)
+            impact = torch.from_numpy(split[impact_features].values.astype(np.float32))
             timestamps = torch.from_numpy(split['elapsed_time'].values.astype(np.float32))
 
             torch.save({
