@@ -1425,6 +1425,10 @@ class DataSource:
         ignore_history: bool = False
     ):
         self.df.index = pd.to_datetime(self.df.index)
+
+        if self.df.index.tz is not None:
+            self.df.index = self.df.index.tz_convert('Asia/Manila').tz_localize(None)
+
         self.df.index.name = 'local_time'
         self._add_elapsed_time()
         
