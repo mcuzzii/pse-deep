@@ -210,7 +210,7 @@ def compute_text_stats(text_df, features, cutoffs, trading_minute):
             s = pd.concat([s1, s2])
 
             dupes = s.index[s.index.duplicated(keep=False)]
-            print(dupes)
+            print(f'{name1} and {name2}: {dupes}')
             time.sleep(0.001)
     
     return data
