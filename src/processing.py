@@ -203,10 +203,6 @@ def compute_text_stats(text_df, features, cutoffs, trading_minute):
         f'Sums:\n{sum_dupes}\n\n'
         f'Means:\n{mean_dupes}\n\n'
         f'Stds:\n{std_dupes}\n\n'
-        f'Maxs:\n{max_dupes}\n\n'
-        f'Mins:\n{min_dupes}\n\n'
-        f'Weighted means:\n{follower_weighted_mean_dupes}\n\n'
-        f'Custom indicators:\n{custom_indicator_dupes}\n\n\n'
     )
 
     return data
