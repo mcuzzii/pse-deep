@@ -192,7 +192,7 @@ def compute_text_stats(text_df, features, cutoffs, trading_minute):
 
     data = pd.concat([sums, means, stds, maxs, mins, follower_weighted_means, custom_indicators])
 
-    print(data.index)
+    print(data.index.is_unique)
 
     return data
 
