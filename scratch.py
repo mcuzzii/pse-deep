@@ -8,4 +8,4 @@ from processing import DataSource
 
 news = DataSource()
 news.create_df('news')
-print(news.df.index.date.value_counts())
+print(news.df.index.date)
