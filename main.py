@@ -141,7 +141,7 @@ def main():
                 social=False,
                 stock_lookback=60
             )
-            stock_transformer.build_dataset(force=news)
+            stock_transformer.build_dataset()
             stock_transformer.build_model(
                 input_dim=100,
                 news_input_dim=1024,
