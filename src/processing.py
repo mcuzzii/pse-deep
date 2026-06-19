@@ -1398,7 +1398,7 @@ class DataSource:
         mrmr_df = []
         for stock in stocks:
             df = self.df.copy(deep=True)
-            stock_df = joblib.load(f'{stock}_{self._target}m.joblib')
+            stock_df = joblib.load(self.processed_path / f'{stock}_{self._target}m.joblib')
             df[f'stock_{self._target}m_return'] = stock_df.df[f'{stock}_{self._target}m_return'].astype('float32')
             df = df.loc[train_mask]
             mrmr_df.append(df)
