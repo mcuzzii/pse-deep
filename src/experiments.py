@@ -10,6 +10,7 @@ import signal
 from pathlib import Path
 import math
 import random
+import matplotlib.pyplot as plt
 
 # Add the 'src' directory to the path
 sys.path.append(str(Path.cwd() / 'src'))
@@ -465,6 +466,17 @@ class Experiment:
         num_batches = len(loaders['train']) * num_epochs
         sigma_start = getattr(model, 'sigma', 5e-2)
 
+        if isinstance(val_every, int):
+            val_every = lambda x: val_every * x
+        val_generator = lambda x: accumulation_steps * math.ceil(val_every(x) / accumulation_steps)
+        
+        self.val_periods = [
+            val_generator(x)
+            for x in range(num_batches)
+            if val_generator(x) < num_batches
+        ]
+        self.val_periods.append(num_batches)
+
         resume_step = None
         if path.exists():
             checkpoint = torch.load(path, map_location=device, weights_only=False)
@@ -527,17 +539,6 @@ class Experiment:
 
         criterion = nn.CrossEntropyLoss(weight=class_weights)
 
-        if isinstance(val_every, int):
-            val_every = lambda x: val_every * x
-        val_generator = lambda x: accumulation_steps * math.ceil(val_every(x) / accumulation_steps)
-        
-        val_periods = [
-            val_generator(x)
-            for x in range(num_batches)
-            if val_generator(x) < num_batches
-        ]
-        val_periods.append(num_batches)
-
         # Training loop
         try:
             for epoch in range(num_epochs):
@@ -580,12 +581,12 @@ class Experiment:
                     pbar.update(1)
                     pbar.set_postfix(loss=loss.item())
 
-                    if global_step in val_periods:
+                    if global_step in self.val_periods:
                         val_loss = _run_validation(model, loaders, device, criterion)
                         val_losses.append(val_loss)
 
-                        period_idx = val_periods.index(global_step)
-                        num_steps = (global_step - val_periods[period_idx - 1]) if period_idx > 0 else global_step
+                        period_idx = self.val_periods.index(global_step)
+                        num_steps = (global_step - self.val_periods[period_idx - 1]) if period_idx > 0 else global_step
 
                         train_loss = total_loss / num_steps
                         train_losses.append(train_loss)
@@ -659,3 +660,36 @@ class Experiment:
             }, path)
             
             pbar.close()
+    
+    def plot_loss_curves(self):
+        model = torch.load(
+            self.experiment_path / 'checkpoints' / f'{self.experiment_name}.pt',
+            map_location=device,
+            weights_only=False
+        )
+        train_losses = model.train_losses
+        val_losses = model.val_losses
+
+        x = self.val_periods
+        
+        topk = getattr(model, 'topk', None)
+
+        if topk:
+            print(topk.sigma)
+
+        plt.figure(figsize=(8, 5))
+
+        plt.plot(x, train_losses, label="Train Loss")
+        plt.plot(x, val_losses, label="Validation Loss")
+
+        plt.xlabel("Epoch")
+        plt.ylabel("Loss")
+        plt.title("Training and Validation Loss")
+        plt.legend()
+        plt.grid(True)
+        plt.tight_layout()
+
+        save_path = self.experiment_path / 'loss_curve.png'
+
+        plt.savefig(save_path, dpi=300)
+        plt.close()
