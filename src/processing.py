@@ -159,7 +159,8 @@ def get_custom_indicator(data, k, i):
         return data[k].iloc[-data.shape[0] // 6:].mean() - data[k].iloc[-data.shape[0] // 2:].mean()
     
     elif i == 'pos_neg_ratio':
-        return get_sentiment(data, k, True) / (get_sentiment(data, k, False) + get_sentiment(data, k, True))
+        denom = (get_sentiment(data, k, False) + get_sentiment(data, k, True))
+        return get_sentiment(data, k, True) / denom if denom else 0.5
     
     elif i == 'net':
         return (data[k] > 0).sum() / (data.shape[0])
