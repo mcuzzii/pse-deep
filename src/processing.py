@@ -1474,7 +1474,7 @@ class DataSource:
             self.date_col = 'date_time'
             self.df.to_csv('src/news/data/raw/news/news.csv')
             subprocess.run(["uv", "run", "--directory", "src/news", "python", "main.py"])
-            self.df = pd.read_csv('src/news/data/processed/news/news.csv', index_col=0)
+            self.df = pd.read_csv('src/news/data/processed/news/news_cleaned.csv', index_col=0)
             self._text_preprocess(ignore_history=ignore_history)
         
         elif self._medium in ['stock', 'bond', 'copper', 'oil', 'fx']:

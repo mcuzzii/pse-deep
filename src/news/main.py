@@ -450,9 +450,20 @@ def filter_news(news_df, processed_path):
 
     news_df['date_time'] = pd.to_datetime(news_df['date_time'])
 
+    dates_df = news_df[['date_time', 'published_at']]
+
+    news_df['date_time'] = news_df['published_at']
+    news_df = news_df.iloc[:, :4]
+
+    dates_df.to_csv(processed_path / 'dates.csv')
+    news_df.to_csv(processed_path / 'news_cleaned.csv')
+
+    return news_df
+
 if __name__ == '__main__':
     
     news_df, processed_path = load_news()
-    news_df = get_news_urls(news_df, processed_path)
+    #news_df = get_news_urls(news_df, processed_path)
     #website_dist = get_news_distribution(news_df, processed_path)
     #news_df = get_news_timestamps(news_df, processed_path)
+    news_df = filter_news(news_df, processed_path)
