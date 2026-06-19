@@ -129,6 +129,26 @@ def preprocess():
     del social_media_data
     gc.collect()
 
+    social_indicators_30 = DataSource()
+    social_indicators_30.create_df('social_media', medium='social_indicators', target=30)
+    del social_indicators_30
+    gc.collect()
+
+    social_indicators_10 = DataSource()
+    social_indicators_10.create_df('social_media', medium='social_indicators', target=10)
+    del social_indicators_10
+    gc.collect()
+
+    news_indicators_30 = DataSource()
+    news_indicators_30.create_df('news', medium='news_sentiment', target=30)
+    del news_indicators_30
+    gc.collect()
+
+    news_indicators_10 = DataSource()
+    news_indicators_10.create_df('news', medium='news_sentiment', target=10)
+    del news_indicators_10
+    gc.collect()
+
 def main():
 
     for pred_30 in (True, False):
