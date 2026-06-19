@@ -55,6 +55,7 @@ def collate_fn(
                     masks.append(arg_mask)
             
             else:
+                print(arg[0].shape[1])
                 args[i] = torch.stack(list(arg))
         
         for mask in masks:
