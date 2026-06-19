@@ -192,8 +192,22 @@ def compute_text_stats(text_df, features, cutoffs, trading_minute):
 
     data = pd.concat([sums, means, stds, maxs, mins, follower_weighted_means, custom_indicators])
 
-    dupes = sums.index[sums.index.duplicated(keep=False)]
-    print(dupes)
+    sum_dupes = sums.index[sums.index.duplicated(keep=False)]
+    mean_dupes = means.index[means.index.duplicated(keep=False)]
+    std_dupes = stds.index[stds.index.duplicated(keep=False)]
+    max_dupes = maxs.index[maxs.index.duplicated(keep=False)]
+    min_dupes = mins.index[mins.index.duplicated(keep=False)]
+    follower_weighted_mean_dupes = follower_weighted_means.index[follower_weighted_means.index.duplicated(keep=False)]
+    custom_indicator_dupes = custom_indicators.index[custom_indicators.index.duplicated(keep=False)]
+    print(
+        f'Sums:\n{sum_dupes}\n\n'
+        f'Means:\n{mean_dupes}\n\n'
+        f'Stds:\n{std_dupes}\n\n'
+        f'Maxs:\n{max_dupes}\n\n'
+        f'Mins:\n{min_dupes}\n\n'
+        f'Weighted means:\n{follower_weighted_mean_dupes}\n\n'
+        f'Custom indicators:\n{custom_indicator_dupes}\n\n\n'
+    )
 
     return data
 
