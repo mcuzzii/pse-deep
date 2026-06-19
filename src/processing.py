@@ -1367,7 +1367,7 @@ class DataSource:
 
         for ts in tqdm(self.filtered_date_times[:1000], desc="Computing indicators..."):
             s = compute_text_stats(text_df.df, indicator_instructions, cutoffs, ts)
-            print(s.index.is_unique)
+            print(s)
         
         self.df = pd.DataFrame(text_stats, index=self.filtered_date_times[:1000])
 
