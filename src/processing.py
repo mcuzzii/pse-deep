@@ -186,7 +186,8 @@ def compute_text_stats(text_df, features, cutoffs, trading_minute):
 
     for k in features:
         for i in features[k]:
-            custom_indicators[f'{k}_{i}'] = get_custom_indicator(window_data, k, i)
+            if i not in ('sum', 'mean', 'std', 'max', 'min', 'follower_weighted_mean'):
+                custom_indicators[f'{k}_{i}'] = get_custom_indicator(window_data, k, i)
     
     custom_indicators = pd.Series(custom_indicators)
 
