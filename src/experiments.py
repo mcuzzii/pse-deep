@@ -686,7 +686,7 @@ class Experiment:
         plt.ylabel("Loss")
         plt.title("Training and Validation Loss")
         plt.legend()
-        plt.grid(True)
+        plt.grid(False)
         plt.tight_layout()
 
         save_path = self.experiment_path / 'loss_curve.png'
