@@ -8,4 +8,4 @@ from processing import DataSource
 
 news = DataSource()
 news.create_df('news')
-news.df.sort_index().to_csv('data/samples/news_samples.csv')
+print(news.index.days.value_counts().value_counts())
