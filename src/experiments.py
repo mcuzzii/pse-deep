@@ -25,30 +25,41 @@ def seed_worker(worker_id):
     np.random.seed(worker_seed)
     random.seed(worker_seed)
 
-def collate_fn(batch):
-    args = list(zip(*batch))
-    n = len(args)
+def collate_fn(
+    input_dim: int | None = None,
+    K: int | None = None
+):
+    def func(batch):
+        args = list(zip(*batch))
+        n = len(args)
 
-    masks = []
+        masks = []
 
-    for i, arg in enumerate(args[:n]):
-        if len(arg[0].shape)== 1 or (len(arg[0].shape) == 2 and arg[0].shape[1] == 1024):
-            args[i] = pad_sequence(arg, batch_first=True, padding_value=0.0)
+        for i, arg in enumerate(args[:n]):
+            if len(arg[0].shape)== 1 or (len(arg[0].shape) == 2 and arg[0].shape[1] == input_dim):
+                args[i] = pad_sequence(arg, batch_first=True, padding_value=0.0)
 
-            if len(args[i].shape) == 3:
-                lengths = torch.tensor([len(f) for f in arg])
-                L_max = args[i].shape[1]
-                arg_mask = torch.arange(L_max).unsqueeze(0) < lengths.unsqueeze(1)
+                # arg.shape = (B, Tn) or (B, Tn, En)
+                if args[i].shape[1] < K:
+                    pad_shape = (args[i].shape[0], K - args[i].shape[1], *args[i].shape[2:])
+                    zeros = torch.zeros(pad_shape, dtype=args[i].dtype, device=args[i].device)
+                    args[i] = torch.cat([args[i], zeros], dim=1)
 
-                masks.append(arg_mask)
+                if len(args[i].shape) == 3:
+                    lengths = torch.tensor([len(f) for f in arg])
+                    L_max = args[i].shape[1]
+                    arg_mask = torch.arange(L_max).unsqueeze(0) < lengths.unsqueeze(1)
+
+                    masks.append(arg_mask)
+            
+            else:
+                args[i] = torch.stack(list(arg))
         
-        else:
-            args[i] = torch.stack(list(arg))
-    
-    for mask in masks:
-        args.insert(-1, mask)
+        for mask in masks:
+            args.insert(-1, mask)
 
-    return tuple(args)
+        return tuple(args)
+    return func
 
 def _run_validation(model, loaders, device, criterion):
     model.eval()
@@ -432,6 +443,10 @@ class Experiment:
         best_path = self.experiment_path / f'{self.experiment_name}.pt' # <-- Target path for best weights
         path.parent.mkdir(parents=True, exist_ok=True)
 
+        model = self.model.to(device)
+        optimizer = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=weight_decay)
+        optimizer.zero_grad()
+
         loaders = {
             split: DataLoader(
                 self._make_dataset(split),
@@ -441,14 +456,10 @@ class Experiment:
                 worker_init_fn=seed_worker,
                 generator=torch.Generator().manual_seed(42),
                 pin_memory=True,
-                collate_fn=collate_fn
+                collate_fn=collate_fn(input_dim=getattr(model, 'text_embedding_dim', None), K=getattr(model, 'K', None))
             )
             for split in ('train', 'val', 'test')
         }
-
-        model = self.model.to(device)
-        optimizer = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=weight_decay)
-        optimizer.zero_grad()
 
         global_step = 0
         num_batches = len(loaders['train']) * num_epochs

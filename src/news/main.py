@@ -70,6 +70,7 @@ def extract_news_url(url):
 
             except Exception as e:
                 print(f"An unexpected error occurred: {e}")
+                raise
         else:
             print(f'Type is not a URL; type = {type}')
             return None
@@ -79,6 +80,35 @@ def extract_news_url(url):
 
 with open('data/raw/news/domains.json', 'r', encoding='utf-8') as f:
     DOMAIN_TIMEZONE_MAP = json.load(f)
+
+AMBIGUOUS_TZ_ABBREVS = {
+    'PST',  # Philippine ST (UTC+8) vs Pacific ST (UTC-8)
+    'IST',  # Indian ST (UTC+5:30) vs Irish ST (UTC+1) vs Israel ST (UTC+2)
+    'CST',  # China ST (UTC+8) vs Central ST (UTC-6) vs Cuba ST (UTC-5)
+    'BST',  # Bangladesh ST (UTC+6) vs British Summer Time (UTC+1)
+    'SST',  # Singapore ST (UTC+8) vs Samoa ST (UTC-11)
+    'MST',  # Malaysia ST (UTC+8) vs Mountain ST (UTC-7)
+    'AST',  # Arabia ST (UTC+3) vs Atlantic ST (UTC-4)
+    'NST',  # Nepal ST (UTC+5:45) vs Newfoundland ST (UTC-3:30)
+    'GST',  # Gulf ST (UTC+4) vs South Georgia ST (UTC-2)
+}
+
+PRESERVE = {'AM', 'PM', 'JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN',
+            'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC', 'UTC', 'GMT'}
+
+def preprocess_date_string(date_str):
+    stripped = False
+    def replacer(m):
+        nonlocal stripped
+        token = m.group()
+        if token in PRESERVE:
+            return token
+        if token in AMBIGUOUS_TZ_ABBREVS:
+            stripped = True
+            return ''
+        return token
+    result = re.sub(r'\b[A-Z]{2,5}\b', replacer, date_str).strip()
+    return result, stripped
 
 def get_fallback_timezone(url):
     domain = urlparse(url).netloc.lower().replace("www.", "")
@@ -126,32 +156,30 @@ def ensure_utc(parsed_dt, url):
 
     return localized.astimezone(pytz.utc)
 
-
-DATE_FIELDS = {
-    "datePublished",
-    "dateModified",
-    "dateCreated",
-    "uploadDate",
-    "date"
-}
-
+DATE_FIELDS_PRIORITY = ["datePublished", "dateCreated", "uploadDate", "date", "dateModified"]
 
 def find_date_fields(obj):
     """
-    Recursively yield candidate date strings from JSON-LD.
+    Recursively search JSON-LD for date strings, yielding in priority order.
+    datePublished is preferred over dateModified over generic date.
     """
+    found = {}  # key -> first value found for each date field
 
-    if isinstance(obj, dict):
-        for key, value in obj.items():
+    def _recurse(o):
+        if isinstance(o, dict):
+            for key, value in o.items():
+                if key in DATE_FIELDS_PRIORITY and isinstance(value, str) and key not in found:
+                    found[key] = value
+                _recurse(value)
+        elif isinstance(o, list):
+            for item in o:
+                _recurse(item)
 
-            if key in DATE_FIELDS and isinstance(value, str):
-                yield value
+    _recurse(obj)
 
-            yield from find_date_fields(value)
-
-    elif isinstance(obj, list):
-        for item in obj:
-            yield from find_date_fields(item)
+    for key in DATE_FIELDS_PRIORITY:
+        if key in found:
+            yield found[key]
 
 def extract_exact_timestamp(url):
 
@@ -180,7 +208,7 @@ def extract_exact_timestamp(url):
 
     except Exception as e:
         print(f"Network error: {e}")
-        return None
+        return None, None
 
     soup = BeautifulSoup(res.text, "html.parser")
 
@@ -202,10 +230,15 @@ def extract_exact_timestamp(url):
 
             for candidate in find_date_fields(data):
 
-                parsed = dateparser.parse(candidate)
+                candidate, was_stripped = preprocess_date_string(candidate)
+                parsed = dateparser.parse(candidate, settings={
+                    'RETURN_AS_TIMEZONE_AWARE': not was_stripped
+                })
 
                 if parsed:
-                    return ensure_utc(parsed, url)
+                    timestamp = ensure_utc(parsed, url)
+                    print(f'Found ld+json timestamp: {timestamp}')
+                    return timestamp, 'application/ld+json'
 
         except Exception:
             continue
@@ -216,14 +249,14 @@ def extract_exact_timestamp(url):
 
     meta_selectors = [
         {"property": "article:published_time"},
-        {"property": "article:modified_time"},
+        {"itemprop": "datePublished"},
         {"property": "og:published_time"},
         {"name": "parsely-pub-date"},
         {"name": "publish-date"},
         {"name": "publication_date"},
         {"name": "pubdate"},
         {"name": "date"},
-        {"itemprop": "datePublished"},
+        {"property": "article:modified_time"},
         {"itemprop": "dateModified"},
     ]
 
@@ -239,53 +272,33 @@ def extract_exact_timestamp(url):
         if not content:
             continue
 
-        parsed = dateparser.parse(content)
+        content, was_stripped = preprocess_date_string(content)
+        parsed = dateparser.parse(content, settings={
+            'RETURN_AS_TIMEZONE_AWARE': not was_stripped
+        })
 
         if parsed:
-            return ensure_utc(parsed, url)
+            timestamp = ensure_utc(parsed, url)
+            print(f'Found metadata timestamp: {timestamp}')
+            return timestamp, 'metadata'
 
     # ============================================================
     # LAYER 3: Semantic time tag
     # ============================================================
 
-    time_tag = soup.find("time")
-
-    if time_tag:
-
-        time_str = (
-            time_tag.get("datetime")
-            or time_tag.get_text(strip=True)
-        )
-
-        if time_str:
-
-            parsed = dateparser.parse(time_str)
-
-            if parsed:
-                return ensure_utc(parsed, url)
-
-    # ============================================================
-    # LAYER 4: HTTP headers
-    # ============================================================
-
-    for header in ["Last-Modified", "Date"]:
-
-        value = res.headers.get(header)
-
-        if not value:
-            continue
-
-        try:
-            parsed = dateparser.parse(value)
-
-            if parsed:
-                return parsed.astimezone(pytz.utc)
-
-        except Exception:
-            pass
+    for time_tag in soup.find_all("time"):
+        time_str = time_tag.get("datetime") or time_tag.get_text()
+        time_str, was_stripped = preprocess_date_string(time_str)
+        parsed = dateparser.parse(time_str, settings={
+            'RETURN_AS_TIMEZONE_AWARE': not was_stripped
+        })
+        if parsed:
+            timestamp = ensure_utc(parsed, url)
+            print(f'Found time tag: {timestamp}')
+            return timestamp, 'time_tag'
     
     # -------------------------------------------------------------
-    # LAYER 5: Regex Catch-All (Almost always missing timezone)
+    # LAYER 4: Regex Catch-All (Almost always missing timezone)
     # -------------------------------------------------------------
     page_text = soup.get_text(separator=" ")
     fuzzy_date_pattern = r"(\b\d{1,2}\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+\d{4}|\b(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+\d{1,2},?\s+\d{4})[^\w\n]{1,5}(\d{1,2}:\d{2}(?:\s*[ap]m)?)"
@@ -293,11 +306,16 @@ def extract_exact_timestamp(url):
     matches = re.findall(fuzzy_date_pattern, page_text, re.IGNORECASE)
     for match in matches:
         combined_text = f"{match[0]} {match[1]}"
-        parsed = dateparser.parse(combined_text)
+        combined_text, was_stripped = preprocess_date_string(combined_text)
+        parsed = dateparser.parse(combined_text, settings={
+            'RETURN_AS_TIMEZONE_AWARE': not was_stripped
+        })
         if parsed:
-            return ensure_utc(parsed, url, res.headers)
+            timestamp = ensure_utc(parsed, url)
+            print(f'Found in article text: {timestamp}')
+            return timestamp, 'article_text'
 
-    return None
+    return None, None
 
 
 def load_news():
@@ -345,12 +363,16 @@ def get_news_urls(news_df, processed_path):
         news_df.loc[new_indices, 'news_urls'] = pd.Series(news_urls, index=new_indices)
 
         news_df.to_csv(processed_path / 'news.csv')
-        rd.close_session()
-        return news_df
+        try:
+            rd.close_session()
+        except Exception:
+            pass
+    
+    return news_df
 
 def get_news_distribution(news_df, processed_path):
     urls = news_df.loc[news_df['news_urls'].notna(), 'news_urls']
-    website_dist = urls.str.extractall(r'https://(?:www.)*(.*?)/').value_counts().to_dict()
+    website_dist = urls.str.extractall(r'https?://(?:www\.)*(.*?)/').value_counts().to_dict()
     website_dist = {k[0]: v for k, v in website_dist.items()}
 
     with open(processed_path / 'news_dist.json', 'w', encoding='utf-8') as f:
@@ -367,14 +389,13 @@ def rate_limited_extract(idx, url):
     domain = urlparse(url).netloc
     lock = domain_locks[domain]
     
-    with lock:
+    with lock:  # hold the lock for the entire request
         elapsed = time.time() - domain_last_called[domain]
         wait = RATE_LIMIT_SECONDS - elapsed
         if wait > 0:
             time.sleep(wait)
         domain_last_called[domain] = time.time()
-
-    return idx, extract_exact_timestamp(url)
+        return idx, extract_exact_timestamp(url)  # inside the lock
 
 
 def get_news_timestamps(news_df, processed_path):
@@ -382,39 +403,56 @@ def get_news_timestamps(news_df, processed_path):
     
     if 'published_at' not in news_df.columns.tolist() or not news_df['published_at'].notna().sum():
         news_df['published_at'] = None
+        news_df['timestamp_from'] = None
         to_extract = indices
     else:
+        if 'timestamp_from' not in news_df.columns.tolist():
+            news_df['timestamp_from'] = None
         to_extract = indices[indices.index(news_df['published_at'].last_valid_index()) + 1:]
 
     results = {}
 
-    try:
-        with ThreadPoolExecutor(max_workers=10) as executor:
-            futures = {
-                executor.submit(rate_limited_extract, idx, url): idx
-                for idx, url in news_df.loc[to_extract, 'news_urls'].items()
-            }
+    with ThreadPoolExecutor(max_workers=10) as executor:
+        futures = {
+            executor.submit(rate_limited_extract, idx, url): idx
+            for idx, url in news_df.loc[to_extract, 'news_urls'].items()
+        }
+        try:
             for future in tqdm(as_completed(futures), total=len(futures)):
-                idx, dt = future.result()
-                results[idx] = dt
+                try:
+                    idx, (dt, kind) = future.result()
+                    results[idx] = (dt, kind)
 
-    except KeyboardInterrupt:
-        print('\nStopped by user.')
-        executor.shutdown(wait=False, cancel_futures=True)
+                except KeyboardInterrupt:
+                    raise
 
-    except Exception as e:
-        traceback.print_exc()
+                except Exception as e:
+                    traceback.print_exc()
+        
+        except KeyboardInterrupt:
+            print('\nStopped by user.')
+            executor.shutdown(wait=False, cancel_futures=True)
+        
+        finally:
+            filled_indices = [i for i in to_extract if i in results]
+            news_df.loc[filled_indices, 'published_at'] = pd.Series({k: v[0] for k, v in results.items()})
+            news_df.loc[filled_indices, 'timestamp_from'] = pd.Series({k: v[1] for k, v in results.items()})
+            news_df.to_csv(processed_path / 'news.csv')
+        
+    return news_df
 
-    finally:
-        filled_indices = [i for i in to_extract if i in results]
-        news_df.loc[filled_indices, 'published_at'] = pd.Series(results)
-        news_df.to_csv(processed_path / 'news.csv')
-        return news_df
+def filter_news(news_df, processed_path):
+    news_df = news_df.loc[news_df['published_at'].notna()]
 
+    news_df['published_at'] = pd.to_datetime(
+        news_df['published_at'], format='mixed', utc=True
+    ).dt.tz_convert('Asia/Manila').dt.tz_localize(None)
+
+    news_df['date_time'] = pd.to_datetime(news_df['date_time'])
 
 if __name__ == '__main__':
     
     news_df, processed_path = load_news()
-    #news_df = get_news_urls(news_df, processed_path)
-    website_dist = get_news_distribution(news_df, processed_path)
-    news_df = get_news_timestamps(news_df, processed_path)
+    news_df = get_news_urls(news_df, processed_path)
+    #website_dist = get_news_distribution(news_df, processed_path)
+    #news_df = get_news_timestamps(news_df, processed_path)

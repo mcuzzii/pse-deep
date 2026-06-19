@@ -45,15 +45,13 @@ class PerturbedTopKFunction(torch.autograd.Function):
 
         topk_results = torch.topk(perturbed_x, k=k, dim=-1, sorted=False)
         indices = topk_results.indices                                            # (N, S, K)
-        indices = torch.sort(indices, dim=-1).values                              # (N, S, K)
 
-        # indicators[n, k_, j] = (1/S) * sum_s [indices[n,s,k_] == j]
         N_, S_, K_ = indices.shape
         idx_for_scatter = indices.permute(0, 2, 1).reshape(N_ * K_, S_)           # (N*K, S)
         src_for_scatter = torch.ones_like(idx_for_scatter, dtype=x.dtype)         # (N*K, S)
         indicators_flat = torch.zeros(N_ * K_, d, device=x.device, dtype=x.dtype)
         indicators_flat.scatter_add_(1, idx_for_scatter, src_for_scatter)
-        indicators = (indicators_flat / num_samples).reshape(N_, K_, d)
+        indicators = (indicators_flat / num_samples).reshape(N_, K_, d)           # (B*S*Ts, K, d)
 
         ctx.k = k
         ctx.num_samples = num_samples
@@ -61,7 +59,7 @@ class PerturbedTopKFunction(torch.autograd.Function):
         ctx.orig_shape = orig_shape
         ctx.save_for_backward(indices, noise)                                     # (N,S,K) int64, (N,S,d) float
 
-        return indicators.reshape(*orig_shape[:-1], k, d)
+        return indicators.reshape(*orig_shape[:-1], k, d)                           # (B, S, Ts, K, d)
 
     @staticmethod
     def backward(ctx, grad_output):
@@ -176,9 +174,12 @@ class FeedForward(nn.Module):
             nn.Dropout(dropout)
         )
     
-    def forward(self, x):
+    def forward(self, x, mask=None):
         norm_x = self.norm(x)
         ffn_out = self.ff(norm_x)
+
+        if mask is not None:
+            ffn_out = ffn_out * mask.unsqueeze(-1).float()
         
         out = x + ffn_out
         return out
@@ -299,7 +300,7 @@ class DynamicSelection(nn.Module):
         news_mask = news_mask * mask.unsqueeze(1)                                       # (B, Ts, Tn)
 
         # expand mask across stocks: (B, S, Ts, Tn)
-        news_mask = news_mask.unsqueeze(1).expand(-1, x.size(1), -1, -1)
+        news_mask = news_mask.unsqueeze(1).expand(-1, x.size(1), -1, -1)                # (B, S, Ts, Tn)
         news_mask_5d = news_mask.unsqueeze(-1)                                          # (B, S, Ts, Tn, 1)
 
         # project news once, broadcast over stocks
@@ -320,7 +321,7 @@ class DynamicSelection(nn.Module):
 
         indicators = self.topk(scores)                                                  # (B, S, Ts, K, Tn)
 
-        return indicators
+        return indicators, news_mask
 
 class CrossAttentionBlock(nn.Module):
     def __init__(self, embedding_dim, num_heads, dropout=0.1):
@@ -341,10 +342,15 @@ class CrossAttentionBlock(nn.Module):
         
         self.dropout = nn.Dropout(dropout)
         
-    def forward(self, x, y, indicators):
+    def forward(self, x, y, indicators, news_mask):
         # x: (B, S, Ts, Es)
         # y: (B, Tn, En)
         # indicators: (B, S, Ts, K, Tn)
+        # news_mask: (B, S, Ts, Tn)
+
+        attn_mask = ((indicators * news_mask.unsqueeze(-2)).sum(-1) > 0).float()    # (B, S, Ts, K)
+        attn_mask = attn_mask.flatten(0, 1)                                         # (B*S, Ts, K)
+        attn_mask = attn_mask.unsqueeze(1).expand(-1, self.num_heads, -1, -1)       # (B*S, H, Ts, K)
 
         y_stock = y.unsqueeze(1).expand(-1, x.size(1), -1, -1)                      # (B, S, Tn, En)
 
@@ -368,17 +374,23 @@ class CrossAttentionBlock(nn.Module):
 
         scaling_factor = math.sqrt(self.head_dim)
         scores = torch.einsum("bhtd,bhtkd->bhtk", q, k_selected) / scaling_factor   # (B*S, H, Ts, K)
-            
+
+        scores = scores.masked_fill(~attn_mask.bool(), float('-inf'))               # (B*S, H, Ts, K)
         attn_weights = F.softmax(scores, dim=-1)                                    # (B*S, H, Ts, K)
         attn_weights = self.dropout(attn_weights)                                   # (B*S, H, Ts, K)
+        attn_weights = torch.nan_to_num(attn_weights, nan=0.0)                      # (B*S, H, Ts, K)
 
         context = torch.einsum("bhtk,bhtkd->bhtd", attn_weights, v_selected)        # (B*S, H, Ts, En/H)
         context = context.transpose(1, 2).contiguous().view(B, T_tgt, D)            # (B*S, H, Ts, En/H) -> (B*S, Ts, H, En/H) -> (B*S, Ts, En)
-        
+
+        output_mask = (news_mask.flatten(0, 1).sum(dim=-1) > 0).float()             # (B*S, Ts)
         output = self.out_proj(context)                                             # (B*S, Ts, En)
+        output = output * output_mask.unsqueeze(-1)                                 # (B*S, Ts, En)
         output = output.view(x.shape)                                               # (B, S, Ts, Es) (note that En = Es)
+        output = x + output                                                         # Residual connection
+        output_mask = output_mask.view(x.shape[:-1])                                # (B, S, Ts)
         
-        return output, attn_weights
+        return output, output_mask, attn_weights
 
 class CrossAttnTransformerLayer(nn.Module):
     def __init__(self, embedding_dim, num_heads, expansion=4, dropout=0.1):
@@ -386,9 +398,9 @@ class CrossAttnTransformerLayer(nn.Module):
         self.attn_blk = CrossAttentionBlock(embedding_dim, num_heads, dropout)
         self.ffnn = FeedForward(embedding_dim, expansion, dropout)
 
-    def forward(self, x, y, indicators):
-        attn_out, attn_weights = self.attn_blk(x, y, indicators)
-        ffn_out = self.ffnn(attn_out)
+    def forward(self, x, y, indicators, news_mask):
+        attn_out, output_mask, attn_weights = self.attn_blk(x, y, indicators, news_mask)
+        ffn_out = self.ffnn(attn_out, output_mask)
         return ffn_out, attn_weights
 
 class CrossAttnTransformerLayers(nn.Module):
@@ -399,11 +411,11 @@ class CrossAttnTransformerLayers(nn.Module):
             for _ in range(num_layers)
         ])
     
-    def forward(self, x, y, indicators):
+    def forward(self, x, y, indicators, news_mask):
         attn_blocks = []
         str_out = x.clone()
         for _, layer in enumerate(self.transformer):
-            str_out, attn_weights = layer(str_out, y, indicators)
+            str_out, attn_weights = layer(str_out, y, indicators, news_mask)
             attn_blocks.append(attn_weights)
         return str_out, torch.stack(attn_blocks, dim=0)
 
@@ -426,18 +438,20 @@ class StockNewsTransformer(StockTransformer):
             input_dim, embedding_dim, temporal_embedding_dim,
             num_heads, num_layers, expansion, dropout
         )
+        self.text_embedding_dim = news_input_dim
         self.news_embed = NewsEmbedding(news_input_dim, embedding_dim, temporal_embedding_dim, self.fin_embed.time_embed, dropout)
         self.news_selection = DynamicSelection(self.dim, K, num_samples, sigma)
+        self.K = K
         self.sigma = sigma
         self.topk = self.news_selection.topk
         self.news_fusion_layer = CrossAttnTransformerLayers(
-            self.dim, num_heads, 1, expansion, dropout
+            self.dim, num_heads, num_layers, expansion, dropout
         )
     
     def news_fusion_transform(self, x, news, t, t_news, mask):
         news_embeddings = self.news_embed(news, t_news)                                               # (B, Tn, En)
-        indicators = self.news_selection(x, news_embeddings, t, t_news, mask)
-        nft_out, nft_attn_weights = self.news_fusion_layer(x, news_embeddings, indicators)               # (B, S, Ts, Es)
+        indicators, news_mask = self.news_selection(x, news_embeddings, t, t_news, mask)
+        nft_out, nft_attn_weights = self.news_fusion_layer(x, news_embeddings, indicators, news_mask)               # (B, S, Ts, Es)
 
         return nft_out, nft_attn_weights, indicators
     
