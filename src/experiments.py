@@ -43,6 +43,7 @@ def collate_fn(
             time.sleep(0.001)
 
         for i, arg in enumerate(args[:n]):
+            print(f'len(arg[0].shape): {len(arg[0].shape)}')
             if len(arg[0].shape)== 1 or (len(arg[0].shape) == 2 and arg[0].shape[1] in (social_input_dim, text_input_dim)):
                 args[i] = pad_sequence(arg, batch_first=True, padding_value=0.0)
 
