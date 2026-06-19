@@ -1136,6 +1136,7 @@ class DataSource:
         for stock in self._stocks:
             print(f"Processing stock: {stock}...")
             stock_df = joblib.load(self.processed_path / f'{stock}.joblib')
+            stock_df.df = stock_df.df.astype('float32')
 
             stock_df.df.drop(columns=[f'{stock}_{40 - self._target}m_return'], inplace=True)
 
@@ -1152,8 +1153,6 @@ class DataSource:
                 stock_df.df.rename(columns={col: new_col_name}, inplace=True)
 
                 if col[len(prefix):] in volume_cols:
-                    print(stock_df.df[new_col_name])
-                    print(stock_df.df[new_col_name].dtype)
                     stock_df.df[new_col_name] = np.log(1 + stock_df.df[new_col_name])
                 elif col[len(prefix):] == '_obv_change':
                     stock_df.df[new_col_name] = np.sign(stock_df.df[new_col_name]) * np.log1p(np.abs(stock_df.df[new_col_name]))
@@ -1173,8 +1172,6 @@ class DataSource:
 
             ct.fit(stock_df.df[features])
             self.scalers[stock] = ct
-
-            stock_df.df = stock_df.df.astype('float32')
 
             filtered = stock_df.df[stock_df.df.index.get_level_values('local_time').isin(self.filtered_date_times)]
 
