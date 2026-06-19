@@ -6,7 +6,6 @@ sys.path.append(str(Path.cwd() / 'src'))
 
 from processing import DataSource
 
-social_indicators_10 = DataSource()
-social_indicators_10.create_df('social_media', medium='social_indicators', target=10)
-del social_indicators_10
-gc.collect()
+news = DataSource()
+news.create_df('news')
+news.df.sort_index().to_csv('data/samples/news_samples.csv')
