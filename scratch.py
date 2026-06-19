@@ -4,5 +4,9 @@ import joblib
 
 sys.path.append(str(Path.cwd() / 'src'))
 
-social_final = joblib.load('data/processed/social_media.joblib')
+from processing import DataSource
+
+social_final = DataSource()
+social_final.create_df('social_media_copy')
+social_final.df = social_final.df.set_index('created_at')
 print(social_final.df.index)
