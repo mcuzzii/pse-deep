@@ -1152,6 +1152,7 @@ class DataSource:
                 stock_df.df.rename(columns={col: new_col_name}, inplace=True)
 
                 if col[len(prefix):] in volume_cols:
+                    print(stock_df.df[new_col_name].dtype)
                     stock_df.df[new_col_name] = np.log(1 + stock_df.df[new_col_name])
                 elif col[len(prefix):] == '_obv_change':
                     stock_df.df[new_col_name] = np.sign(stock_df.df[new_col_name]) * np.log1p(np.abs(stock_df.df[new_col_name]))
