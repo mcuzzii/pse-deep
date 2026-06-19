@@ -1115,7 +1115,7 @@ class DataSource:
         common_date_times = None
         for stock in self._stocks:
             stock_df = joblib.load(self.processed_path / f'{stock}.joblib')
-            stock_df = stock_df.loc[stock_df.df.index > '2025-06-02']
+            stock_df = stock_df.df.loc[stock_df.df.index > '2025-06-02']
             dates = stock_df.df.index
             common_date_times = dates if common_date_times is None else common_date_times.intersection(dates)
         
