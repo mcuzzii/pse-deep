@@ -167,7 +167,7 @@ def get_custom_indicator(data, k, i):
         ) / (data.shape[0] + 1e-4)
     
     elif i == 'viral_coeff':
-        return (data[k] + data['reply_count']) / (data.shape[0] + 1e-4)
+        return (data[k] + data['reply_count']).sum() / (data.shape[0] + 1e-4)
 
 def compute_text_stats(text_df, features, cutoffs, trading_minute):
     cutoff = cutoffs[trading_minute]
@@ -192,27 +192,6 @@ def compute_text_stats(text_df, features, cutoffs, trading_minute):
     custom_indicators = pd.Series(custom_indicators)
 
     data = pd.concat([sums, means, stds, maxs, mins, follower_weighted_means, custom_indicators])
-
-    series_dict = {
-        'sums': sums,
-        'means': means,
-        'stds': stds,
-        'maxs': maxs,
-        'mins': mins,
-        'follower_weighted_means': follower_weighted_means,
-        'custom_indicators': custom_indicators,
-    }
-
-    for name1, s1 in series_dict.items():
-        for name2, s2 in series_dict.items():
-            if name1 >= name2:
-                continue
-
-            s = pd.concat([s1, s2])
-
-            dupes = s.index[s.index.duplicated(keep=False)]
-            print(f'{name1} and {name2}: {dupes}')
-            time.sleep(0.001)
     
     return data
 
