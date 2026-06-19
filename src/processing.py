@@ -1374,11 +1374,11 @@ class DataSource:
 
         text_stats = list()
 
-        for ts in tqdm(self.filtered_date_times[:1000], desc="Computing indicators..."):
+        for ts in tqdm(self.filtered_date_times[:5], desc="Computing indicators..."):
             s = compute_text_stats(text_df.df, indicator_instructions, cutoffs, ts)
             text_stats.append(s)
         
-        self.df = pd.DataFrame(text_stats, index=self.filtered_date_times[:1000])
+        self.df = pd.DataFrame(text_stats, index=self.filtered_date_times[:5])
 
         self.text_indicators = [
             f'{k}_{i}'
