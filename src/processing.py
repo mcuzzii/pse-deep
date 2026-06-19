@@ -1367,11 +1367,11 @@ class DataSource:
 
         text_stats = list()
 
-        for ts in tqdm(self.filtered_date_times[:5], desc="Computing indicators..."):
+        for ts in tqdm(self.filtered_date_times, desc="Computing indicators..."):
             s = compute_text_stats(text_df.df, indicator_instructions, cutoffs, ts)
             text_stats.append(s)
         
-        self.df = pd.DataFrame(text_stats, index=self.filtered_date_times[:5])
+        self.df = pd.DataFrame(text_stats, index=self.filtered_date_times)
 
         self.text_indicators = [
             f'{k}_{i}'
@@ -1400,6 +1400,7 @@ class DataSource:
             df = self.df.copy(deep=True)
             stock_df = joblib.load(f'{stock}_{self._target}m.joblib')
             df[f'stock_{self._target}m_return'] = stock_df.df[f'{stock}_{self._target}m_return'].astype('float32')
+            df = df.loc[train_mask]
             mrmr_df.append(df)
 
         mrmr_df = pd.concat(mrmr_df)
