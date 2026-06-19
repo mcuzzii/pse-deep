@@ -1,6 +1,7 @@
 import sys
 from pathlib import Path
 import joblib
+import gc
 
 sys.path.append(str(Path.cwd() / 'src'))
 
