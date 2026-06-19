@@ -192,20 +192,28 @@ def compute_text_stats(text_df, features, cutoffs, trading_minute):
 
     data = pd.concat([sums, means, stds, maxs, mins, follower_weighted_means, custom_indicators])
 
-    sum_dupes = sums.index[sums.index.duplicated(keep=False)]
-    mean_dupes = means.index[means.index.duplicated(keep=False)]
-    std_dupes = stds.index[stds.index.duplicated(keep=False)]
-    max_dupes = maxs.index[maxs.index.duplicated(keep=False)]
-    min_dupes = mins.index[mins.index.duplicated(keep=False)]
-    follower_weighted_mean_dupes = follower_weighted_means.index[follower_weighted_means.index.duplicated(keep=False)]
-    custom_indicator_dupes = custom_indicators.index[custom_indicators.index.duplicated(keep=False)]
-    print(
-        f'Sums:\n{sum_dupes}\n\n'
-        f'Means:\n{mean_dupes}\n\n'
-        f'Stds:\n{std_dupes}\n\n'
-    )
+    series_dict = {
+        'sums': sums,
+        'means': means,
+        'stds': stds,
+        'maxs': maxs,
+        'mins': mins,
+        'follower_weighted_means': follower_weighted_means,
+        'custom_indicators': custom_indicators,
+    }
 
-    return data
+    for name1, s1 in series_dict.items():
+        for name2, s2 in series_dict.items():
+            if name1 >= name2:
+                continue
+
+            overlap = s1.index.intersection(s2.index)
+
+            if len(overlap):
+                print(f'{name1} vs {name2}:')
+                print(overlap.tolist())
+                print()
+        return data
 
 def get_elapsed_time(timestamps):
     reference = pd.Timestamp('2025-03-12 00:00:00')
