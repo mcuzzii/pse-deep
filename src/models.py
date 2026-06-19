@@ -288,6 +288,7 @@ class SocialEmbedding(nn.Module):
         time_vec_model,
         dropout=0.1
     ):
+        super().__init__()
         self.input_dim = text_input_dim
         self.dim = social_embedding_dim + text_embedding_dim + temporal_embedding_dim
         self.time_embed = time_vec_model
