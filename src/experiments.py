@@ -36,7 +36,10 @@ def collate_fn(
         n = len(args)
 
         masks = []
-        print()
+        for arg in batch:
+            print(arg.shape)
+            import time
+            time.sleep(0.001)
 
         for i, arg in enumerate(args[:n]):
             if len(arg[0].shape)== 1 or (len(arg[0].shape) == 2 and arg[0].shape[1] in (social_input_dim, text_input_dim)):
@@ -56,9 +59,6 @@ def collate_fn(
                     masks.append(arg_mask)
             
             else:
-                print(arg[0].shape)
-                import time
-                time.sleep(0.001)
                 args[i] = torch.stack(list(arg))
         
         for mask in masks:
