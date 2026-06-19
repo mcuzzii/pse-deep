@@ -1236,6 +1236,8 @@ class DataSource:
         features_df = joblib.load(self.processed_path / f'features_{self._target}m.joblib')
         sector = next(c.split('_')[0] for c in self.df.columns if c.startswith('ps') and c.split('_')[0] != 'psei')
 
+        self.df = self.df.astype('float32')
+
         self.features = [
             f'{self.file_name}{feature[5:]}'
             if 'stock' in feature else (
