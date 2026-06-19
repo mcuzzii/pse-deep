@@ -624,7 +624,11 @@ class Experiment:
                 worker_init_fn=seed_worker,
                 generator=torch.Generator().manual_seed(42),
                 pin_memory=True,
-                collate_fn=collate_fn(input_dim=getattr(model, 'text_embedding_dim', None), K=getattr(model, 'K', None))
+                collate_fn=collate_fn(
+                    social_input_dim=getattr(model, 'social_input_dim', None),
+                    text_input_dim=getattr(model, 'text_embedding_dim', None),
+                    K=getattr(model, 'K', None)
+                )
             )
             for split in ('train', 'val', 'test')
         }
