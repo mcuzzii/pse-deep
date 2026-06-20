@@ -1079,5 +1079,5 @@ class Experiment:
                 for ms in zip(*out_dict[f'{split}_matrices'])
             ]
         
-        print('Saving ...')
+        print('Saving outputs...')
         torch.save(out_dict, self.experiment_path / 'test_outputs.pt')
