@@ -12,6 +12,11 @@ import math
 import random
 import matplotlib.pyplot as plt
 import pandas as pd
+from sklearn.metrics import (
+    matthews_corrcoef,
+    classification_report,
+    confusion_matrix,
+)
 
 # Add the 'src' directory to the path
 sys.path.append(str(Path.cwd() / 'src'))
@@ -756,7 +761,7 @@ class Experiment:
         optimizer = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=weight_decay)
         optimizer.zero_grad()
 
-        loaders = {
+        self.loaders = {
             split: DataLoader(
                 self._make_dataset(split),
                 batch_size=batch_size,
@@ -775,7 +780,7 @@ class Experiment:
         }
 
         global_step = 0
-        num_batches = len(loaders['train']) * num_epochs
+        num_batches = len(self.loaders['train']) * num_epochs
         sigma_start = getattr(model, 'sigma', 5e-2)
 
         if isinstance(val_every, int):
@@ -826,7 +831,7 @@ class Experiment:
             }
 
             print("Calculating class weights from training set...")
-            train_dataset = loaders['train'].dataset
+            train_dataset = self.loaders['train'].dataset
             
             all_targets = []
             for i in range(min(len(train_dataset), 5000)): # Scan a large sample or full dataset
@@ -856,7 +861,7 @@ class Experiment:
             for epoch in range(num_epochs):
                 model.train()
 
-                for i, (*args, target) in enumerate(loaders['train']):
+                for i, (*args, target) in enumerate(self.loaders['train']):
 
                     if interrupted:
                         global_step = accumulation_steps * (global_step // accumulation_steps)
@@ -894,7 +899,7 @@ class Experiment:
                     pbar.set_postfix(loss=loss.item())
 
                     if global_step in self.val_periods:
-                        val_loss = _run_validation(model, loaders, device, criterion)
+                        val_loss = _run_validation(model, self.loaders, device, criterion)
                         val_losses.append(val_loss)
 
                         period_idx = self.val_periods.index(global_step)
@@ -1006,3 +1011,62 @@ class Experiment:
 
         plt.savefig(save_path, dpi=300)
         plt.close()
+    
+    def _run_testing(self):
+        best_path = self.experiment_path / f'{self.experiment_name}.pt'
+
+        model = self.model.to(device)
+
+        if best_path.exists():
+            checkpoint = torch.load(best_path, map_location=device, weights_only=False)
+            model.load_state_dict(checkpoint["model"])
+            class_weights = checkpoint["class_weights"]
+        
+        criterion = nn.CrossEntropyLoss(weight=class_weights)
+
+        model.eval()
+        total_test_loss = 0
+        all_preds = []
+        all_targets = []
+
+        with tqdm(total=len(self.loaders['test']), desc="Testing") as pbar:
+
+            with torch.no_grad():
+                for *args, target in self.loaders['test']:
+                    target = target.argmax(dim=-1).to(device)
+
+                    args = [a.to(device) for a in args]
+
+                    logits = model(*args)
+                    logits = logits.permute(0, 2, 1)
+
+                    loss = criterion(logits, target)
+                    total_test_loss += loss.item()
+
+                    preds = logits.argmax(dim=1)  # (B, S)
+                    all_preds.append(preds)
+                    all_targets.append(target)
+
+                    pbar.update(1)
+
+        all_preds = torch.cat(all_preds).flatten()
+        all_targets = torch.cat(all_targets).flatten()
+
+        all_preds_np = all_preds.cpu().numpy()
+        all_targets_np = all_targets.cpu().numpy()
+
+        accuracy = (all_preds == all_targets).float().mean().item()
+        mcc = matthews_corrcoef(all_targets_np, all_preds_np)
+
+        print(
+            f'Test loss: {avg_loss:.4f} | '
+            f'Accuracy: {accuracy:.4f} | '
+            f'MCC: {mcc:.4f}'
+        )
+
+        accuracy = (all_preds == all_targets).float().mean().item()
+        avg_loss = total_test_loss / len(self.loaders['test'])
+
+        print(f'Test loss: {avg_loss:.4f} | Accuracy: {accuracy:.4f}')
+
+        return avg_loss, accuracy, all_preds, all_targets

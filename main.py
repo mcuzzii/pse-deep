@@ -189,6 +189,7 @@ def main():
                         sigma_end=1e-5
                     )
                     stock_transformer.plot_loss_curves()
+                    stock_transformer.test()
 
 if __name__ == '__main__':
     main()
