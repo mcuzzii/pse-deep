@@ -39,11 +39,11 @@ def collate_fn(
         masks = []
 
         for i, arg in enumerate(args[:n]):
-            if len(arg[0].shape)== 1 or (len(arg[0].shape) == 2 and arg[0].shape[1] in (social_input_dim, text_input_dim)):
+            if len(arg[0].shape) == 1 or (len(arg[0].shape) == 2 and arg[0].shape[1] in (social_input_dim, text_input_dim)):
                 args[i] = pad_sequence(arg, batch_first=True, padding_value=0.0)
 
                 # arg.shape = (B, Tn) or (B, Tn, En)
-                if args[i].shape[1] < K:
+                if K is not None and args[i].shape[1] < K:
                     pad_shape = (args[i].shape[0], K - args[i].shape[1], *args[i].shape[2:])
                     zeros = torch.zeros(pad_shape, dtype=args[i].dtype, device=args[i].device)
                     args[i] = torch.cat([args[i], zeros], dim=1)
