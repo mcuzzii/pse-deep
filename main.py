@@ -156,7 +156,7 @@ def main():
             for news in (True, False):
                 for social in (True, False):
                     stock_transformer = Experiment(
-                        experiment_name=f'stock_{'news_' if news else ''}{'social_' if social else ''}transformer_{30 if pred_30 else 10}',
+                        experiment_name=f"stock_{'news_' if news else ''}{'social_' if social else ''}{'transformer_' if transformer else 'mlp_'}{30 if pred_30 else 10}",
                         transformer=transformer,
                         pred_30=pred_30,
                         news=news,
