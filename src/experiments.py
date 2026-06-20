@@ -183,10 +183,10 @@ class StockMLP(Dataset):
         self.stock_data = torch.load(path)
 
     def __len__(self):
-        return self.stock_data.shape[0]
+        return self.stock_data['X'].shape[0]
     
     def __getitem__(self, idx):
-        return self.stock_data[idx]
+        return self.stock_data['X'][idx], self.stock_data['y'][idx]
 
 class EarlyStopping:
     def __init__(self, patience=10, min_delta=0.0):
@@ -596,9 +596,13 @@ class Experiment:
         
         stocks = get_stocks()
 
-        train_tensor = []
-        val_tensor = []
-        test_tensor = []
+        train_x_tensor = []
+        val_x_tensor = []
+        test_x_tensor = []
+
+        train_y_tensor = []
+        val_y_tensor = []
+        test_y_tensor = []
 
         if self.news:
             news_df = DataSource()
@@ -621,8 +625,9 @@ class Experiment:
                 stock_df.df = stock_df.df.join(social_df.df, how='left')
                 stock_df.df = stock_df.df.dropna()
 
-            for tensor, interval in zip(
-                [train_tensor, val_tensor, test_tensor],
+            for x_tensor, y_tensor, interval in zip(
+                [train_x_tensor, val_x_tensor, test_x_tensor],
+                [train_y_tensor, val_y_tensor, test_y_tensor],
                 [
                     (self.filtered_date_times.min() - pd.Timedelta(minutes=1), self.train_cutoff),
                     (self.train_cutoff, self.val_cutoff),
@@ -636,15 +641,25 @@ class Experiment:
 
                 print(f'Appending split of shape {split.shape}')
 
-                tensor.append(split)
+                x_tensor.append(split[stock_df.features + stock_df.benchmark_time_features])
+                y_tensor.append(split[f'{stock_df.file_name}_{self.pred_horizon}m_return'])
             
-        train_tensor = torch.stack(train_tensor)
-        val_tensor = torch.stack(val_tensor)
-        test_tensor = torch.stack(test_tensor)
+        train_tensor = {
+            'X': torch.stack(train_x_tensor),
+            'y': torch.stack(train_y_tensor)
+        }
+        val_tensor = {
+            'X': torch.stack(val_x_tensor),
+            'y': torch.stack(val_y_tensor)
+        }
+        test_tensor = {
+            'X': torch.stack(test_x_tensor),
+            'y': torch.stack(test_y_tensor)
+        }
 
-        print(f'Saving train_tensor of size: {train_tensor.shape}')
-        print(f'Saving val_tensor of size: {val_tensor.shape}')
-        print(f'Saving test_tensor of size: {test_tensor.shape}')
+        print(f'Saving train_tensor of size: X - {train_tensor['X'].shape}; y = {train_tensor['y'].shape}')
+        print(f'Saving val_tensor of size: X - {val_tensor['X'].shape}; y = {val_tensor['y'].shape}')
+        print(f'Saving test_tensor of size: X - {test_tensor['X'].shape}; y = {test_tensor['y'].shape}')
 
         torch.save(train_tensor, train_path)
         torch.save(val_tensor, val_path)
