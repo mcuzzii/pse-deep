@@ -186,8 +186,6 @@ class StockNewsSocialTransformerDataset(StockNewsTransformerDataset):
 class StockMLP(Dataset):
     def __init__(self, path):
         self.stock_data = torch.load(path)
-        print(self.stock_data['X'].shape)
-        print(self.stock_data['y'].shape)
 
     def __len__(self):
         return self.stock_data['X'].shape[0]
@@ -503,27 +501,6 @@ class Experiment:
                 f'Embeddings: {embeddings.shape},\n'
                 f'Timestamps: {timestamps.shape}.\n\n'
             )
-    
-    def test(self):
-
-        social_df = DataSource()
-        social_df.create_df('social_media')
-
-        val = self._get_val_split(social_df)
-        test = self._get_test_split(social_df)
-
-        print("train cutoff:", self.train_cutoff)
-        print("val cutoff:", self.val_cutoff)
-
-        print("\nVAL:")
-        print(val.index.min())
-        print(val.index.max())
-        print(len(val))
-
-        print("\nTEST:")
-        print(test.index.min())
-        print(test.index.max())
-        print(len(test))
     
     def _build_social_transformer_data(self, force=False):
 
@@ -1012,7 +989,7 @@ class Experiment:
         plt.savefig(save_path, dpi=300)
         plt.close()
     
-    def _run_testing(self):
+    def run_testing(self):
         best_path = self.experiment_path / f'{self.experiment_name}.pt'
 
         model = self.model.to(device)
