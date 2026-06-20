@@ -641,6 +641,9 @@ class Experiment:
 
                 print(f'Appending split of shape {split.shape}')
 
+                print(stock_df.features)
+                print(stock_df.benchmark_time_features)
+
                 x_tensor.append(split[stock_df.features + stock_df.benchmark_time_features])
                 y_tensor.append(split[f'{stock_df.file_name}_{self.pred_horizon}m_return'])
             
