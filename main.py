@@ -170,6 +170,7 @@ def main():
                         social_input_dim=6 if transformer else 15,
                         text_input_dim=1024,
                         social_embedding_dim=16,
+                        hidden_dim=384,
                         embedding_dim=128,
                         num_layers=1 if transformer else 5,
                         temporal_embedding_dim=16,
