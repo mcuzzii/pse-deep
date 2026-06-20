@@ -638,7 +638,7 @@ class MultiLayerPerceptron(nn.Module):
             out = layer(out)
         out = self.output_layer(out)
 
-        return out
+        return out.unsqueeze(1)             # (B, 1, 2)
 
 if __name__ == "__main__":
     B, num_stocks, num_timestamps, input_features = 16, 30, 60, 10
