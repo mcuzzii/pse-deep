@@ -188,6 +188,8 @@ class StockMLP(Dataset):
     def __getitem__(self, idx):
         y = self.stock_data['y'][idx]       # (1,)
         y = torch.eye(2)[y.long()].unsqueeze(0)     # (1, 2)
+        print(self.stock_data['X'][idx].shape)
+        print(y.shape)
         return self.stock_data['X'][idx], y
 
 class EarlyStopping:

@@ -633,12 +633,10 @@ class MultiLayerPerceptron(nn.Module):
         self.output_layer = nn.Linear(hidden_dim, 2)
     
     def forward(self, x):
-        print(x.shape)
         out = self.input_layer(x)
         for _, layer in enumerate(self.layers):
             out = layer(out)
         out = self.output_layer(out)
-        print(out.shape)
 
         return out.unsqueeze(1)             # (B, 1, 2)
 
