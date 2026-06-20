@@ -589,7 +589,7 @@ class Experiment:
 
     def _build_mlp_data(self, force=False):
 
-        prefix = f"stock_{'news_' if self.news else ''}{'social' if self.social else ''}_mlp_{self.pred_horizon}m"
+        prefix = f"stock_{'news_' if self.news else ''}{'social_' if self.social else ''}mlp_{self.pred_horizon}m"
 
         train_path = self.data_path / f'{prefix}_train.pt'
         val_path = self.data_path / f'{prefix}_val.pt'

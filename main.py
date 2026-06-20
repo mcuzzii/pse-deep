@@ -181,8 +181,8 @@ def main():
                     )
                     stock_transformer.train(
                         num_epochs=2,
-                        batch_size=2,
-                        accumulation_steps=16,
+                        batch_size=2 if transformer else 32,
+                        accumulation_steps=16 if transformer else 1,
                         lr=1e-5,
                         val_every=lambda x: (8 * x) ** 2,
                         patience=1000,
