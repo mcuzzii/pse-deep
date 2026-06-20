@@ -473,7 +473,7 @@ class StockNewsTransformer(StockTransformer):
         indicators, news_mask = self.news_selection(x, news_embeddings, t, t_news, mask)
         nft_out, nft_attn_weights = self.news_fusion_layer(x, news_embeddings, indicators, news_mask)               # (B, S, Ts, Es)
 
-        return nft_out, nft_attn_weights, indicators.mean(dim=0)                    # (S, Ts, K, Tn)
+        return nft_out, nft_attn_weights, indicators.flatten(0, 2).mean(dim=0)                    # (S, Ts, K, Tn)
     
     def forward(self, t, t_news, x, news, news_mask, return_weights=False):
         tst_out, tst_attn_weights = self.time_series_transform(x, t)
