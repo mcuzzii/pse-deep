@@ -617,14 +617,6 @@ class Experiment:
             stock_df.create_df(f'{stock}_{self.pred_horizon}m')
             stock_df.df = stock_df.df.sort_index()
 
-            if self.news:
-                stock_df.df = stock_df.df.join(news_df.df, how='left')
-                stock_df.df = stock_df.df.dropna()
-            
-            if self.social:
-                stock_df.df = stock_df.df.join(social_df.df, how='left')
-                stock_df.df = stock_df.df.dropna()
-
             for x_tensor, y_tensor, interval in zip(
                 [train_x_tensor, val_x_tensor, test_x_tensor],
                 [train_y_tensor, val_y_tensor, test_y_tensor],
@@ -634,18 +626,31 @@ class Experiment:
                     (self.val_cutoff, self.filtered_date_times.max())
                 ]
             ):
-                split = torch.from_numpy(stock_df.df.loc[
+                split = stock_df.df.loc[
                     (stock_df.df.index.get_level_values('local_time') > interval[0]) &
                     (stock_df.df.index.get_level_values('local_time') <= interval[1])
-                ].values.astype(np.float32))
+                ]
+                X_split = split[stock_df.features + stock_df.benchmark_time_features]
+                y_split = split[f'{stock_df.file_name}_{self.pred_horizon}m_return']
 
-                print(f'Appending split of shape {split.shape}')
+                if self.news:
+                    X_split = X_split.join(news_df.df, how='left')
+                    X_split = X_split.dropna()
+                
+                if self.social:
+                    X_split = X_split.join(social_df.df, how='left')
+                    X_split = X_split.dropna()
+
+                X_split = torch.from_numpy(X_split.values.astype(np.float32))
+                y_split = torch.from_numpy(y_split.values.astype(np.float32))
+
+                print(f'Appending split of shapes: X - {X_split.shape}; y - {y_split.shape}')
 
                 print(stock_df.features)
                 print(stock_df.benchmark_time_features)
 
-                x_tensor.append(split[stock_df.features + stock_df.benchmark_time_features])
-                y_tensor.append(split[f'{stock_df.file_name}_{self.pred_horizon}m_return'])
+                x_tensor.append(X_split)
+                y_tensor.append(y_split)
             
         train_tensor = {
             'X': torch.stack(train_x_tensor),

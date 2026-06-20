@@ -165,7 +165,7 @@ def main():
                     )
                     stock_transformer.build_dataset()
                     stock_transformer.build_model(
-                        input_dim=100,
+                        input_dim=110,
                         news_input_dim=15,
                         social_input_dim=6 if transformer else 15,
                         text_input_dim=1024,
