@@ -722,7 +722,7 @@ class Experiment:
             return StockTransformerDataset(stock_path, self.stock_lookback)
         
         else:
-            prefix = f"stock_{'news_' if self.news else ''}{'social' if self.social else ''}_mlp_{self.pred_horizon}m"
+            prefix = f"stock_{'news_' if self.news else ''}{'social_' if self.social else ''}mlp_{self.pred_horizon}m"
             path = self.data_path / f"{prefix}_{split}.pt"
 
             return StockMLP(path)
