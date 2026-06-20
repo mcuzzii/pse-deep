@@ -141,7 +141,7 @@ class SelfAttentionBlock(nn.Module):
             norm_x, norm_x, norm_x,
             attn_mask=attn_mask,
             need_weights=True,
-            average_attn_weights=False
+            average_attn_weights=True
         )
 
         attn_out = self.dropout(attn_out)
@@ -407,8 +407,11 @@ class CrossAttentionBlock(nn.Module):
         output = output.view(x.shape)                                               # (B, S, Ts, Es) (note that En = Es)
         output = x + output                                                         # Residual connection
         output_mask = output_mask.view(x.shape[:-1])                                # (B, S, Ts)
-        
-        return output, output_mask, attn_weights
+
+        attn_weights = attn_weights.flatten(0, 1).mean(dim=0).to(torch.float32)     # Trivial
+
+        indicators_out = indicators.mean(dim=0)                                     # indicators: (B, S, Ts, K, Tn) -> (S, Ts, K, Tn)
+        return output, output_mask, attn_weights                                    # (B*S*H, Ts, K) -> (Ts, K)
 
 class CrossAttnTransformerLayer(nn.Module):
     def __init__(self, embedding_dim, num_heads, expansion=4, dropout=0.1):

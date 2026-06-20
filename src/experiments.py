@@ -1008,6 +1008,16 @@ class Experiment:
 
         model.eval()
 
+        interrupted = False
+
+        def handler(sig, frame):
+            nonlocal interrupted
+            interrupted = True
+            print("Interrupt received. Saving checkpoint...")
+
+        signal.signal(signal.SIGINT, handler)
+        signal.signal(signal.SIGTERM, handler)
+
         for split in ('test', 'train'):
 
             total_test_loss = 0
@@ -1020,6 +1030,9 @@ class Experiment:
 
                 with torch.no_grad():
                     for *args, target in self.loaders[split]:
+                        if interrupted:
+                            raise KeyboardInterrupt
+
                         target = target.argmax(dim=-1).to(device)
 
                         args = [a.to(device) for a in args]
