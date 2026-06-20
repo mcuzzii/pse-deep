@@ -656,16 +656,16 @@ class Experiment:
                 y_tensor.append(y_split)
             
         train_tensor = {
-            'X': torch.stack(train_x_tensor),
-            'y': torch.stack(train_y_tensor)
+            'X': torch.cat(train_x_tensor, dim=0),
+            'y': torch.cat(train_y_tensor, dim=0)
         }
         val_tensor = {
-            'X': torch.stack(val_x_tensor),
-            'y': torch.stack(val_y_tensor)
+            'X': torch.cat(val_x_tensor, dim=0),
+            'y': torch.cat(val_y_tensor, dim=0)
         }
         test_tensor = {
-            'X': torch.stack(test_x_tensor),
-            'y': torch.stack(test_y_tensor)
+            'X': torch.cat(test_x_tensor, dim=0),
+            'y': torch.cat(test_y_tensor, dim=0)
         }
 
         print(f'Saving train_tensor of size: X - {train_tensor['X'].shape}; y = {train_tensor['y'].shape}')
