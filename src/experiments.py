@@ -11,11 +11,12 @@ from pathlib import Path
 import math
 import random
 import matplotlib.pyplot as plt
+import pandas as pd
 
 # Add the 'src' directory to the path
 sys.path.append(str(Path.cwd() / 'src'))
 
-from models import StockTransformer, StockNewsTransformer, StockSocialTransformer, StockNewsSocialTransformer
+from models import StockTransformer, StockNewsTransformer, StockSocialTransformer, StockNewsSocialTransformer, MultiLayerPerceptron
 from processing import DataSource, get_stocks, get_text_window, get_elapsed_time
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -182,7 +183,10 @@ class StockMLP(Dataset):
         self.stock_data = torch.load(path)
 
     def __len__(self):
-        self.stock_data.shape[0]
+        return self.stock_data.shape[0]
+    
+    def __getitem__(self, idx):
+        return self.stock_data[idx]
 
 class EarlyStopping:
     def __init__(self, patience=10, min_delta=0.0):
@@ -303,6 +307,7 @@ class Experiment:
     def build_model(
         self,
         input_dim: int,
+        news_input_dim: int | None = None,
         social_input_dim: int | None = None,
         text_input_dim: int | None = None,
         social_embedding_dim: int | None = None,
@@ -372,6 +377,13 @@ class Experiment:
                 num_layers,
                 expansion,
                 dropout
+            )
+        elif not self.transformer:
+            self.model = MultiLayerPerceptron(
+                input_dim + (news_input_dim if self.news else 0) + (social_input_dim if self.social else 0),
+                hidden_dim,
+                num_layers,
+                dropout=0.1
             )
         
         total_params = sum(p.numel() for p in self.model.parameters())
@@ -571,31 +583,73 @@ class Experiment:
                 f'Timestamps: {timestamps.shape}.\n\n'
             )
 
-    def _build_stock_mlp_data(self, force=False):
+    def _build_mlp_data(self, force=False):
 
-        train_path = self.data_path / f'stock_mlp_{self.pred_horizon}m_train.pt'
-        val_path = self.data_path / f'stock_mlp_{self.pred_horizon}m_val.pt'
-        test_path = self.data_path / f'stock_mlp_{self.pred_horizon}m_test.pt'
+        prefix = f"stock_{'news_' if self.news else ''}{'social' if self.social else ''}_mlp_{self.pred_horizon}m"
+
+        train_path = self.data_path / f'{prefix}_train.pt'
+        val_path = self.data_path / f'{prefix}_val.pt'
+        test_path = self.data_path / f'{prefix}_test.pt'
 
         if train_path.exists() and val_path.exists() and test_path.exists() and not force:
             return
         
         stocks = get_stocks()
 
-        stock_dfs = []
+        train_tensor = []
+        val_tensor = []
+        test_tensor = []
+
+        if self.news:
+            news_df = DataSource()
+            news_df.create_df(f'news_{self.pred_horizon}m')
+        
+        if self.social:
+            social_df = DataSource()
+            social_df.create_df(f'social_media_{self.pred_horizon}m')
+        
         for stock in stocks:
             stock_df = DataSource()
             stock_df.create_df(f'{stock}_{self.pred_horizon}m')
             stock_df.df = stock_df.df.sort_index()
-            stock_dfs.append(stock_df)
-        
-        for path, cutoff in zip(
-            [train_path, val_path, test_path],
-            [self.train_cutoff, self.val_cutoff, self.filtered_date_times.max()]
-        ):
-            return
 
-    
+            if self.news:
+                stock_df.df = stock_df.df.join(news_df.df, how='left')
+                stock_df.df = stock_df.df.dropna()
+            
+            if self.social:
+                stock_df.df = stock_df.df.join(social_df.df, how='left')
+                stock_df.df = stock_df.df.dropna()
+
+            for tensor, interval in zip(
+                [train_tensor, val_tensor, test_tensor],
+                [
+                    (self.filtered_date_times.min() - pd.Timedelta(minutes=1), self.train_cutoff),
+                    (self.train_cutoff, self.val_cutoff),
+                    (self.val_cutoff, self.filtered_date_times.max())
+                ]
+            ):
+                split = torch.from_numpy(stock_df.df.loc[
+                    (stock_df.df.index.get_level_values('local_time') > interval[0]) &
+                    (stock_df.df.index.get_level_values('local_time') <= interval[1])
+                ].values.astype(np.float32))
+
+                print(f'Appending split of shape {split.shape}')
+
+                tensor.append(split)
+            
+        train_tensor = torch.stack(train_tensor)
+        val_tensor = torch.stack(val_tensor)
+        test_tensor = torch.stack(test_tensor)
+
+        print(f'Saving train_tensor of size: {train_tensor.shape}')
+        print(f'Saving val_tensor of size: {val_tensor.shape}')
+        print(f'Saving test_tensor of size: {test_tensor.shape}')
+
+        torch.save(train_tensor, train_path)
+        torch.save(val_tensor, val_path)
+        torch.save(test_tensor, test_path)
+            
     def build_dataset(self, force=False):
 
         if self.transformer:
@@ -606,6 +660,9 @@ class Experiment:
             
             if self.social:
                 self._build_social_transformer_data(force)
+        
+        else:
+            self._build_mlp_data(force)
     
     def _make_dataset(self, split):
 
@@ -637,6 +694,12 @@ class Experiment:
                 )
             
             return StockTransformerDataset(stock_path, self.stock_lookback)
+        
+        else:
+            prefix = f"stock_{'news_' if self.news else ''}{'social' if self.social else ''}_mlp_{self.pred_horizon}m"
+            path = self.data_path / f"{prefix}_{split}.pt"
+
+            return StockMLP(path)
     
     def train(
         self,

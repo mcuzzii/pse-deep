@@ -151,40 +151,43 @@ def preprocess():
 
 def main():
 
-    for pred_30 in (True, False):
-        for news in (True, False):
-            for social in (True, False):
-                stock_transformer = Experiment(
-                    experiment_name=f'stock_{'news_' if news else ''}{'social_' if social else ''}transformer_{30 if pred_30 else 10}',
-                    transformer=True,
-                    pred_30=pred_30,
-                    news=news,
-                    social=social,
-                    stock_lookback=60
-                )
-                stock_transformer.build_dataset()
-                stock_transformer.build_model(
-                    input_dim=100,
-                    social_input_dim=6,
-                    text_input_dim=1024,
-                    social_embedding_dim=16,
-                    embedding_dim=128,
-                    temporal_embedding_dim=16,
-                    dropout=0.1,
-                    K=5,
-                    num_samples=500,
-                    sigma=5e-2,
-                )
-                stock_transformer.train(
-                    num_epochs=2,
-                    batch_size=2,
-                    accumulation_steps=16,
-                    lr=1e-5,
-                    val_every=lambda x: (8 * x) ** 2,
-                    patience=1000,
-                    sigma_end=1e-5
-                )
-                stock_transformer.plot_loss_curves()
+    for transformer in (True, False):
+        for pred_30 in (True, False):
+            for news in (True, False):
+                for social in (True, False):
+                    stock_transformer = Experiment(
+                        experiment_name=f'stock_{'news_' if news else ''}{'social_' if social else ''}transformer_{30 if pred_30 else 10}',
+                        transformer=transformer,
+                        pred_30=pred_30,
+                        news=news,
+                        social=social,
+                        stock_lookback=60
+                    )
+                    stock_transformer.build_dataset()
+                    stock_transformer.build_model(
+                        input_dim=100,
+                        news_input_dim=15,
+                        social_input_dim=6 if transformer else 15,
+                        text_input_dim=1024,
+                        social_embedding_dim=16,
+                        embedding_dim=128,
+                        num_layers=1 if transformer else 5,
+                        temporal_embedding_dim=16,
+                        dropout=0.1,
+                        K=5,
+                        num_samples=500,
+                        sigma=5e-2,
+                    )
+                    stock_transformer.train(
+                        num_epochs=2,
+                        batch_size=2,
+                        accumulation_steps=16,
+                        lr=1e-5,
+                        val_every=lambda x: (8 * x) ** 2,
+                        patience=1000,
+                        sigma_end=1e-5
+                    )
+                    stock_transformer.plot_loss_curves()
 
 if __name__ == '__main__':
     main()

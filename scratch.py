@@ -9,4 +9,4 @@ from processing import DataSource, get_stocks
 from experiments import Experiment
 
 test_experiment = Experiment('text_experiment')
-test_experiment.test()
+test_experiment._build_stock_mlp_data()
