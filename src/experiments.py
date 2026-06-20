@@ -1024,7 +1024,6 @@ class Experiment:
             out_dict[f'{split}_all_preds'] = []
             out_dict[f'{split}_all_targets'] = []
             out_dict[f'{split}_logit_scores'] = []
-            out_dict[f'{split}_matrices'] = []
 
             with tqdm(total=len(self.loaders[split]), desc="Testing") as pbar:
 
@@ -1037,11 +1036,10 @@ class Experiment:
 
                         args = [a.to(device) for a in args]
 
-                        logits, *matrices = model(*args, return_weights=True)
+                        logits = model(*args)
                         logits = logits.permute(0, 2, 1)
 
                         out_dict[f'{split}_logit_scores'].append(logits)
-                        out_dict[f'{split}_matrices'].append(matrices)
 
                         loss = criterion(logits, target)
                         total_test_loss += loss.item()
@@ -1074,10 +1072,6 @@ class Experiment:
             out_dict[f'{split}_all_preds'] = torch.stack(out_dict[f'{split}_all_preds'])
             out_dict[f'{split}_all_targets'] = torch.stack(out_dict[f'{split}_all_targets'])
             out_dict[f'{split}_logit_scores'] = torch.stack(out_dict[f'{split}_logit_scores'])
-            out_dict[f'{split}_matrices'] = [
-                torch.stack(list(ms))
-                for ms in zip(*out_dict[f'{split}_matrices'])
-            ]
         
         print('Saving outputs...')
         torch.save(out_dict, self.experiment_path / 'test_outputs.pt')
