@@ -1034,16 +1034,12 @@ class Experiment:
 
         accuracy = (all_preds == all_targets).float().mean().item()
         mcc = matthews_corrcoef(all_targets_np, all_preds_np)
+        avg_loss = total_test_loss / len(self.loaders['test'])
 
         print(
             f'Test loss: {avg_loss:.4f} | '
             f'Accuracy: {accuracy:.4f} | '
             f'MCC: {mcc:.4f}'
         )
-
-        accuracy = (all_preds == all_targets).float().mean().item()
-        avg_loss = total_test_loss / len(self.loaders['test'])
-
-        print(f'Test loss: {avg_loss:.4f} | Accuracy: {accuracy:.4f}')
 
         return avg_loss, accuracy, all_preds, all_targets
