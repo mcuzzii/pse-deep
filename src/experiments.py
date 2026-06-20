@@ -631,7 +631,7 @@ class Experiment:
                     (stock_df.df.index.get_level_values('local_time') <= interval[1])
                 ]
                 X_split = split[stock_df.features + stock_df.benchmark_time_features]
-                y_split = split[f'{stock_df.file_name}_{self.pred_horizon}m_return']
+                y_split = split[f'{stock_df.file_name}_return']
 
                 if self.news:
                     X_split = X_split.join(news_df.df, how='left')
