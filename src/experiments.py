@@ -1078,5 +1078,6 @@ class Experiment:
                 torch.stack(list(ms))
                 for ms in zip(*out_dict[f'{split}_matrices'])
             ]
-
-        torch.save(out_dict, best_path.parent / 'test_outputs.pt')
+        
+        print('Saving ...')
+        torch.save(out_dict, self.experiment_path / 'test_outputs.pt')
