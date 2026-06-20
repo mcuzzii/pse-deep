@@ -635,19 +635,18 @@ class Experiment:
 
                 if self.news:
                     X_split = X_split.join(news_df.df, how='left')
-                    X_split = X_split.dropna()
                 
                 if self.social:
                     X_split = X_split.join(social_df.df, how='left')
-                    X_split = X_split.dropna()
+                
+                missing_mask = X_split.isna().any(axis=1)
+                X_split = X_split.loc[~missing_mask]
+                y_split = y_split.loc[~missing_mask]
 
                 X_split = torch.from_numpy(X_split.values.astype(np.float32))
                 y_split = torch.from_numpy(y_split.values.astype(np.float32))
 
                 print(f'Appending split of shapes: X - {X_split.shape}; y - {y_split.shape}')
-
-                print(stock_df.features)
-                print(stock_df.benchmark_time_features)
 
                 x_tensor.append(X_split)
                 y_tensor.append(y_split)
