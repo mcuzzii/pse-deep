@@ -993,6 +993,11 @@ class Experiment:
         plt.close()
     
     def run_testing(self):
+
+        if (self.experiment_path / 'test_outputs.pt').exists():
+            print("Test results already saved. Skipping...")
+            return
+
         best_path = self.experiment_path / f'{self.experiment_name}.pt'
 
         model = self.model.to(device)
