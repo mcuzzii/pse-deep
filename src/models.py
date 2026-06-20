@@ -20,18 +20,6 @@ class PerturbedTopK(nn.Module):
 
 
 class PerturbedTopKFunction(torch.autograd.Function):
-    """
-    Scatter-based implementation that avoids materializing the (N, num_samples, K, d)
-    one-hot tensor used by the naive implementation. Instead saves only
-    (N, num_samples, K) integer indices and (N, num_samples, d) noise --
-    memory O(N * S * (K + d)) instead of O(N * S * K * d).
-
-    Mathematically identical to:
-        perturbed_output = one_hot(indices, d)            # (N, S, K, d)
-        indicators = perturbed_output.mean(dim=1)          # (N, K, d)
-        expected_gradient = einsum("nskd,nsd->nkd", perturbed_output, noise) / S / sigma
-        grad_input = einsum("nkd,nkd->nd", grad_output, expected_gradient)
-    """
 
     @staticmethod
     def forward(ctx, x, k: int, num_samples: int = 1000, sigma: float = 0.05):
@@ -632,13 +620,20 @@ class MultiLayerPerceptron(nn.Module):
         ])
         self.output_layer = nn.Linear(hidden_dim, 2)
     
-    def forward(self, x):
+    def forward(self, x, return_weights=False):
+        out_vects = []
+
         out = self.input_layer(x)
+        out_vects.append(out.clone())
         for _, layer in enumerate(self.layers):
             out = layer(out)
-        out = self.output_layer(out)
+            out_vects.append(out.clone())
+        out = self.output_layer(out).unsqueeze(1)       # (B, 1, 2)
 
-        return out.unsqueeze(1)             # (B, 1, 2)
+        if return_weights:
+            return out, torch.stack(out_vects, dim=0)
+        else:
+            return out
 
 if __name__ == "__main__":
     B, num_stocks, num_timestamps, input_features = 16, 30, 60, 10

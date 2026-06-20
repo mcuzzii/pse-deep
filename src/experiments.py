@@ -14,6 +14,9 @@ import matplotlib.pyplot as plt
 import pandas as pd
 from sklearn.metrics import (
     matthews_corrcoef,
+    precision_score,
+    recall_score,
+    f1_score,
     classification_report,
     confusion_matrix,
 )
@@ -1001,45 +1004,66 @@ class Experiment:
         
         criterion = nn.CrossEntropyLoss(weight=class_weights)
 
+        out_dict = dict()
+
         model.eval()
-        total_test_loss = 0
-        all_preds = []
-        all_targets = []
 
-        with tqdm(total=len(self.loaders['test']), desc="Testing") as pbar:
+        for split in ('test', 'train'):
 
-            with torch.no_grad():
-                for *args, target in self.loaders['test']:
-                    target = target.argmax(dim=-1).to(device)
+            total_test_loss = 0
+            out_dict[f'{split}_all_preds'] = []
+            out_dict[f'{split}_all_targets'] = []
+            out_dict[f'{split}_logit_scores'] = []
+            out_dict[f'{split}_matrices'] = []
 
-                    args = [a.to(device) for a in args]
+            with tqdm(total=len(self.loaders[split]), desc="Testing") as pbar:
 
-                    logits = model(*args)
-                    logits = logits.permute(0, 2, 1)
+                with torch.no_grad():
+                    for *args, target in self.loaders[split]:
+                        target = target.argmax(dim=-1).to(device)
 
-                    loss = criterion(logits, target)
-                    total_test_loss += loss.item()
+                        args = [a.to(device) for a in args]
 
-                    preds = logits.argmax(dim=1)  # (B, S)
-                    all_preds.append(preds)
-                    all_targets.append(target)
+                        logits, *matrices = model(*args, return_weights=True)
+                        logits = logits.permute(0, 2, 1)
 
-                    pbar.update(1)
+                        out_dict[f'{split}_logit_scores'].append(logits)
+                        out_dict[f'{split}_matrices'].append(matrices)
 
-        all_preds = torch.cat(all_preds).flatten()
-        all_targets = torch.cat(all_targets).flatten()
+                        loss = criterion(logits, target)
+                        total_test_loss += loss.item()
 
-        all_preds_np = all_preds.cpu().numpy()
-        all_targets_np = all_targets.cpu().numpy()
+                        preds = logits.argmax(dim=1)  # (B, S)
+                        out_dict[f'{split}_all_preds'].append(preds)
+                        out_dict[f'{split}_all_targets'].append(target)
 
-        accuracy = (all_preds == all_targets).float().mean().item()
-        mcc = matthews_corrcoef(all_targets_np, all_preds_np)
-        avg_loss = total_test_loss / len(self.loaders['test'])
+                        pbar.update(1)
 
-        print(
-            f'Test loss: {avg_loss:.4f} | '
-            f'Accuracy: {accuracy:.4f} | '
-            f'MCC: {mcc:.4f}'
-        )
+            all_preds_flat = torch.cat(out_dict[f'{split}_all_preds']).flatten()
+            all_targets_flat = torch.cat(out_dict[f'{split}_all_targets']).flatten()
 
-        return avg_loss, accuracy, all_preds, all_targets
+            all_preds_np = all_preds_flat.cpu().numpy()
+            all_targets_np = all_targets_flat.cpu().numpy()
+
+            out_dict[f'{split}_accuracy'] = (all_preds_flat == all_targets_flat).float().mean().item()
+            out_dict[f'{split}_mcc'] = matthews_corrcoef(all_targets_np, all_preds_np)
+            out_dict[f'{split}_precision'] = precision_score(all_targets_np, all_preds_np)
+            out_dict[f'{split}_recall'] = recall_score(all_targets_np, all_preds_np)
+            out_dict[f'{split}_f1'] = f1_score(all_targets_np, all_preds_np)
+            out_dict[f'{split}_avg_loss'] = total_test_loss / len(self.loaders[split])
+
+            print(
+                f"{split} average loss: {out_dict[f'{split}_avg_loss']:.4f} | "
+                f"{split} accuracy: {out_dict[f'{split}_accuracy']:.4f} | "
+                f"{split} mcc: {out_dict[f'{split}_mcc']}"
+            )
+
+            out_dict[f'{split}_all_preds'] = torch.stack(out_dict[f'{split}_all_preds'])
+            out_dict[f'{split}_all_targets'] = torch.stack(out_dict[f'{split}_all_targets'])
+            out_dict[f'{split}_logit_scores'] = torch.stack(out_dict[f'{split}_logit_scores'])
+            out_dict[f'{split}_matrices'] = [
+                torch.stack(list(ms))
+                for ms in zip(*out_dict[f'{split}_matrices'])
+            ]
+
+        torch.save(out_dict, best_path.parent / 'test_outputs.pt')
