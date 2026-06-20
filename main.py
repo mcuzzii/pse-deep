@@ -183,7 +183,7 @@ def main():
                         num_epochs=2,
                         batch_size=2 if transformer else 32,
                         accumulation_steps=16 if transformer else 1,
-                        lr=1e-5,
+                        lr=1e-5 if transformer else 1e-5 / 16,
                         val_every=lambda x: (8 * x) ** 2,
                         patience=1000,
                         sigma_end=1e-5
