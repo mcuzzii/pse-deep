@@ -1,12 +1,5 @@
-import sys
-from pathlib import Path
-import joblib
-import gc
+import torch
 
-sys.path.append(str(Path.cwd() / 'src'))
+model = torch.load('experiments/stock_transformer_10/stock_transformer_10.pt', map_location='cpu', weights_only=False)
 
-from processing import DataSource, get_stocks
-from experiments import Experiment
-
-test_experiment = Experiment('text_experiment')
-test_experiment._build_stock_mlp_data()
+print(model['class_weights'])

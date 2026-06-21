@@ -1052,6 +1052,9 @@ class Experiment:
                     all_targets.append(target)
 
                     pbar.update(1)
+        
+        logit_scores = torch.cat(logit_scores, dim=1)
+        all_targets = torch.cat(all_targets, dim=1)
 
     
     def run_testing(self):
