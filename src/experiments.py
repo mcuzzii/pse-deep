@@ -73,6 +73,17 @@ def collate_fn(
     return func
 
 def _run_validation(model, loaders, device, criterion):
+
+    interrupted = False
+
+    def handler(sig, frame):
+        nonlocal interrupted
+        interrupted = True
+        print("Interrupt received.")
+    
+    signal.signal(signal.SIGINT, handler)
+    signal.signal(signal.SIGTERM, handler)
+    
     model.eval()
     total_val_loss = 0
 
@@ -80,6 +91,9 @@ def _run_validation(model, loaders, device, criterion):
 
         with torch.no_grad():
             for *args, target in loaders['val']:
+                if interrupted:
+                    raise KeyboardInterrupt
+
                 target = target.argmax(dim=-1).to(device)
 
                 args = [a.to(device) for a in args]
@@ -992,6 +1006,54 @@ class Experiment:
         plt.savefig(save_path, dpi=300)
         plt.close()
     
+    def threshold_optimize(self):
+        model = self.model.to(device)
+
+        best_path = self.experiment_path / f'{self.experiment_name}.pt'
+        if best_path.exists():
+            checkpoint = torch.load(best_path, map_location=device, weights_only=False)
+            if checkpoint.get('threshold') is not None:
+                print("Model is already threshold-optimized. Skipping...")
+                return
+        else:
+            raise Exception(f'Model not found at {best_path}.')
+        
+        model.load_state_dict(checkpoint["model"])
+        model.eval()
+
+        interrupted = False
+
+        def handler(sig, frame):
+            nonlocal interrupted
+            interrupted = True
+            print("Interrupt received.")
+        
+        signal.signal(signal.SIGINT, handler)
+        signal.signal(signal.SIGTERM, handler)
+
+        logit_scores = []
+        all_targets = []
+
+        with tqdm(total=len(self.loaders['val']), desc="Validation") as pbar:
+
+            with torch.no_grad():
+                for *args, target in self.loaders['val']:
+                    if interrupted:
+                        raise KeyboardInterrupt
+
+                    target = target.argmax(dim=-1).to(device)
+
+                    args = [a.to(device) for a in args]
+
+                    logits = model(*args)
+                    logits = logits.permute(0, 2, 1)
+
+                    logit_scores.append(logits)
+                    all_targets.append(target)
+
+                    pbar.update(1)
+
+    
     def run_testing(self):
 
         if (self.experiment_path / 'test_outputs.pt').exists():
@@ -999,6 +1061,9 @@ class Experiment:
             return
 
         best_path = self.experiment_path / f'{self.experiment_name}.pt'
+
+        if not best_path.exists():
+            raise Exception(f'Model not found at {best_path}.')
 
         model = self.model.to(device)
 
@@ -1018,7 +1083,7 @@ class Experiment:
         def handler(sig, frame):
             nonlocal interrupted
             interrupted = True
-            print("Interrupt received. Saving checkpoint...")
+            print("Interrupt received.")
 
         signal.signal(signal.SIGINT, handler)
         signal.signal(signal.SIGTERM, handler)
@@ -1048,7 +1113,6 @@ class Experiment:
                         loss = criterion(logits, target)
                         total_test_loss += loss.item()
 
-                        preds = logits.argmax(dim=1)  # (B, S)
                         out_dict[f'{split}_all_targets'].append(target)
 
                         pbar.update(1)
