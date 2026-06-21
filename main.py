@@ -12,6 +12,7 @@ seed_everything(42)
 
 from processing import DataSource, get_unique_instruments, get_stocks
 from experiments import Experiment
+from eval import Eval
 from dotenv import load_dotenv
 import gc
 
@@ -149,14 +150,20 @@ def preprocess():
     del news_indicators_10
     gc.collect()
 
-def main():
+def train_models():
 
     for transformer in (True, False):
         for pred_30 in (True, False):
             for news in (True, False):
                 for social in (True, False):
+
+                    news_prefix = 'news_' if news else ''
+                    social_prefix = 'social_' if social else ''
+                    model_prefix = 'transformer_' if transformer else 'mlp_'
+                    pred_horizon_prefix = 30 if pred_30 else 10
+
                     stock_transformer = Experiment(
-                        experiment_name=f"stock_{'news_' if news else ''}{'social_' if social else ''}{'transformer_' if transformer else 'mlp_'}{30 if pred_30 else 10}",
+                        experiment_name=f"stock_{news_prefix}{social_prefix}{model_prefix}{pred_horizon_prefix}",
                         transformer=transformer,
                         pred_30=pred_30,
                         news=news,
@@ -190,6 +197,10 @@ def main():
                     )
                     stock_transformer.plot_loss_curves()
                     stock_transformer.run_testing()
+
+def main():
+    evaluator = Eval()
+    overall_metrics = evaluator.overall_metrics()
 
 if __name__ == '__main__':
     main()
