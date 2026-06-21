@@ -21,7 +21,7 @@ class Eval:
 
             metrics_dict = {
                 k: v
-                for k, v in torch.load(test_outputs).items()
+                for k, v in torch.load(test_outputs, map_location=torch.device('cpu'), weights_only=False).items()
                 if not k.endswith('all_targets') and not k.endswith('logit_scores')
             }
 
