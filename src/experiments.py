@@ -1026,7 +1026,6 @@ class Experiment:
         for split in ('test', 'train'):
 
             total_test_loss = 0
-            out_dict[f'{split}_all_preds'] = []
             out_dict[f'{split}_all_targets'] = []
             out_dict[f'{split}_logit_scores'] = []
 
@@ -1037,12 +1036,12 @@ class Experiment:
                         if interrupted:
                             raise KeyboardInterrupt
 
-                        target = target.argmax(dim=-1).to(device)
+                        target = target.argmax(dim=-1).to(device)           # B, S, 2 -> # B, S
 
                         args = [a.to(device) for a in args]
 
-                        logits = model(*args)
-                        logits = logits.permute(0, 2, 1)
+                        logits = model(*args)                               # B, S, 2
+                        logits = logits.permute(0, 2, 1)                    # B, 2, S
 
                         out_dict[f'{split}_logit_scores'].append(logits)
 
@@ -1050,13 +1049,15 @@ class Experiment:
                         total_test_loss += loss.item()
 
                         preds = logits.argmax(dim=1)  # (B, S)
-                        out_dict[f'{split}_all_preds'].append(preds)
                         out_dict[f'{split}_all_targets'].append(target)
 
                         pbar.update(1)
+            
+            out_dict[f'{split}_all_targets'] = torch.cat(out_dict[f'{split}_all_targets'])
+            out_dict[f'{split}_logit_scores'] = torch.cat(out_dict[f'{split}_logit_scores'])
 
-            all_preds_flat = torch.cat(out_dict[f'{split}_all_preds']).flatten()
-            all_targets_flat = torch.cat(out_dict[f'{split}_all_targets']).flatten()
+            all_preds_flat = out_dict[f'{split}_logit_scores'].argmax(dim=1).flatten()
+            all_targets_flat = out_dict[f'{split}_all_targets'].flatten()
 
             all_preds_np = all_preds_flat.cpu().numpy()
             all_targets_np = all_targets_flat.cpu().numpy()
@@ -1073,10 +1074,6 @@ class Experiment:
                 f"{split} accuracy: {out_dict[f'{split}_accuracy']:.4f} | "
                 f"{split} mcc: {out_dict[f'{split}_mcc']}"
             )
-
-            out_dict[f'{split}_all_preds'] = torch.stack(out_dict[f'{split}_all_preds'])
-            out_dict[f'{split}_all_targets'] = torch.stack(out_dict[f'{split}_all_targets'])
-            out_dict[f'{split}_logit_scores'] = torch.stack(out_dict[f'{split}_logit_scores'])
         
         print('Saving outputs...')
         torch.save(out_dict, self.experiment_path / 'test_outputs.pt')
