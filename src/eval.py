@@ -4,7 +4,7 @@ import pandas as pd
 
 class Eval:
     def __init__(self):
-        self.experiments_path = Path('experiments')
+        self.experiments_path = Path('experiments/')
         self.results_path = self.experiments_path / 'results'
         self.results_path.mkdir(parents=True, exist_ok=True)
     
