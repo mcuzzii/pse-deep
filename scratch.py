@@ -15,7 +15,7 @@ identical = (x == first).all(dim=-1).all(dim=0)  # (S,) — True/False per S
 print(identical)          # which S positions match the first
 print(identical.all())    # True if ALL S are identical to each other
 
-trading_day_mins = pd.Series(x[:, 1, 0].numpy())
+trading_day_mins = pd.Series(x[:, 1, 1].numpy())
 
 plt.figure(figsize=(8, 5))
 
