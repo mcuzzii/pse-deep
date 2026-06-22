@@ -10,7 +10,7 @@ x = test_tensor['X'][:, :, -10:]
 
 # Compare all S slices against the first one
 first = x[:, 0:1, :]                          # (B, 1, 10)
-identical = (x == first).all(dim=-1).all(dim=0)  # (S,) — True/False per S
+identical = torch.isclose(x, first).all(dim=-1).all(dim=0)
 
 print(identical)          # which S positions match the first
 print(identical.all())    # True if ALL S are identical to each other
