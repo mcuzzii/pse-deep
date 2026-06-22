@@ -20,6 +20,7 @@ from sklearn.metrics import (
     classification_report,
     confusion_matrix,
 )
+import os
 
 # Add the 'src' directory to the path
 sys.path.append(str(Path.cwd() / 'src'))
@@ -109,6 +110,20 @@ def _run_validation(model, loaders, device, criterion):
     model.train()
 
     return total_val_loss / len(loaders['val'])
+
+def mcc_curve(targets, probs, thresholds=None):
+    if thresholds is None:
+        thresholds = np.unique(probs)
+    
+    mccs = []
+    for thresh in thresholds:
+        preds = (probs >= thresh).astype(int)
+        tn, fp, fn, tp = confusion_matrix(targets, preds, labels=[0, 1]).ravel()
+        denom = np.sqrt((tp+fp)*(tp+fn)*(tn+fp)*(tn+fn))
+        mcc = (tp*tn - fp*fn) / denom if denom > 0 else 0.0
+        mccs.append(mcc)
+    
+    return np.array(mccs), thresholds
 
 class StockTransformerDataset(Dataset):
     def __init__(self, path, stock_lookback):
@@ -829,10 +844,10 @@ class Experiment:
             
             all_targets = []
             for i in range(min(len(train_dataset), 5000)): # Scan a large sample or full dataset
-                *_, tgt = train_dataset[i]
-                all_targets.append(torch.tensor(tgt).argmax(dim=-1))
+                *_, tgt = train_dataset[i]                              # (B, S, 2)
+                all_targets.append(torch.tensor(tgt).argmax(dim=-1))    # (B, S)
             
-            flat_targets = torch.cat(all_targets)
+            flat_targets = torch.cat(all_targets)                       # (B*S,)
             count_0 = (flat_targets == 0).sum().item()
             count_1 = (flat_targets == 1).sum().item()
             total_counts = count_0 + count_1
@@ -1053,9 +1068,28 @@ class Experiment:
 
                     pbar.update(1)
         
-        logit_scores = torch.cat(logit_scores, dim=1)
-        all_targets = torch.cat(all_targets, dim=1)
+        logit_scores = torch.cat(logit_scores, dim=0)
+        all_targets = torch.cat(all_targets, dim=0)
 
+        if 'transformer' in self.experiment_name:
+            logit_scores = logit_scores[..., [1, 0]]
+            all_targets = 1 - all_targets
+
+        softmax_scores = torch.softmax(logit_scores, dim=-1)[..., 1].flatten()      # (B*S,)
+        all_targets = all_targets.flatten()                                         # (B*S,)
+
+        mccs, thresholds = mcc_curve(all_targets.cpu().numpy(), softmax_scores.cpu().numpy())
+
+        best_idx = np.argmax(mccs)
+        best_threshold = thresholds[best_idx]
+
+        print(f'Best threshold: {best_threshold}; MCC: {mccs[best_idx]}')
+
+        checkpoint['best_threshold'] = best_threshold
+
+        tmp_path = best_path.with_suffix('.tmp')
+        torch.save(checkpoint, tmp_path)
+        os.replace(tmp_path, best_path)
     
     def run_testing(self):
 

@@ -150,7 +150,7 @@ def preprocess():
     del news_indicators_10
     gc.collect()
 
-def train_models():
+def run_experiments():
 
     for transformer in (True, False):
         for pred_30 in (True, False):
@@ -162,7 +162,7 @@ def train_models():
                     model_prefix = 'transformer_' if transformer else 'mlp_'
                     pred_horizon_prefix = 30 if pred_30 else 10
 
-                    stock_transformer = Experiment(
+                    experiment = Experiment(
                         experiment_name=f"stock_{news_prefix}{social_prefix}{model_prefix}{pred_horizon_prefix}",
                         transformer=transformer,
                         pred_30=pred_30,
@@ -170,8 +170,8 @@ def train_models():
                         social=social,
                         stock_lookback=60
                     )
-                    stock_transformer.build_dataset()
-                    stock_transformer.build_model(
+                    experiment.build_dataset()
+                    experiment.build_model(
                         input_dim=100 if transformer else 110,
                         news_input_dim=15,
                         social_input_dim=6 if transformer else 15,
@@ -186,7 +186,7 @@ def train_models():
                         num_samples=500,
                         sigma=5e-2,
                     )
-                    stock_transformer.train(
+                    experiment.train(
                         num_epochs=2,
                         batch_size=2 if transformer else 32,
                         accumulation_steps=16 if transformer else 1,
@@ -195,12 +195,13 @@ def train_models():
                         patience=1000,
                         sigma_end=1e-5
                     )
-                    stock_transformer.plot_loss_curves()
-                    stock_transformer.run_testing()
+                    experiment.plot_loss_curves()
+                    experiment.threshold_optimize()
+                    #experiment.run_testing()
 
 def main():
     evaluator = Eval()
     overall_metrics = evaluator.overall_metrics()
 
 if __name__ == '__main__':
-    main()
+    run_experiments()
