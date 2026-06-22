@@ -21,3 +21,4 @@ print(identical.all())    # True if ALL S are identical to each other
 
 print(first)
 print(x[:, 1:2, :])
+print(x.shape)
