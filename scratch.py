@@ -1,11 +1,22 @@
 import torch
-import sys
-from pathlib import Path
+import pandas as pd
+import matplotlib.pyplot as plt
 
-sys.path.append(str(Path.cwd() / 'src'))
+test_tensor = torch.load('experiments/data/stock_mlp_10m_test.pt', map_location='cpu', weights_only=False)
 
-from experiments import EarlyStopping
+trading_day_mins = pd.Series(test_tensor['X'][:, -1].numpy())
 
-model = torch.load('experiments/stock_mlp_10/stock_mlp_10.pt', map_location='cpu', weights_only=False)
+plt.figure(figsize=(8, 5))
 
-print(model['class_weights'])
+plt.plot(trading_day_mins, label="Trading Day Minutes")
+
+plt.xlabel("Time")
+plt.ylabel("Minutes")
+plt.title("Trading Day Minutes")
+plt.grid(False)
+plt.tight_layout()
+
+save_path = 'experiments/results/data_alignment_testing.png'
+
+plt.savefig(save_path, dpi=300)
+plt.close()
