@@ -16,7 +16,7 @@ T = test_tensor['X'].shape[0] // 30
 #print(identical)          # which S positions match the first
 #print(identical.all())    # True if ALL S are identical to each other
 
-trading_day_mins = pd.Series(x[:T, -1].numpy())
+trading_day_mins = pd.Series(x[T:2*T, -1].numpy())
 
 plt.figure(figsize=(8, 5))
 
