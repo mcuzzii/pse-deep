@@ -6,15 +6,15 @@ test_tensor = torch.load('experiments/data/stock_news_mlp_10m_test.pt', map_loca
 
 #test_tensor['X'] = test_tensor['X'].reshape(test_tensor['X'].shape[0] // 30, 30, -1)
 
-x = test_tensor['X'][:, :, -10:]
+x = test_tensor['X'][:, -10:]
 T = test_tensor['X'].shape[0] // 30
 
 # Compare all S slices against the first one
-first = x[:, 0:1, :]                          # (B, 1, 10)
-identical = (x == first).all(dim=-1).all(dim=0)  # (S,) — True/False per S
+#first = x[:, 0:1, :]                          # (B, 1, 10)
+#identical = (x == first).all(dim=-1).all(dim=0)  # (S,) — True/False per S
 
-print(identical)          # which S positions match the first
-print(identical.all())    # True if ALL S are identical to each other
+#print(identical)          # which S positions match the first
+#print(identical.all())    # True if ALL S are identical to each other
 
 trading_day_mins = pd.Series(x[:T, 1, 4].numpy())
 
