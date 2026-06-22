@@ -15,3 +15,5 @@ x = test_tensor['X'][0, -25:-15]
 matches = torch.isclose(test_tensor['X'][:, -25:-15], x).all(dim=1)
 indices = matches.nonzero(as_tuple=True)[0]
 print(indices)
+
+print(test_tensor['X'].shape)
