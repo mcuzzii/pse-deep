@@ -6,7 +6,7 @@ test_tensor = torch.load('experiments/data/stock_mlp_10m_test.pt', map_location=
 
 #test_tensor['X'] = test_tensor['X'].reshape(test_tensor['X'].shape[0] // 30, 30, -1)
 
-x = test_tensor['X'][0, -10:]
+x = test_tensor['X'][10, -10:]
 matches = torch.isclose(test_tensor['X'][:, -10:], x).all(dim=1)
 indices = matches.nonzero(as_tuple=True)[0]
 print(indices)
