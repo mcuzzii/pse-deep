@@ -1105,9 +1105,9 @@ class Experiment:
         torch.save(checkpoint, tmp_path)
         os.replace(tmp_path, best_path)
     
-    def run_testing(self):
+    def run_testing(self, force=False):
 
-        if (self.experiment_path / 'test_outputs.pt').exists():
+        if (self.experiment_path / 'test_outputs.pt').exists() and not force:
             print("Test results already saved. Skipping...")
             return
 
@@ -1122,6 +1122,7 @@ class Experiment:
             checkpoint = torch.load(best_path, map_location=device, weights_only=False)
             model.load_state_dict(checkpoint["model"])
             class_weights = checkpoint["class_weights"]
+            best_threshold = checkpoint.get("best_threshold")
         
         criterion = nn.CrossEntropyLoss(weight=class_weights)
 
@@ -1157,9 +1158,9 @@ class Experiment:
                         args = [a.to(device) for a in args]
 
                         logits = model(*args)                               # B, S, 2
-                        logits = logits.permute(0, 2, 1)                    # B, 2, S
-
                         out_dict[f'{split}_logit_scores'].append(logits)
+
+                        logits = logits.permute(0, 2, 1)                    # B, 2, S
 
                         loss = criterion(logits, target)
                         total_test_loss += loss.item()
@@ -1168,11 +1169,17 @@ class Experiment:
 
                         pbar.update(1)
             
-            out_dict[f'{split}_all_targets'] = torch.cat(out_dict[f'{split}_all_targets'])
-            out_dict[f'{split}_logit_scores'] = torch.cat(out_dict[f'{split}_logit_scores'])
+            out_dict[f'{split}_all_targets'] = torch.cat(out_dict[f'{split}_all_targets'])      # N, S
+            out_dict[f'{split}_logit_scores'] = torch.cat(out_dict[f'{split}_logit_scores'])    # N, S, 2
 
-            all_preds_flat = out_dict[f'{split}_logit_scores'].argmax(dim=1).flatten()
-            all_targets_flat = out_dict[f'{split}_all_targets'].flatten()
+            if 'transformer' in self.experiment_name:
+                out_dict[f'{split}_logit_scores'] = out_dict[f'{split}_logit_scores'][..., [1, 0]]
+                out_dict[f'{split}_all_targets'] = 1 - out_dict[f'{split}_all_targets']
+
+            all_preds_flat = (torch.softmax(
+                out_dict[f'{split}_logit_scores'], dim=-1
+            )[..., 1].flatten() >= best_threshold).float()                                                   # (N*S,)
+            all_targets_flat = out_dict[f'{split}_all_targets'].flatten()                                    # (N*S,)
 
             all_preds_np = all_preds_flat.cpu().numpy()
             all_targets_np = all_targets_flat.cpu().numpy()

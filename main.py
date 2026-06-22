@@ -196,12 +196,12 @@ def run_experiments():
                         sigma_end=1e-5
                     )
                     experiment.plot_loss_curves()
-                    experiment.threshold_optimize(0.3, 0.7, force=True)
-                    experiment.run_testing()
+                    experiment.threshold_optimize(0.3, 0.7)
+                    experiment.run_testing(force=True)
 
 def main():
     evaluator = Eval()
     overall_metrics = evaluator.overall_metrics()
 
 if __name__ == '__main__':
-    run_experiments()
+    main()
