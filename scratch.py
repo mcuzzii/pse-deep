@@ -18,3 +18,6 @@ identical = torch.isclose(x, first).all(dim=-1).all(dim=0)  # (S,) — True/Fals
 
 print(identical)          # which S positions match the first
 print(identical.all())    # True if ALL S are identical to each other
+
+print(first)
+print(x[:, 1:2, :])
