@@ -4,9 +4,9 @@ import matplotlib.pyplot as plt
 
 test_tensor = torch.load('experiments/data/stock_mlp_10m_test.pt', map_location='cpu', weights_only=False)
 
-#test_tensor['X'] = test_tensor['X'].reshape(test_tensor['X'].shape[0] // 30, 30, -1)
+test_tensor['X'] = test_tensor['X'].reshape(test_tensor['X'].shape[0] // 30, 30, -1)
 
-x = test_tensor['X'][:, -10:]
+x = test_tensor['X'][:, :, -10:]
 T = test_tensor['X'].shape[0] // 30
 
 # Compare all S slices against the first one
@@ -16,7 +16,7 @@ T = test_tensor['X'].shape[0] // 30
 #print(identical)          # which S positions match the first
 #print(identical.all())    # True if ALL S are identical to each other
 
-trading_day_mins = pd.Series(x[T:2*T, -1].numpy())
+trading_day_mins = pd.Series(x[T:2*T, 0, -1].numpy())
 
 plt.figure(figsize=(8, 5))
 
