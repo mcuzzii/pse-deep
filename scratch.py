@@ -2,7 +2,7 @@ import torch
 import pandas as pd
 import matplotlib.pyplot as plt
 
-test_tensor = torch.load('experiments/data/stock_news_mlp_10m_test.pt', map_location='cpu', weights_only=False)
+test_tensor = torch.load('experiments/data/stock_mlp_10m_test.pt', map_location='cpu', weights_only=False)
 
 #test_tensor['X'] = test_tensor['X'].reshape(test_tensor['X'].shape[0] // 30, 30, -1)
 
