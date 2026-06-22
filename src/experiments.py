@@ -111,19 +111,34 @@ def _run_validation(model, loaders, device, criterion):
 
     return total_val_loss / len(loaders['val'])
 
-def mcc_curve(targets, probs, thresholds=None):
+def mcc_curve(targets, probs, th_min=0, th_max=1, thresholds=None, device=device):
+    if not isinstance(probs, torch.Tensor):
+        probs = torch.tensor(probs, device=device, dtype=torch.float32)
+    if not isinstance(targets, torch.Tensor):
+        targets = torch.tensor(targets, device=device, dtype=torch.int32)
+    else:
+        probs = probs.to(device)
+        targets = targets.to(device)
+
     if thresholds is None:
-        thresholds = np.unique(probs)
-    
-    mccs = []
-    for thresh in thresholds:
-        preds = (probs >= thresh).astype(int)
-        tn, fp, fn, tp = confusion_matrix(targets, preds, labels=[0, 1]).ravel()
-        denom = np.sqrt((tp+fp)*(tp+fn)*(tn+fp)*(tn+fn))
-        mcc = (tp*tn - fp*fn) / denom if denom > 0 else 0.0
-        mccs.append(mcc)
-    
-    return np.array(mccs), thresholds
+        thresholds = torch.linspace(th_min, th_max, 10000).to(device)
+    elif not isinstance(thresholds, torch.Tensor):
+        thresholds = torch.tensor(thresholds, device=device, dtype=torch.float32)
+
+    preds = (probs.unsqueeze(0) >= thresholds.unsqueeze(1)).int()
+    targets_exp = targets.unsqueeze(0).expand_as(preds)
+
+    tp = ((preds == 1) & (targets_exp == 1)).sum(dim=1).float()
+    tn = ((preds == 0) & (targets_exp == 0)).sum(dim=1).float()
+    fp = ((preds == 1) & (targets_exp == 0)).sum(dim=1).float()
+    fn = ((preds == 0) & (targets_exp == 1)).sum(dim=1).float()
+
+    numerator = tp * tn - fp * fn
+    denom = torch.sqrt((tp+fp) * (tp+fn) * (tn+fp) * (tn+fn))
+
+    mcc = torch.where(denom > 0, numerator / denom, torch.zeros_like(numerator))
+
+    return mcc.cpu().numpy(), thresholds.cpu().numpy()
 
 class StockTransformerDataset(Dataset):
     def __init__(self, path, stock_lookback):
@@ -1021,13 +1036,13 @@ class Experiment:
         plt.savefig(save_path, dpi=300)
         plt.close()
     
-    def threshold_optimize(self):
+    def threshold_optimize(self, th_min=0, th_max=1, force=False):
         model = self.model.to(device)
 
         best_path = self.experiment_path / f'{self.experiment_name}.pt'
         if best_path.exists():
             checkpoint = torch.load(best_path, map_location=device, weights_only=False)
-            if checkpoint.get('threshold') is not None:
+            if checkpoint.get('best_threshold') is not None and not force:
                 print("Model is already threshold-optimized. Skipping...")
                 return
         else:
@@ -1061,7 +1076,6 @@ class Experiment:
                     args = [a.to(device) for a in args]
 
                     logits = model(*args)
-                    logits = logits.permute(0, 2, 1)
 
                     logit_scores.append(logits)
                     all_targets.append(target)
@@ -1078,7 +1092,7 @@ class Experiment:
         softmax_scores = torch.softmax(logit_scores, dim=-1)[..., 1].flatten()      # (B*S,)
         all_targets = all_targets.flatten()                                         # (B*S,)
 
-        mccs, thresholds = mcc_curve(all_targets.cpu().numpy(), softmax_scores.cpu().numpy())
+        mccs, thresholds = mcc_curve(all_targets, softmax_scores, th_min, th_max)
 
         best_idx = np.argmax(mccs)
         best_threshold = thresholds[best_idx]
