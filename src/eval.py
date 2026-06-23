@@ -61,7 +61,6 @@ class Eval:
             windows = [[] for _ in range(loss.shape[1])]
             means = torch.zeros_like(loss)
             width_histories = torch.zeros_like(loss)
-            width_histories = [[] for _ in range(loss.shape[1])]
 
             for s in tqdm(range(loss.shape[1])):
                 for n in range(loss.shape[0]):
