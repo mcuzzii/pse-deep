@@ -196,7 +196,7 @@ def run_experiments():
                         sigma_end=1e-5
                     )
                     experiment.plot_loss_curves()
-                    experiment.threshold_optimize(0.3, 0.7)
+                    experiment.threshold_optimize()
                     experiment.run_testing()
 
 def main():
