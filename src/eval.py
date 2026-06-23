@@ -37,6 +37,9 @@ class Eval:
         return df
     
     def compute_model_drift(self):
+        model_scores = pd.read_csv(self.results_path / 'model_scores.csv', index_col=0)
+
+        overall_model_drift_scores = dict()
         for dir in self.experiments_path.iterdir():
 
             if dir.name in ('data', 'experiments', 'results'):
@@ -57,25 +60,46 @@ class Eval:
             detectors = [ADWIN() for _ in range(loss.shape[1])]
             windows = [[] for _ in range(loss.shape[1])]
             means = torch.zeros_like(loss)
+            width_histories = torch.zeros_like(loss)
             width_histories = [[] for _ in range(loss.shape[1])]
 
-            for s in range(loss.shape[1]):
-                for n in tqdm(range(loss.shape[0])):
+            for s in tqdm(range(loss.shape[1])):
+                for n in range(loss.shape[0]):
                     val = loss[n, s].item()
                     detectors[s].update(val)
 
                     windows[s].append(val)
                     windows[s] = windows[s][int(-detectors[s].width):]
                     means[n, s] = sum(windows[s]) / len(windows[s])
-                    width_histories[s].append(detectors[s].width)
+                    width_histories[n, s] = detectors[s].width
+            
+            msd = ((loss - means) ** 2)
 
-            drift_scores = ((loss - means) ** 2).mean(dim=0)
-            drift_scores_norm = (drift_scores - drift_scores.min()) / (drift_scores.max() - drift_scores.min())
-            avg_widths = torch.tensor([sum(w) / len(w) for w in width_histories])
-            avg_widths_norm = (avg_widths - avg_widths.min()) / (avg_widths.max() - avg_widths.min())
-            drift_from_width = 1 - avg_widths_norm
+            msd = (msd - msd.min()) / (msd.max() - msd.min())
+            mean_squared_loss_deviations = msd.mean(dim=0)
 
-            print(f'Drift scores: {drift_scores_norm}')
+            width_histories = (width_histories - width_histories.min()) / (width_histories.max() - width_histories.min())
+            drift_from_width = 1 - width_histories.mean(dim=0)
+
+            msd_mean = msd.mean().item()
+            widths_mean = width_histories.mean().item()
+            combined_drift_score_mean = msd_mean * widths_mean
+
+            print(f'Drift scores: {mean_squared_loss_deviations}')
             print(f'Drift from width: {drift_from_width}')
 
-            print(f'Corr: {np.corrcoef(drift_scores_norm.numpy(), drift_from_width.numpy())}')
+            out['mean_squared_loss_deviations'] = mean_squared_loss_deviations
+            out['drift_from_width'] = drift_from_width
+            out['combined_drift_scores'] = mean_squared_loss_deviations * drift_from_width
+
+            torch.save(out, test_outputs)
+
+            overall_model_drift_scores[dir.name] = {
+                'msd_mean': msd_mean,
+                'widths_mean': widths_mean,
+                'combined_drift_score_mean': combined_drift_score_mean
+            }
+        
+        overall_model_drift_scores = pd.DataFrame.from_dict(overall_model_drift_scores, orient='index')
+        model_scores = model_scores.join(overall_model_drift_scores, how='left')
+        model_scores.to_csv(self.results_path / 'model_scores.csv')
