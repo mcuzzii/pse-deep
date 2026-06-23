@@ -81,7 +81,7 @@ class Eval:
             drift_from_width = 1 - width_histories.mean(dim=0)
 
             msd_mean = msd.mean().item()
-            widths_mean = width_histories.mean().item()
+            widths_mean = 1 - width_histories.mean().item()
             combined_drift_score_mean = msd_mean * widths_mean
 
             print(f'Drift scores: {mean_squared_loss_deviations}')
@@ -102,3 +102,4 @@ class Eval:
         overall_model_drift_scores = pd.DataFrame.from_dict(overall_model_drift_scores, orient='index')
         model_scores = model_scores.join(overall_model_drift_scores, how='left')
         model_scores.to_csv(self.results_path / 'model_scores.csv')
+    
