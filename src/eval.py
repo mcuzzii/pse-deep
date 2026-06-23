@@ -100,6 +100,5 @@ class Eval:
             }
         
         overall_model_drift_scores = pd.DataFrame.from_dict(overall_model_drift_scores, orient='index')
-        model_scores = model_scores.join(overall_model_drift_scores, how='left')
+        model_scores[overall_model_drift_scores.columns] = overall_model_drift_scores
         model_scores.to_csv(self.results_path / 'model_scores.csv')
-    
