@@ -36,7 +36,7 @@ class Eval:
 
         return df
     
-    def compute_model_drift(self):
+    def compute_experiment_data(self):
         model_scores = pd.read_csv(self.results_path / 'model_scores.csv', index_col=0)
 
         overall_model_drift_scores = dict()
@@ -54,6 +54,8 @@ class Eval:
                 logit_scores = logit_scores.squeeze(1).reshape(30, logit_scores.shape[0] // 30, -1).transpose(0, 1)
                 targets = targets.squeeze(1).reshape(30, targets.shape[0] // 30).transpose(0, 1)
 
+            torch.softmax(logit_scores, dim=-1)[..., -1] >= 
+
             criterion = nn.CrossEntropyLoss(reduction='none')
             loss = criterion(logit_scores.permute(0, 2, 1), targets)        # N, S
 
@@ -61,6 +63,8 @@ class Eval:
             windows = [[] for _ in range(loss.shape[1])]
             means = torch.zeros_like(loss)
             width_histories = torch.zeros_like(loss)
+
+            logit_scores = out['test_logit_scores']
 
             for s in tqdm(range(loss.shape[1])):
                 for n in range(loss.shape[0]):
@@ -102,3 +106,12 @@ class Eval:
         overall_model_drift_scores = pd.DataFrame.from_dict(overall_model_drift_scores, orient='index')
         model_scores[overall_model_drift_scores.columns] = overall_model_drift_scores
         model_scores.to_csv(self.results_path / 'model_scores.csv')
+
+    def compute_per_stock_mccs(self):
+        for dir in self.experiments_path.iterdir():
+
+            if dir.name in ('data', 'experiments', 'results'):
+                continue
+
+            test_outputs = dir / 'test_outputs.pt'
+            out = torch.load(test_outputs, map_location=torch.device('cpu'), weights_only=False)

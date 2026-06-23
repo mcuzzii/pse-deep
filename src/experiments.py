@@ -125,10 +125,10 @@ def mcc_curve(targets, probs, th_min=0, th_max=1, thresholds=None, device=device
     elif not isinstance(thresholds, torch.Tensor):
         thresholds = torch.tensor(thresholds, device=device, dtype=torch.float32)
 
-    preds = (probs.unsqueeze(0) >= thresholds.unsqueeze(1)).int()
-    targets_exp = targets.unsqueeze(0).expand_as(preds)
+    preds = (probs.unsqueeze(0) >= thresholds.unsqueeze(-1).unsqueeze(-1)).int()        # (1, N, S) >= (T, 1, 1) -> (T, N, S)
+    targets_exp = targets.unsqueeze(0).expand_as(preds)                                 # (N, S) -> (1, N, S) -> (T, N, S)
 
-    tp = ((preds == 1) & (targets_exp == 1)).sum(dim=1).float()
+    tp = ((preds == 1) & (targets_exp == 1)).sum(dim=1).float()                         # (T, N, S) -> (T, S)
     tn = ((preds == 0) & (targets_exp == 0)).sum(dim=1).float()
     fp = ((preds == 1) & (targets_exp == 0)).sum(dim=1).float()
     fn = ((preds == 0) & (targets_exp == 1)).sum(dim=1).float()
@@ -136,9 +136,9 @@ def mcc_curve(targets, probs, th_min=0, th_max=1, thresholds=None, device=device
     numerator = tp * tn - fp * fn
     denom = torch.sqrt((tp+fp) * (tp+fn) * (tn+fp) * (tn+fn))
 
-    mcc = torch.where(denom > 0, numerator / denom, torch.zeros_like(numerator))
+    mcc = torch.where(denom > 0, numerator / denom, torch.zeros_like(numerator))        # (T, S)
 
-    return mcc.cpu().numpy(), thresholds.cpu().numpy()
+    return mcc, thresholds                                                              # (T, S)
 
 class StockTransformerDataset(Dataset):
     def __init__(self, path, stock_lookback):
@@ -1042,7 +1042,7 @@ class Experiment:
         best_path = self.experiment_path / f'{self.experiment_name}.pt'
         if best_path.exists():
             checkpoint = torch.load(best_path, map_location=device, weights_only=False)
-            if checkpoint.get('best_threshold') is not None and not force:
+            if checkpoint.get('best_thresholds') is not None and not force:
                 print("Model is already threshold-optimized. Skipping...")
                 return
         else:
@@ -1075,31 +1075,35 @@ class Experiment:
 
                     args = [a.to(device) for a in args]
 
-                    logits = model(*args)
+                    logits = model(*args)                                           # B, S, 2 or B, 1, 2
 
                     logit_scores.append(logits)
                     all_targets.append(target)
 
                     pbar.update(1)
         
-        logit_scores = torch.cat(logit_scores, dim=0)
-        all_targets = torch.cat(all_targets, dim=0)
+        logit_scores = torch.cat(logit_scores, dim=0)                               # N, S, 2 for transformers, N*S, 1, 2 for mlp
+        all_targets = torch.cat(all_targets, dim=0)                                 # N, S for transformers, N*S, 1 for mlp
+
+        if 'mlp' in self.experiment_name:
+            logit_scores = logit_scores.squeeze(1).reshape(30, logit_scores.shape[0] // 30, -1).transpose(0, 1)     # N, S, 2
+            all_targets = all_targets.squeeze(1).reshape(30, all_targets.shape[0] // 30).transpose(0, 1)            # N, S
 
         if 'transformer' in self.experiment_name:
-            logit_scores = logit_scores[..., [1, 0]]
-            all_targets = 1 - all_targets
+            logit_scores = logit_scores[..., [1, 0]]        # N, S, 2
+            all_targets = 1 - all_targets                   # N, S
 
-        softmax_scores = torch.softmax(logit_scores, dim=-1)[..., 1].flatten()      # (B*S,)
-        all_targets = all_targets.flatten()                                         # (B*S,)
+        softmax_scores = torch.softmax(logit_scores, dim=-1)[..., 1]                # N, S
 
-        mccs, thresholds = mcc_curve(all_targets, softmax_scores, th_min, th_max)
+        mccs, thresholds = mcc_curve(all_targets, softmax_scores, th_min, th_max)   # (T, S), (T,)
 
-        best_idx = np.argmax(mccs)
-        best_threshold = thresholds[best_idx]
+        best_idxs = torch.argmax(mccs, dim=0)
+        best_thresholds = thresholds[best_idxs]
+        best_mccs = mccs[best_idxs, torch.arange(mccs.shape[1])]
 
-        print(f'Best threshold: {best_threshold}; MCC: {mccs[best_idx]}')
+        print(f'Best thresholds: {best_thresholds}; MCCs: {best_mccs}')
 
-        checkpoint['best_threshold'] = best_threshold
+        checkpoint['best_threshold'] = best_thresholds
 
         tmp_path = best_path.with_suffix('.tmp')
         torch.save(checkpoint, tmp_path)
