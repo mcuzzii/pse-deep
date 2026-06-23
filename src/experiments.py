@@ -121,7 +121,7 @@ def mcc_curve(targets, probs, th_min=0, th_max=1, thresholds=None, device=device
         targets = targets.to(device)
 
     if thresholds is None:
-        thresholds = torch.linspace(th_min, th_max, 20000).to(device)
+        thresholds = torch.linspace(th_min, th_max, 15000).to(device)
     elif not isinstance(thresholds, torch.Tensor):
         thresholds = torch.tensor(thresholds, device=device, dtype=torch.float32)
 
