@@ -28,6 +28,7 @@ dependencies = [
     "river>=0.23.0",
     "scikit-learn>=1.8.0",
     "seaborn>=0.13.2",
+    "shap>=0.52.0",
     "ta>=0.11.0",
     "tokenizers>=0.22.2",
     "torch>=2.11",

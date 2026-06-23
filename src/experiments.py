@@ -20,12 +20,21 @@ from sklearn.metrics import (
     classification_report,
     confusion_matrix,
 )
+import shap
 import os
 
 # Add the 'src' directory to the path
 sys.path.append(str(Path.cwd() / 'src'))
 
-from models import StockTransformer, StockNewsTransformer, StockSocialTransformer, StockNewsSocialTransformer, MultiLayerPerceptron
+from models import (
+    StockTransformer,
+    StockNewsTransformer,
+    StockSocialTransformer,
+    StockNewsSocialTransformer,
+    MultiLayerPerceptron,
+    GroupSHAPWrapper,
+    _build_group_map
+)
 from processing import DataSource, get_stocks, get_text_window, get_elapsed_time
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -1109,97 +1118,122 @@ class Experiment:
         torch.save(checkpoint, tmp_path)
         os.replace(tmp_path, best_path)
     
-    def run_testing(self, force=False):
+def run_testing(self, force=False):
 
-        if (self.experiment_path / 'test_outputs.pt').exists() and not force:
-            print("Test results already saved. Skipping...")
-            return
+    if (self.experiment_path / 'test_outputs.pt').exists() and not force:
+        print("Test results already saved. Skipping...")
+        return
 
-        best_path = self.experiment_path / f'{self.experiment_name}.pt'
+    best_path = self.experiment_path / f'{self.experiment_name}.pt'
+    if not best_path.exists():
+        raise Exception(f'Model not found at {best_path}.')
 
-        if not best_path.exists():
-            raise Exception(f'Model not found at {best_path}.')
+    model = self.model.to(device)
+    checkpoint = torch.load(best_path, map_location=device, weights_only=False)
+    model.load_state_dict(checkpoint["model"])
+    class_weights = checkpoint["class_weights"]
+    best_threshold = checkpoint.get("best_threshold")
 
-        model = self.model.to(device)
+    criterion = nn.CrossEntropyLoss(weight=class_weights)
 
-        if best_path.exists():
-            checkpoint = torch.load(best_path, map_location=device, weights_only=False)
-            model.load_state_dict(checkpoint["model"])
-            class_weights = checkpoint["class_weights"]
-            best_threshold = checkpoint.get("best_threshold")
-        
-        criterion = nn.CrossEntropyLoss(weight=class_weights)
+    out_dict = dict()
+    model.eval()
 
-        out_dict = dict()
+    interrupted = False
+    def handler(sig, frame):
+        nonlocal interrupted
+        interrupted = True
+        print("Interrupt received.")
+    signal.signal(signal.SIGINT, handler)
+    signal.signal(signal.SIGTERM, handler)
 
-        model.eval()
+    # --- build SHAP wrapper once using first test batch as template ---
+    sample_batch = next(iter(self.loaders['test']))
+    sample_args  = [a.to(device) for a in sample_batch[:-1]]
 
-        interrupted = False
+    group_to_indices, non_float_indices, _, mlp_group_slices = _build_group_map(self, sample_args)
+    num_groups = len(group_to_indices)
 
-        def handler(sig, frame):
-            nonlocal interrupted
-            interrupted = True
-            print("Interrupt received.")
+    shap_wrapper = GroupSHAPWrapper(
+        model, sample_args, group_to_indices, non_float_indices,
+        mlp_group_slices=mlp_group_slices
+    )
+    background   = torch.zeros(1, num_groups, device=device)
+    explainer    = shap.GradientExplainer(shap_wrapper, background)
 
-        signal.signal(signal.SIGINT, handler)
-        signal.signal(signal.SIGTERM, handler)
+    out_dict['shap_group_names'] = list(group_to_indices.keys())
 
-        for split in ('test', 'train'):
+    for split in ('test', 'train'):
 
-            total_test_loss = 0
-            out_dict[f'{split}_all_targets'] = []
-            out_dict[f'{split}_logit_scores'] = []
+        total_test_loss = 0
+        out_dict[f'{split}_all_targets']  = []
+        out_dict[f'{split}_logit_scores'] = []
+        if split == 'test':
+            out_dict[f'{split}_shap_values'] = []
 
-            with tqdm(total=len(self.loaders[split]), desc="Testing") as pbar:
+        with tqdm(total=len(self.loaders[split]), desc=f"Testing {split}") as pbar:
 
+            for *args, target in self.loaders[split]:
+                if interrupted:
+                    raise KeyboardInterrupt
+
+                args   = [a.to(device) for a in args]
+                target = target.argmax(dim=-1).to(device)
+
+                # --- standard inference ---
                 with torch.no_grad():
-                    for *args, target in self.loaders[split]:
-                        if interrupted:
-                            raise KeyboardInterrupt
+                    logits = model(*args, return_weights=True)
+                    out_dict[f'{split}_logit_scores'].append(logits.cpu())
 
-                        target = target.argmax(dim=-1).to(device)           # B, S, 2 -> # B, S
+                    loss = criterion(logits.permute(0, 2, 1), target)
+                    total_test_loss += loss.item()
 
-                        args = [a.to(device) for a in args]
+                    out_dict[f'{split}_all_targets'].append(target.cpu())
 
-                        logits = model(*args)                               # B, S, 2
-                        out_dict[f'{split}_logit_scores'].append(logits)
+                # --- SHAP: test split only ---
+                if split == 'test':
+                    with torch.enable_grad():
+                        shap_wrapper.args = [a.detach() for a in args]
+                        gates = torch.ones(args[0].shape[0], num_groups, device=device)
+                        sv = explainer.shap_values(gates)
 
-                        logits = logits.permute(0, 2, 1)                    # B, 2, S
+                        if isinstance(sv, list):
+                            assert len(sv) == 1
+                            sv = sv[0]
 
-                        loss = criterion(logits, target)
-                        total_test_loss += loss.item()
+                        sv = torch.tensor(sv)
 
-                        out_dict[f'{split}_all_targets'].append(target)
+                        out_dict[f'{split}_shap_values'].append(sv.cpu())
 
-                        pbar.update(1)
-            
-            out_dict[f'{split}_all_targets'] = torch.cat(out_dict[f'{split}_all_targets'])      # N, S
-            out_dict[f'{split}_logit_scores'] = torch.cat(out_dict[f'{split}_logit_scores'])    # N, S, 2
+                pbar.update(1)
 
-            if 'transformer' in self.experiment_name:
-                out_dict[f'{split}_logit_scores'] = out_dict[f'{split}_logit_scores'][..., [1, 0]]
-                out_dict[f'{split}_all_targets'] = 1 - out_dict[f'{split}_all_targets']
+        out_dict[f'{split}_all_targets']  = torch.cat(out_dict[f'{split}_all_targets'])
+        out_dict[f'{split}_logit_scores'] = torch.cat(out_dict[f'{split}_logit_scores'])
+        if split == 'test':
+            out_dict[f'{split}_shap_values'] = torch.cat(out_dict[f'{split}_shap_values'])   # (N, num_groups)
 
-            all_preds_flat = (torch.softmax(
-                out_dict[f'{split}_logit_scores'], dim=-1
-            )[..., 1].flatten() >= best_threshold).float()                                                   # (N*S,)
-            all_targets_flat = out_dict[f'{split}_all_targets'].flatten()                                    # (N*S,)
+        if 'transformer' in self.experiment_name:
+            out_dict[f'{split}_logit_scores'] = out_dict[f'{split}_logit_scores'][..., [1, 0]]
+            out_dict[f'{split}_all_targets']  = 1 - out_dict[f'{split}_all_targets']
 
-            all_preds_np = all_preds_flat.cpu().numpy()
-            all_targets_np = all_targets_flat.cpu().numpy()
+        all_preds_flat   = (torch.softmax(out_dict[f'{split}_logit_scores'], dim=-1)[..., 1].flatten() >= best_threshold).float()
+        all_targets_flat = out_dict[f'{split}_all_targets'].flatten()
 
-            out_dict[f'{split}_accuracy'] = (all_preds_flat == all_targets_flat).float().mean().item()
-            out_dict[f'{split}_mcc'] = matthews_corrcoef(all_targets_np, all_preds_np)
-            out_dict[f'{split}_precision'] = precision_score(all_targets_np, all_preds_np)
-            out_dict[f'{split}_recall'] = recall_score(all_targets_np, all_preds_np)
-            out_dict[f'{split}_f1'] = f1_score(all_targets_np, all_preds_np)
-            out_dict[f'{split}_avg_loss'] = total_test_loss / len(self.loaders[split])
+        all_preds_np   = all_preds_flat.cpu().numpy()
+        all_targets_np = all_targets_flat.cpu().numpy()
 
-            print(
-                f"{split} average loss: {out_dict[f'{split}_avg_loss']:.4f} | "
-                f"{split} accuracy: {out_dict[f'{split}_accuracy']:.4f} | "
-                f"{split} mcc: {out_dict[f'{split}_mcc']}"
-            )
-        
-        print('Saving outputs...')
-        torch.save(out_dict, self.experiment_path / 'test_outputs.pt')
+        out_dict[f'{split}_accuracy']  = (all_preds_flat == all_targets_flat).float().mean().item()
+        out_dict[f'{split}_mcc']       = matthews_corrcoef(all_targets_np, all_preds_np)
+        out_dict[f'{split}_precision'] = precision_score(all_targets_np, all_preds_np)
+        out_dict[f'{split}_recall']    = recall_score(all_targets_np, all_preds_np)
+        out_dict[f'{split}_f1']        = f1_score(all_targets_np, all_preds_np)
+        out_dict[f'{split}_avg_loss']  = total_test_loss / len(self.loaders[split])
+
+        print(
+            f"{split} average loss: {out_dict[f'{split}_avg_loss']:.4f} | "
+            f"{split} accuracy: {out_dict[f'{split}_accuracy']:.4f} | "
+            f"{split} mcc: {out_dict[f'{split}_mcc']}"
+        )
+
+    print('Saving outputs...')
+    torch.save(out_dict, self.experiment_path / 'test_outputs.pt')

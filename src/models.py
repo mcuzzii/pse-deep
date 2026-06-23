@@ -408,9 +408,9 @@ class CrossAttentionBlock(nn.Module):
         output = x + output                                                         # Residual connection
         output_mask = output_mask.view(x.shape[:-1])                                # (B, S, Ts)
 
-        attn_weights = attn_weights.flatten(0, 1).mean(dim=0).to(torch.float32)     # Trivial: (B*S*H, Ts, K) -> (Ts, K)
-
-        return output, output_mask, attn_weights                                    # (B*S*H, Ts, K) -> (Ts, K)
+        return output, output_mask, attn_weights.mean(dim=1).reshape(
+            x.shape[0], x.shape[1], -1, -1
+        )                                                                           # (B*S, H, Ts, K) -> (B*S, Ts, K) -> (B, S, Ts, K)
 
 class CrossAttnTransformerLayer(nn.Module):
     def __init__(self, embedding_dim, num_heads, expansion=4, dropout=0.1):
@@ -636,6 +636,121 @@ class MultiLayerPerceptron(nn.Module):
             return out, torch.stack(out_vects, dim=0)
         else:
             return out
+
+class GroupSHAPWrapper(nn.Module):
+    def __init__(self, model, args, group_to_indices, non_float_indices, mlp_group_slices=None):
+        """
+        mlp_group_slices: dict {group_name: slice} for MLP case where groups
+                          are contiguous slices of a single flat feature tensor.
+                          If None, uses the standard arg-gating approach.
+        """
+        super().__init__()
+        self.model = model
+        self.args = [a.detach() for a in args]
+        self.group_to_indices = group_to_indices
+        self.non_float_indices = non_float_indices
+        self.group_names = list(group_to_indices.keys())
+        self.mlp_group_slices = mlp_group_slices
+        self.positive_class_idx = (
+            1 if isinstance(model, MultiLayerPerceptron)
+            else 0
+        )
+
+    def forward(self, gates):
+        # gates: (B, num_groups)
+        full_args = [a.clone() for a in self.args]
+
+        if self.mlp_group_slices is not None:
+            # MLP case: gate contiguous slices of the single flat feature tensor
+            x = full_args[0].clone()   # (B, F)
+            for g, (group_name, slc) in enumerate(self.mlp_group_slices.items()):
+                gate = gates[:, g].unsqueeze(-1)   # (B, 1)
+                x[:, slc] = x[:, slc] * gate
+            full_args[0] = x
+        else:
+            # transformer case: gate entire arg tensors
+            for g, (group_name, arg_indices) in enumerate(self.group_to_indices.items()):
+                gate = gates[:, g]
+                for idx in arg_indices:
+                    arg = full_args[idx]
+                    scale = gate
+                    for _ in range(arg.dim() - 1):
+                        scale = scale.unsqueeze(-1)
+                    full_args[idx] = arg * scale
+
+        logits = self.model(*full_args)
+
+        up_idx = self.positive_class_idx
+        down_idx = 1 - up_idx
+
+        score = logits[..., up_idx] - logits[..., down_idx]
+
+        return score
+
+
+def _build_group_map(self, sample_args):
+
+    if not self.transformer:
+        # MLP: single flat tensor, slice into groups by feature range
+        # base: 100 stock features + 10 timestamp features = 110
+        # news (if present): next 15 dims
+        # social (if present): next 15 dims after news
+
+        mlp_group_slices = {
+            'stock_features':    slice(0, 100),
+            'stock_timestamps':  slice(100, 110),
+        }
+        offset = 110
+        if self.news:
+            mlp_group_slices['news_features'] = slice(offset, offset + 15)
+            offset += 15
+        if self.social:
+            mlp_group_slices['social_features'] = slice(offset, offset + 15)
+
+        group_to_indices  = {name: [0] for name in mlp_group_slices}   # all map to arg 0
+        non_float_indices = []
+
+        return group_to_indices, non_float_indices, [0], mlp_group_slices
+
+    mlp_group_slices = None
+
+    if self.transformer and not self.news and not self.social:
+        group_to_indices  = {
+            'stock_timestamps': [0],
+            'stock_features':   [1],
+        }
+        non_float_indices = []
+
+    elif self.transformer and self.news and not self.social:
+        group_to_indices  = {
+            'stock_timestamps': [0],
+            'stock_features':   [2],
+            'news_embeddings':  [1, 3],
+        }
+        non_float_indices = [4]
+
+    elif self.transformer and self.social and not self.news:
+        group_to_indices  = {
+            'stock_features':    [2],
+            'stock_timestamps':  [0],
+            'social_embeddings': [1, 4],
+            'social_impact':     [1, 3],
+        }
+        non_float_indices = [5]
+
+    elif self.transformer and self.news and self.social:
+        group_to_indices  = {
+            'stock_features':    [3],
+            'stock_timestamps':  [0],
+            'news_embeddings':   [1, 5],
+            'social_embeddings': [2, 6],
+            'social_impact':     [2, 4],
+        }
+        non_float_indices = [7, 8]
+
+    float_indices = [i for i in range(len(sample_args)) if i not in non_float_indices]
+
+    return group_to_indices, non_float_indices, float_indices, mlp_group_slices
 
 if __name__ == "__main__":
     B, num_stocks, num_timestamps, input_features = 16, 30, 60, 10
