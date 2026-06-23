@@ -64,10 +64,8 @@ class Eval:
                     val = loss[n, s].item()
                     detectors[s].update(val)
 
-                    print(-detectors[s].width)
-
                     windows[s].append(val)
-                    windows[s] = windows[s][-detectors[s].width:]
+                    windows[s] = windows[s][int(-detectors[s].width):]
                     means[n, s] = sum(windows[s]) / len(windows[s])
                     width_histories[s].append(detectors[s].width)
 
