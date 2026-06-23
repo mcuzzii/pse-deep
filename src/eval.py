@@ -54,7 +54,7 @@ class Eval:
                 logit_scores = logit_scores.squeeze(1).reshape(30, logit_scores.shape[0] // 30, -1).transpose(0, 1)
                 targets = targets.squeeze(1).reshape(30, targets.shape[0] // 30).transpose(0, 1)
 
-            torch.softmax(logit_scores, dim=-1)[..., -1] >= 
+            #torch.softmax(logit_scores, dim=-1)[..., -1] >= 
 
             criterion = nn.CrossEntropyLoss(reduction='none')
             loss = criterion(logit_scores.permute(0, 2, 1), targets)        # N, S
