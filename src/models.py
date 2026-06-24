@@ -150,6 +150,7 @@ class SelfAttentionBlock(nn.Module):
         out = out.contiguous().view(orig_shape)
 
         if attn_weights is not None:
+            attn_weights = attn_weights.reshape(orig_shape[0], orig_shape[1], orig_shape[2], orig_shape[2])
             return out, attn_weights.to(torch.float32)
         else:
             return out
@@ -212,7 +213,7 @@ class SelfAttnTransformerLayers(nn.Module):
             else:
                 str_out = result
         if attn_blocks:
-            return str_out, torch.stack(attn_blocks, dim=0)
+            return str_out, torch.stack(attn_blocks, dim=0).mean(dim=0)
         else:
             return str_out
 
@@ -476,7 +477,7 @@ class CrossAttnTransformerLayers(nn.Module):
         for _, layer in enumerate(self.transformer):
             str_out, attn_weights = layer(str_out, y, indicators, news_mask)
             attn_blocks.append(attn_weights)
-        return str_out, torch.stack(attn_blocks, dim=0)
+        return str_out, torch.stack(attn_blocks, dim=0).mean(dim=0)
 
 class StockNewsTransformer(StockTransformer):
     def __init__(
@@ -512,7 +513,7 @@ class StockNewsTransformer(StockTransformer):
         indicators, news_mask = self.news_selection(x, news_embeddings, t, t_news, mask)
         nft_out, nft_attn_weights = self.news_fusion_layer(x, news_embeddings, indicators, news_mask)               # (B, S, Ts, Es)
 
-        return nft_out, nft_attn_weights, indicators.flatten(0, 2).mean(dim=0)                    # (S, Ts, K, Tn)
+        return nft_out, nft_attn_weights, indicators                    # (B, S, Ts, K, Tn)
     
     def forward(self, t, t_news, x, news, news_mask, return_weights=False):
         tst_result = self.time_series_transform(x, t)
