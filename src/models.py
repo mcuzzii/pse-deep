@@ -741,10 +741,10 @@ class GroupSHAPWrapper(nn.Module):
 
         if self.mlp_group_slices is not None:
             x = full_args[0].clone()
+            mask = torch.ones_like(x)
             for g, (group_name, slc) in enumerate(self.mlp_group_slices.items()):
-                gate = gates[:, g].unsqueeze(-1)
-                x[:, slc] = x[:, slc] * gate
-            full_args[0] = x
+                mask[:, slc] = gates[:, g].unsqueeze(-1).expand_as(mask[:, slc])
+            full_args[0] = x * mask
         else:
             for g, (group_name, arg_indices) in enumerate(self.group_to_indices.items()):
                 gate = gates[:, g]

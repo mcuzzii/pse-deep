@@ -1163,7 +1163,7 @@ class Experiment:
             mlp_group_slices=mlp_group_slices
         )
         background   = torch.zeros(1, num_groups, device=device)
-        explainer    = shap.GradientExplainer(shap_wrapper, background, batch_size=2)
+        explainer    = shap.GradientExplainer(shap_wrapper, background, batch_size=sample_batch[0].shape[0])
 
         out_dict['shap_group_names'] = list(group_to_indices.keys())
 
@@ -1228,13 +1228,14 @@ class Experiment:
                             shap_wrapper.args = [a.detach() for a in args]
                             gates = torch.ones(args[0].shape[0], num_groups, device=device)
 
-                            sv = explainer.shap_values(gates, nsamples=16)
+                            sv = explainer.shap_values(gates, nsamples=32)
 
                             if isinstance(sv, list):
                                 assert len(sv) == 1
                                 sv = sv[0]
 
                             sv = torch.tensor(sv)
+                            print(sv.shape)
                             out_dict[f'{split}_shap_values'].append(sv)
 
                     pbar.update(1)
