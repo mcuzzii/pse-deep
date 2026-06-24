@@ -1181,6 +1181,7 @@ class Experiment:
 
             with tqdm(total=len(self.loaders[split]), desc=f"Testing {split}") as pbar:
 
+                accumulated_weights = list()
                 for i, (*args, target) in enumerate(self.loaders[split]):
                     if interrupted:
                         raise KeyboardInterrupt
@@ -1193,8 +1194,24 @@ class Experiment:
                         if self.transformer and split == 'test':
                             results = model(*args, return_weights=True)
                             logits = results[0]
-                            weights = results[1:]
-                            torch.save(weights, weights_dir / f'batch_{i}.pt')
+
+                            indicators = list()
+                            attn_blocks = list()
+                            for tensor in results[1:]:
+                                if len(tensor.shape) < 5:
+                                    attn_blocks.append(tensor)
+                                else:
+                                    indicators.append(tensor)
+                            
+                            accumulated_weights.append(attn_blocks)
+
+                            if (i + 1) % 5 == 0:
+                                accumulated_weights = list(zip(*accumulated_weights))
+                                accumulated_weights = [torch.cat(attn_blocks).sum(dim=0) for attn_blocks in accumulated_weights]
+                                indicators = [tensor[-1] for tensor in indicators]
+                                torch.save(tuple(accumulated_weights + indicators), weights_dir / f'batch_{i}.pt')
+                                accumulated_weights = list()
+                            
                         else:
                             logits = model(*args)
 
@@ -1211,7 +1228,7 @@ class Experiment:
                             shap_wrapper.args = [a.detach() for a in args]
                             gates = torch.ones(args[0].shape[0], num_groups, device=device)
 
-                            sv = explainer.shap_values(gates, nsamples=8)
+                            sv = explainer.shap_values(gates, nsamples=16)
 
                             if isinstance(sv, list):
                                 assert len(sv) == 1
