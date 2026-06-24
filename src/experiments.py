@@ -1205,7 +1205,7 @@ class Experiment:
                             
                             accumulated_weights.append(attn_blocks)
 
-                            if (i + 1) % 5 == 0:
+                            if (i + 1) % 10 == 0:
                                 accumulated_weights = list(zip(*accumulated_weights))
                                 accumulated_weights = [torch.cat(attn_blocks).sum(dim=0) for attn_blocks in accumulated_weights]
                                 indicators = [tensor[-1] for tensor in indicators]
