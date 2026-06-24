@@ -154,8 +154,8 @@ def run_experiments():
 
     for transformer in (True, False):
         for pred_30 in (True, False):
-            for news in (True, False):
-                for social in (True, False):
+            for news in (False,):
+                for social in (False,):
 
                     news_prefix = 'news_' if news else ''
                     social_prefix = 'social_' if social else ''

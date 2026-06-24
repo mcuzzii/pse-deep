@@ -6,7 +6,5 @@ from pathlib import Path
 
 sys.path.append(str(Path.cwd() / 'src'))
 
-from eval import Eval
-
-eval = Eval()
-eval.compute_model_drift()
+checkpoint = torch.load('experiments/stock_mlp_10/stock_mlp_10.pt', map_location=torch.device('cpu'), weights_only=False)
+print(checkpoint.get('best_threshold'))

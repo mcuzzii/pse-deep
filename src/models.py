@@ -12,7 +12,7 @@ class PerturbedTopK(nn.Module):
         self.sigma = sigma
         self.k = k
 
-    def __call__(self, x):
+    def forward(self, x):
         return PerturbedTopKFunction.apply(x, self.k, self.num_samples, self.sigma)
 
     def set_sigma(self, sigma: float):
@@ -409,7 +409,7 @@ class CrossAttentionBlock(nn.Module):
         output_mask = output_mask.view(x.shape[:-1])                                # (B, S, Ts)
 
         return output, output_mask, attn_weights.mean(dim=1).reshape(
-            x.shape[0], x.shape[1], -1, -1
+            x.shape[0], x.shape[1], x.shape[2], indicators.shape[3]
         )                                                                           # (B*S, H, Ts, K) -> (B*S, Ts, K) -> (B, S, Ts, K)
 
 class CrossAttnTransformerLayer(nn.Module):
@@ -657,18 +657,25 @@ class GroupSHAPWrapper(nn.Module):
         )
 
     def forward(self, gates):
-        # gates: (B, num_groups)
-        full_args = [a.clone() for a in self.args]
+        # gates: (B_shap, num_groups) — B_shap may differ from original batch size
+        B_shap = gates.shape[0]
+
+        # expand args to match B_shap
+        full_args = []
+        for a in self.args:
+            if a.shape[0] != B_shap:
+                repeats = [B_shap // a.shape[0]] + [1] * (a.dim() - 1)
+                full_args.append(a.repeat(repeats))
+            else:
+                full_args.append(a.clone())
 
         if self.mlp_group_slices is not None:
-            # MLP case: gate contiguous slices of the single flat feature tensor
-            x = full_args[0].clone()   # (B, F)
+            x = full_args[0].clone()
             for g, (group_name, slc) in enumerate(self.mlp_group_slices.items()):
-                gate = gates[:, g].unsqueeze(-1)   # (B, 1)
+                gate = gates[:, g].unsqueeze(-1)
                 x[:, slc] = x[:, slc] * gate
             full_args[0] = x
         else:
-            # transformer case: gate entire arg tensors
             for g, (group_name, arg_indices) in enumerate(self.group_to_indices.items()):
                 gate = gates[:, g]
                 for idx in arg_indices:
