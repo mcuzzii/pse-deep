@@ -1215,12 +1215,12 @@ class Experiment:
                         else:
                             logits = model(*args)
 
-                        out_dict[f'{split}_logit_scores'].append(logits.cpu())
+                        out_dict[f'{split}_logit_scores'].append(logits)
 
                         loss = criterion(logits.permute(0, 2, 1), target)
                         total_test_loss += loss.item()
 
-                        out_dict[f'{split}_all_targets'].append(target.cpu())
+                        out_dict[f'{split}_all_targets'].append(target)
 
                     # --- SHAP: test split only ---
                     if split == 'test' and i % 44 == 0:
@@ -1235,7 +1235,7 @@ class Experiment:
                                 sv = sv[0]
 
                             sv = torch.tensor(sv)
-                            out_dict[f'{split}_shap_values'].append(sv.cpu())
+                            out_dict[f'{split}_shap_values'].append(sv)
 
                     pbar.update(1)
 
