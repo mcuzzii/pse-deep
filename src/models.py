@@ -149,7 +149,7 @@ class SelfAttentionBlock(nn.Module):
         out = x.flatten(0, 1) + attn_out
         out = out.contiguous().view(orig_shape)
 
-        if attn_out:
+        if attn_weights is not None:
             return out, attn_weights.to(torch.float32)
         else:
             return out
