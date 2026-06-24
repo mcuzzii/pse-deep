@@ -1132,7 +1132,7 @@ def run_testing(self, force=False):
     checkpoint = torch.load(best_path, map_location=device, weights_only=False)
     model.load_state_dict(checkpoint["model"])
     class_weights = checkpoint["class_weights"]
-    best_threshold = checkpoint.get("best_threshold")
+    best_thresholds = checkpoint.get("best_thresholds")
 
     criterion = nn.CrossEntropyLoss(weight=class_weights)
 
@@ -1171,9 +1171,13 @@ def run_testing(self, force=False):
         if split == 'test':
             out_dict[f'{split}_shap_values'] = []
 
+            if self.transformer:
+                weights_dir = self.experiment_path / 'weights'
+                weights_dir.mkdir(parents=True, exist_ok=True)
+
         with tqdm(total=len(self.loaders[split]), desc=f"Testing {split}") as pbar:
 
-            for *args, target in self.loaders[split]:
+            for i, (*args, target) in enumerate(self.loaders[split]):
                 if interrupted:
                     raise KeyboardInterrupt
 
@@ -1182,7 +1186,14 @@ def run_testing(self, force=False):
 
                 # --- standard inference ---
                 with torch.no_grad():
-                    logits = model(*args, return_weights=True)
+                    if self.transformer and split == 'test':
+                        results = model(*args, return_weights=True)
+                        logits = results[0]
+                        weights = results[1:]
+                        torch.save(weights, weights_dir / f'batch_{i}.pt')
+                    else:
+                        logits = model(*args)
+
                     out_dict[f'{split}_logit_scores'].append(logits.cpu())
 
                     loss = criterion(logits.permute(0, 2, 1), target)
@@ -1211,12 +1222,22 @@ def run_testing(self, force=False):
         out_dict[f'{split}_logit_scores'] = torch.cat(out_dict[f'{split}_logit_scores'])
         if split == 'test':
             out_dict[f'{split}_shap_values'] = torch.cat(out_dict[f'{split}_shap_values'])   # (N, num_groups)
+        
+        if 'mlp' in self.experiment_name:
+            out_dict[f'{split}_logit_scores'] = out_dict[f'{split}_logit_scores'].squeeze(1).reshape(
+                30, out_dict[f'{split}_logit_scores'].shape[0] // 30, -1
+            ).transpose(0, 1)                                                                               # N, S, 2
+            out_dict[f'{split}_all_targets'] = out_dict[f'{split}_all_targets'].squeeze(1).reshape(
+                30, out_dict[f'{split}_all_targets'].shape[0] // 30
+            ).transpose(0, 1)                                                                               # N, S
 
         if 'transformer' in self.experiment_name:
             out_dict[f'{split}_logit_scores'] = out_dict[f'{split}_logit_scores'][..., [1, 0]]
             out_dict[f'{split}_all_targets']  = 1 - out_dict[f'{split}_all_targets']
 
-        all_preds_flat   = (torch.softmax(out_dict[f'{split}_logit_scores'], dim=-1)[..., 1].flatten() >= best_threshold).float()
+        all_preds_flat   = (
+            torch.softmax(out_dict[f'{split}_logit_scores'], dim=-1)[..., 1] >= best_thresholds.unsqueeze(0)
+        ).float().flatten()
         all_targets_flat = out_dict[f'{split}_all_targets'].flatten()
 
         all_preds_np   = all_preds_flat.cpu().numpy()
