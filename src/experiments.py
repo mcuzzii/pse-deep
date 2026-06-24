@@ -1223,7 +1223,7 @@ class Experiment:
                         out_dict[f'{split}_all_targets'].append(target)
 
                     # --- SHAP: test split only ---
-                    if split == 'test' and i % 44 == 0:
+                    if split == 'test' and i % (2 if 'mlp' in self.experiment_name else 44) == 0:
                         with torch.enable_grad():
                             shap_wrapper.args = [a.detach() for a in args]
                             gates = torch.ones(args[0].shape[0], num_groups, device=device)
@@ -1235,7 +1235,6 @@ class Experiment:
                                 sv = sv[0]
 
                             sv = torch.tensor(sv)
-                            print(sv.shape)
                             out_dict[f'{split}_shap_values'].append(sv)
 
                     pbar.update(1)

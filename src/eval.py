@@ -48,11 +48,8 @@ class Eval:
             test_outputs = dir / 'test_outputs.pt'
             out = torch.load(test_outputs, map_location=torch.device('cpu'), weights_only=False)
 
-            logit_scores = out['test_logit_scores']                         # N, S, 2 for transformers, N*S, 1, 2 for mlp
-            targets = out['test_all_targets']                               # N, S for transformers, N*S, 1 for mlp
-            if 'mlp' in dir.name:
-                logit_scores = logit_scores.squeeze(1).reshape(30, logit_scores.shape[0] // 30, -1).transpose(0, 1)
-                targets = targets.squeeze(1).reshape(30, targets.shape[0] // 30).transpose(0, 1)
+            logit_scores = out['test_logit_scores']                         # N, S, 2
+            targets = out['test_all_targets']                               # N, S
 
             #torch.softmax(logit_scores, dim=-1)[..., -1] >= 
 
