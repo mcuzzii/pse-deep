@@ -137,7 +137,7 @@ class SelfAttentionBlock(nn.Module):
                 diagonal=1
             )
 
-        attn_out, attn_weights = self.attention(      
+        attn_out, attn_weights = self.attention(
             norm_x, norm_x, norm_x,
             attn_mask=attn_mask,
             need_weights=True,
@@ -147,8 +147,12 @@ class SelfAttentionBlock(nn.Module):
         attn_out = self.dropout(attn_out)
         
         out = x.flatten(0, 1) + attn_out
+        out = out.contiguous().view(orig_shape)
 
-        return out.contiguous().view(orig_shape), attn_weights.to(torch.float32)
+        if attn_out:
+            return out, attn_weights.to(torch.float32)
+        else:
+            return out
 
 class FeedForward(nn.Module):
     def __init__(self, embedding_dim, expansion=4, dropout=0.1):
@@ -179,9 +183,15 @@ class SelfAttnTransformerLayer(nn.Module):
         self.ffnn = FeedForward(embedding_dim, expansion, dropout)
 
     def forward(self, x):
-        attn_out, attn_weights = self.attn_blk(x)
-        ffn_out = self.ffnn(attn_out)
-        return ffn_out, attn_weights
+        result = self.attn_blk(x)
+        if isinstance(result, tuple):
+            attn_out, attn_weights = result
+            ffn_out = self.ffnn(attn_out)
+            return ffn_out, attn_weights
+        else:
+            attn_out = result
+            ffn_out = self.ffnn(attn_out)
+            return ffn_out
 
 class SelfAttnTransformerLayers(nn.Module):
     def __init__(self, embedding_dim, num_heads, num_layers=1, expansion=4, dropout=0.1, is_causal=False):
@@ -195,9 +205,16 @@ class SelfAttnTransformerLayers(nn.Module):
         attn_blocks = []
         str_out = x.clone()
         for _, layer in enumerate(self.transformer):
-            str_out, attn_weights = layer(str_out)
-            attn_blocks.append(attn_weights)
-        return str_out, torch.stack(attn_blocks, dim=0)
+            result = layer(str_out)
+            if isinstance(result, tuple):
+                str_out, attn_weights = result
+                attn_blocks.append(attn_weights)
+            else:
+                str_out = result
+        if attn_blocks:
+            return str_out, torch.stack(attn_blocks, dim=0)
+        else:
+            return str_out
 
 class StockTransformer(nn.Module):
     def __init__(
@@ -224,24 +241,46 @@ class StockTransformer(nn.Module):
     def time_series_transform(self, x, t):
         embeddings = self.fin_embed(x, t)
 
-        tst_out, attn_weights = self.time_series_transformer(embeddings)
-        return tst_out, attn_weights
+        result = self.time_series_transformer(embeddings)
+        if isinstance(result, tuple):
+            tst_out, attn_weights = result
+            return tst_out, attn_weights
+        else:
+            tst_out = result
+            return tst_out
     
     def inter_stock_transform(self, x):
         x_transposed = x.transpose(-3, -2).contiguous()
-        ist_out, attn_weights = self.inter_stock_transformer(x_transposed)
+        
+        result = self.inter_stock_transformer(x_transposed)
+        if isinstance(result, tuple):
+            ist_out, attn_weights = result
+        else:
+            ist_out = result
 
         last_vectors = ist_out[:, -1, :, :]
-
         out = self.projection(last_vectors)
-        return out, attn_weights
+
+        if isinstance(result, tuple):
+            return out, attn_weights
+        else:
+            return out
     
     def forward(self, t, x, return_weights=False):
 
-        tst_out, tst_attn_weights = self.time_series_transform(x, t)
-        ist_out, ist_attn_weights = self.inter_stock_transform(tst_out)
+        tst_result = self.time_series_transform(x, t)
+        if isinstance(tst_result, tuple):
+            tst_out, tst_attn_weights = tst_result
+        else:
+            tst_out = tst_result
 
-        if return_weights:
+        ist_result = self.inter_stock_transform(tst_out)
+        if isinstance(ist_result, tuple):
+            ist_out, ist_attn_weights = ist_result
+        else:
+            ist_out = ist_result
+
+        if return_weights and isinstance(tst_result, tuple) and isinstance(ist_result, tuple):
             return ist_out, tst_attn_weights, ist_attn_weights
         else:
             return ist_out
@@ -476,11 +515,21 @@ class StockNewsTransformer(StockTransformer):
         return nft_out, nft_attn_weights, indicators.flatten(0, 2).mean(dim=0)                    # (S, Ts, K, Tn)
     
     def forward(self, t, t_news, x, news, news_mask, return_weights=False):
-        tst_out, tst_attn_weights = self.time_series_transform(x, t)
-        nft_out, nft_attn_weights, indicators = self.news_fusion_transform(tst_out, news, t, t_news, news_mask)
-        ist_out, ist_attn_weights = self.inter_stock_transform(nft_out)
+        tst_result = self.time_series_transform(x, t)
+        if isinstance(tst_result, tuple):
+            tst_out, tst_attn_weights = tst_result
+        else:
+            tst_out = tst_result
 
-        if return_weights:
+        nft_out, nft_attn_weights, indicators = self.news_fusion_transform(tst_out, news, t, t_news, news_mask)
+
+        ist_result = self.inter_stock_transform(nft_out)
+        if isinstance(ist_result, tuple):
+            ist_out, ist_attn_weights = ist_result
+        else:
+            ist_out = ist_result
+
+        if return_weights and isinstance(tst_result, tuple) and isinstance(ist_result, tuple):
             return ist_out, tst_attn_weights, nft_attn_weights, indicators, ist_attn_weights
         else:
             return ist_out
@@ -528,11 +577,21 @@ class StockSocialTransformer(StockTransformer):
         return sft_out, sft_attn_weights, indicators
     
     def forward(self, t, ts, x, s, es, m, return_weights=False):
-        tst_out, tst_attn_weights = self.time_series_transform(x, t)
-        sft_out, sft_attn_weights, indicators = self.social_fusion_transform(tst_out, s, es, t, ts, m)
-        ist_out, ist_attn_weights = self.inter_stock_transform(sft_out)
+        tst_result = self.time_series_transform(x, t)
+        if isinstance(tst_result, tuple):
+            tst_out, tst_attn_weights = tst_result
+        else:
+            tst_out = tst_result
 
-        if return_weights:
+        sft_out, sft_attn_weights, indicators = self.social_fusion_transform(tst_out, s, es, t, ts, m)
+
+        ist_result = self.inter_stock_transform(sft_out)
+        if isinstance(ist_result, tuple):
+            ist_out, ist_attn_weights = ist_result
+        else:
+            ist_out = ist_result
+
+        if return_weights and isinstance(tst_result, tuple) and isinstance(ist_result, tuple):
             return ist_out, tst_attn_weights, sft_attn_weights, indicators, ist_attn_weights
         else:
             return ist_out
@@ -578,13 +637,23 @@ class StockNewsSocialTransformer(StockNewsTransformer):
         return sft_out, sft_attn_weights, indicators
     
     def forward(self, t, tn, ts, x, s, en, es, mn, ms, return_weights=False):
-        tst_out, tst_attn_weights = self.time_series_transform(x, t)
+        tst_result = self.time_series_transform(x, t)
+        if isinstance(tst_result, tuple):
+            tst_out, tst_attn_weights = tst_result
+        else:
+            tst_out = tst_result
+
         sft_out, sft_attn_weights, s_indicators = self.social_fusion_transform(tst_out, s, es, t, ts, ms)
         nft_out, nft_attn_weights, n_indicators = self.news_fusion_transform(tst_out, en, t, tn, mn)
         prj_out = self.down_project(torch.cat([sft_out, nft_out], dim=-1))
-        ist_out, ist_attn_weights = self.inter_stock_transform(prj_out)
 
-        if return_weights:
+        ist_result = self.inter_stock_transform(prj_out)
+        if isinstance(ist_result, tuple):
+            ist_out, ist_attn_weights = ist_result
+        else:
+            ist_out = ist_result
+
+        if return_weights and isinstance(tst_result, tuple) and isinstance(ist_result, tuple):
             return ist_out, tst_attn_weights, sft_attn_weights, nft_attn_weights, ist_attn_weights, s_indicators, n_indicators
         else:
             return ist_out

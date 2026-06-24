@@ -197,7 +197,7 @@ def run_experiments():
                     )
                     experiment.plot_loss_curves()
                     experiment.threshold_optimize()
-                    experiment.run_testing(force=True)
+                    experiment.run_testing(force=True, no_train=True)
 
 def main():
     evaluator = Eval()

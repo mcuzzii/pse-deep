@@ -1118,7 +1118,7 @@ class Experiment:
         torch.save(checkpoint, tmp_path)
         os.replace(tmp_path, best_path)
     
-    def run_testing(self, force=False):
+    def run_testing(self, force=False, no_train=False):
 
         if (self.experiment_path / 'test_outputs.pt').exists() and not force:
             print("Test results already saved. Skipping...")
@@ -1136,7 +1136,11 @@ class Experiment:
 
         criterion = nn.CrossEntropyLoss(weight=class_weights)
 
-        out_dict = dict()
+        if (self.experiment_path / 'test_outputs.pt').exists():
+            out_dict = torch.load(self.experiment_path / 'test_outputs.pt', map_location=torch.device('cpu'), weights_only=False)
+        else:
+            out_dict = dict()
+        
         model.eval()
 
         interrupted = False
@@ -1163,7 +1167,7 @@ class Experiment:
 
         out_dict['shap_group_names'] = list(group_to_indices.keys())
 
-        for split in ('test', 'train'):
+        for split in (('test',) if no_train else ('test', 'train')):
 
             total_test_loss = 0
             out_dict[f'{split}_all_targets']  = []
