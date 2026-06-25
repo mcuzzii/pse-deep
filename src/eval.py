@@ -433,11 +433,11 @@ class Eval:
             'logistic_regression': LogisticRegression(
                 max_iter=1000,
                 n_jobs=n_jobs,
-                verbose=1,
+                verbose=2,
             ),
             'linear_svc': LinearSVC(
                 max_iter=2000,
-                verbose=1,
+                verbose=2,
             ),
             'random_forest': RandomForestClassifier(
                 n_estimators=100,
@@ -499,6 +499,16 @@ class Eval:
             # apply thresholds and flatten back
             y_pred = (test_scores_s >= best_thresholds).astype(int).T.flatten()  # (S, N_test//S) -> flat
             y_test_flat = y_test_s.flatten()
+
+            # per-stock MCC
+            y_pred_s = (test_scores_s >= best_thresholds).astype(int)  # (N_test//S, S)
+            per_stock_mcc = np.array([
+                matthews_corrcoef(y_test_s[s], y_pred_s[:, s])
+                for s in range(S)
+            ])
+            pd.DataFrame({'stock_id': range(S), 'mcc': per_stock_mcc}).to_csv(
+                out_dir / f'{name}_per_stock_mcc.csv', index=False
+            )
 
             t1 = time.time()
             metrics = {
