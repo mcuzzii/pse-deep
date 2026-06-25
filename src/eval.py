@@ -509,6 +509,11 @@ class Eval:
             pd.DataFrame({'stock_id': range(S), 'mcc': per_stock_mcc}).to_csv(
                 out_dir / f'{name}_per_stock_mcc.csv', index=False
             )
+            y_pred_per_stock = (test_scores_s >= best_thresholds).astype(int).T  # (S, N_test//S)
+            torch.save(
+                torch.tensor(y_pred_per_stock, dtype=torch.int32),
+                out_dir / f'{name}_y_preds.pt'
+            )
 
             t1 = time.time()
             metrics = {
