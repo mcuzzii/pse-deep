@@ -1113,6 +1113,9 @@ class Experiment:
         print(f'Best thresholds: {best_thresholds}; MCCs: {best_mccs}')
 
         checkpoint['best_threshold'] = best_thresholds
+        checkpoint['val_logit_scores'] = logit_scores
+        checkpoint['val_all_targets'] = all_targets
+        checkpoint['best_mccs'] = best_mccs
 
         tmp_path = best_path.with_suffix('.tmp')
         torch.save(checkpoint, tmp_path)
@@ -1137,7 +1140,7 @@ class Experiment:
         criterion = nn.CrossEntropyLoss(weight=class_weights)
 
         if (self.experiment_path / 'test_outputs.pt').exists():
-            out_dict = torch.load(self.experiment_path / 'test_outputs.pt', map_location=torch.device('cpu'), weights_only=False)
+            out_dict = torch.load(self.experiment_path / 'test_outputs.pt', map_location=device, weights_only=False)
         else:
             out_dict = dict()
         
@@ -1244,7 +1247,11 @@ class Experiment:
                 out_dict[f'{split}_logit_scores'] = torch.cat(out_dict[f'{split}_logit_scores'])
                 if split == 'test':
                     out_dict[f'{split}_shap_values'] = torch.cat(out_dict[f'{split}_shap_values'])   # (N, num_groups)
-                
+
+                if 'transformer' in self.experiment_name:
+                    out_dict[f'{split}_logit_scores'] = out_dict[f'{split}_logit_scores'][..., [1, 0]]
+                    out_dict[f'{split}_all_targets']  = 1 - out_dict[f'{split}_all_targets']
+            
                 if 'mlp' in self.experiment_name:
                     out_dict[f'{split}_logit_scores'] = out_dict[f'{split}_logit_scores'].squeeze(1).reshape(
                         30, out_dict[f'{split}_logit_scores'].shape[0] // 30, -1
@@ -1252,12 +1259,6 @@ class Experiment:
                     out_dict[f'{split}_all_targets'] = out_dict[f'{split}_all_targets'].squeeze(1).reshape(
                         30, out_dict[f'{split}_all_targets'].shape[0] // 30
                     ).transpose(0, 1)                                                                               # N, S
-
-                if 'transformer' in self.experiment_name:
-                    out_dict[f'{split}_logit_scores'] = out_dict[f'{split}_logit_scores'][..., [1, 0]]
-                    out_dict[f'{split}_all_targets']  = 1 - out_dict[f'{split}_all_targets']
-            
-            out_dict[f'{split}_logit_scores'] = out_dict[f'{split}_logit_scores'].to(device)
 
             all_preds_flat   = (
                 torch.softmax(out_dict[f'{split}_logit_scores'], dim=-1)[..., 1] >= best_thresholds.unsqueeze(0)
@@ -1272,7 +1273,8 @@ class Experiment:
             out_dict[f'{split}_precision'] = precision_score(all_targets_np, all_preds_np)
             out_dict[f'{split}_recall']    = recall_score(all_targets_np, all_preds_np)
             out_dict[f'{split}_f1']        = f1_score(all_targets_np, all_preds_np)
-            out_dict[f'{split}_avg_loss']  = total_test_loss / len(self.loaders[split])
+            if not recompute_only:
+                out_dict[f'{split}_avg_loss']  = total_test_loss / len(self.loaders[split])
 
             print(
                 f"{split} average loss: {out_dict[f'{split}_avg_loss']:.4f} | "
