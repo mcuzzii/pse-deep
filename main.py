@@ -203,6 +203,7 @@ def main():
     evaluator = Eval()
     evaluator.overall_metrics()
     evaluator.compute_experiment_data()
+    evaluator.random_intercept_mixed_effects()
 
 if __name__ == '__main__':
     main()

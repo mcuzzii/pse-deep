@@ -73,117 +73,138 @@ class Eval:
             test_outputs = dir / 'test_outputs.pt'
             out = torch.load(test_outputs, map_location=device, weights_only=False)
 
-            val_calib_thresholds = model['best_threshold']                                  # (S,)
             logit_scores = out['test_logit_scores']
-            val_logit_scores = model['val_logit_scores']
-            softmax_scores = torch.softmax(logit_scores, dim=-1)[..., -1]                   # N, S, 2 -> N, S
-            val_softmax_scores = torch.softmax(val_logit_scores, dim=-1)[..., -1]
-            targets = out['test_all_targets']                                               # N, S
-            val_targets = model['val_all_targets']
+            targets = out['test_all_targets']                                                   # N, S
 
-            best_thresholds = torch.zeros_like(targets, dtype=torch.float32)
-            for i in range(0, logit_scores.shape[0], (logit_scores.shape[0] // 10 + 1)):
-                start_idx = i
-                end_idx = min(i + logit_scores.shape[0] // 10 + 1, logit_scores.shape[0])
+            if 'mcc_scores' not in out:
 
-                if i == 0:
-                    print(f'Best thresholds: {val_calib_thresholds}')
-                    best_thresholds[start_idx:end_idx] = val_calib_thresholds.unsqueeze(0).expand(end_idx - start_idx, -1).contiguous()
-                    print(f'Thresholds input: {val_calib_thresholds.unsqueeze(0).expand(end_idx - start_idx, -1).shape}')
-                    print(f'Thresholds tensor: {best_thresholds[start_idx:end_idx]}')
-                    print(f'Thresholds tensor shape: {best_thresholds[start_idx:end_idx].shape}')
-                else:
-                    mccs, thresholds = mcc_curve(
-                        torch.cat([val_targets, targets[:start_idx]]),
-                        torch.cat([val_softmax_scores, softmax_scores[:start_idx]])
-                    )                                                                       # (T, S), (T,)
+                overall_scores[dir.name] = dict()
 
-                    best_idxs = torch.argmax(mccs, dim=0)
-                    thresholds = thresholds[best_idxs]
+                val_calib_thresholds = model['best_threshold']                                  # (S,)
+                val_logit_scores = model['val_logit_scores']
+                softmax_scores = torch.softmax(logit_scores, dim=-1)[..., -1]                   # N, S, 2 -> N, S
+                val_softmax_scores = torch.softmax(val_logit_scores, dim=-1)[..., -1]
+                val_targets = model['val_all_targets']
 
-                    print(f'Best thresholds: {thresholds}')
-                    best_thresholds[start_idx:end_idx] = thresholds.unsqueeze(0).expand(end_idx - start_idx, -1).contiguous()
-                    print(f'Thresholds tensor: {best_thresholds[start_idx:end_idx]}')
-                    print(f'Thresholds tensor shape: {best_thresholds[start_idx:end_idx].shape}')
+                best_thresholds = torch.zeros_like(targets, dtype=torch.float32)
+                for i in range(0, logit_scores.shape[0], (logit_scores.shape[0] // 10 + 1)):
+                    start_idx = i
+                    end_idx = min(i + logit_scores.shape[0] // 10 + 1, logit_scores.shape[0])
 
-            preds = softmax_scores >= best_thresholds                                       # N, S
+                    if i == 0:
+                        print(f'Best thresholds: {val_calib_thresholds}')
+                        best_thresholds[start_idx:end_idx] = val_calib_thresholds.unsqueeze(0).expand(end_idx - start_idx, -1).contiguous()
+                        print(f'Thresholds input: {val_calib_thresholds.unsqueeze(0).expand(end_idx - start_idx, -1).shape}')
+                        print(f'Thresholds tensor: {best_thresholds[start_idx:end_idx]}')
+                        print(f'Thresholds tensor shape: {best_thresholds[start_idx:end_idx].shape}')
+                    else:
+                        mccs, thresholds = mcc_curve(
+                            torch.cat([val_targets, targets[:start_idx]]),
+                            torch.cat([val_softmax_scores, softmax_scores[:start_idx]])
+                        )                                                                       # (T, S), (T,)
+
+                        best_idxs = torch.argmax(mccs, dim=0)
+                        thresholds = thresholds[best_idxs]
+
+                        print(f'Best thresholds: {thresholds}')
+                        best_thresholds[start_idx:end_idx] = thresholds.unsqueeze(0).expand(end_idx - start_idx, -1).contiguous()
+                        print(f'Thresholds tensor: {best_thresholds[start_idx:end_idx]}')
+                        print(f'Thresholds tensor shape: {best_thresholds[start_idx:end_idx].shape}')
+
+                preds = softmax_scores >= best_thresholds                                       # N, S
+                
+                preds_flat = preds.flatten()
+                targets_flat = targets.flatten()
+                preds_np = preds_flat.cpu().numpy()
+                targets_np = targets_flat.cpu().numpy()
+
+                tp = ((preds == 1) & (targets == 1)).sum(dim=0).float()                         # N, S -> S,
+                tn = ((preds == 0) & (targets == 0)).sum(dim=0).float()
+                fp = ((preds == 1) & (targets == 0)).sum(dim=0).float()
+                fn = ((preds == 0) & (targets == 1)).sum(dim=0).float()
+
+                numerator = tp * tn - fp * fn                                                   # S,
+                denom = torch.sqrt((tp+fp) * (tp+fn) * (tn+fp) * (tn+fn))                       # S,
+
+                mcc = torch.where(denom > 0, numerator / denom, torch.zeros_like(numerator))    # S,
+                out['mcc_scores'] = mcc
+                print(f'MCCs: {mcc}')
+                print()
+
+                torch.save(out, test_outputs)
+
+                overall_scores[dir.name].update({
+                    'test_accuracy_rolling': (preds_flat == targets_flat).float().mean().item(),
+                    'test_mcc_rolling': matthews_corrcoef(targets_np, preds_np),
+                    'test_precision_rolling': precision_score(targets_np, preds_np),
+                    'test_recall_rolling': recall_score(targets_np, preds_np),
+                    'test_f1_rolling': f1_score(targets_np, preds_np),
+                    'test_precision_neg_rolling': precision_score(1 - targets_np, 1 - preds_np),
+                    'test_recall_neg_rolling': recall_score(1 - targets_np, 1 - preds_np),
+                    'test_f1_neg_rolling': f1_score(1 - targets_np, 1 - preds_np),
+                })
             
-            preds_flat = preds.flatten()
-            targets_flat = targets.flatten()
-            preds_np = preds_flat.cpu().numpy()
-            targets_np = targets_flat.cpu().numpy()
+            if 'drift_from_width' not in out:
 
-            tp = ((preds == 1) & (targets == 1)).sum(dim=0).float()                         # N, S -> S,
-            tn = ((preds == 0) & (targets == 0)).sum(dim=0).float()
-            fp = ((preds == 1) & (targets == 0)).sum(dim=0).float()
-            fn = ((preds == 0) & (targets == 1)).sum(dim=0).float()
+                if dir.name not in overall_scores:
+                    overall_scores[dir.name] = dict()
 
-            numerator = tp * tn - fp * fn                                                   # S,
-            denom = torch.sqrt((tp+fp) * (tp+fn) * (tn+fp) * (tn+fn))                       # S,
+                criterion = nn.CrossEntropyLoss(reduction='none')
+                loss = criterion(logit_scores.permute(0, 2, 1), targets)                        # N, S
 
-            mcc = torch.where(denom > 0, numerator / denom, torch.zeros_like(numerator))    # S,
-            out['mcc_scores'] = mcc
-            print(f'MCCs: {mcc}')
-            print()
+                detectors = [ADWIN() for _ in range(loss.shape[1])]
+                windows = [[] for _ in range(loss.shape[1])]
+                means = torch.zeros_like(loss)
+                width_histories = torch.zeros_like(loss)
 
-            criterion = nn.CrossEntropyLoss(reduction='none')
-            loss = criterion(logit_scores.permute(0, 2, 1), targets)                        # N, S
+                for s in tqdm(range(loss.shape[1])):
+                    for n in range(loss.shape[0]):
+                        val = loss[n, s].item()
+                        detectors[s].update(val)
 
-            detectors = [ADWIN() for _ in range(loss.shape[1])]
-            windows = [[] for _ in range(loss.shape[1])]
-            means = torch.zeros_like(loss)
-            width_histories = torch.zeros_like(loss)
+                        windows[s].append(val)
+                        windows[s] = windows[s][int(-detectors[s].width):]
+                        means[n, s] = sum(windows[s]) / len(windows[s])
+                        width_histories[n, s] = detectors[s].width
+                
+                msd = ((loss - means) ** 2)
 
-            for s in tqdm(range(loss.shape[1])):
-                for n in range(loss.shape[0]):
-                    val = loss[n, s].item()
-                    detectors[s].update(val)
+                msd = (msd - msd.min()) / (msd.max() - msd.min())
+                mean_squared_loss_deviations = msd.mean(dim=0)
 
-                    windows[s].append(val)
-                    windows[s] = windows[s][int(-detectors[s].width):]
-                    means[n, s] = sum(windows[s]) / len(windows[s])
-                    width_histories[n, s] = detectors[s].width
-            
-            msd = ((loss - means) ** 2)
+                width_histories = (width_histories - width_histories.min()) / (width_histories.max() - width_histories.min())
+                drift_from_width = 1 - width_histories.mean(dim=0)
 
-            msd = (msd - msd.min()) / (msd.max() - msd.min())
-            mean_squared_loss_deviations = msd.mean(dim=0)
+                msd_mean = msd.mean().item()
+                widths_mean = 1 - width_histories.mean().item()
+                combined_drift_score_mean = msd_mean * widths_mean
 
-            width_histories = (width_histories - width_histories.min()) / (width_histories.max() - width_histories.min())
-            drift_from_width = 1 - width_histories.mean(dim=0)
+                print(f'Drift scores: {mean_squared_loss_deviations}')
+                print(f'Drift from width: {drift_from_width}')
 
-            msd_mean = msd.mean().item()
-            widths_mean = 1 - width_histories.mean().item()
-            combined_drift_score_mean = msd_mean * widths_mean
+                out['mean_squared_loss_deviations'] = mean_squared_loss_deviations
+                out['drift_from_width'] = drift_from_width
+                out['combined_drift_scores'] = mean_squared_loss_deviations * drift_from_width
 
-            print(f'Drift scores: {mean_squared_loss_deviations}')
-            print(f'Drift from width: {drift_from_width}')
+                torch.save(out, test_outputs)
 
-            out['mean_squared_loss_deviations'] = mean_squared_loss_deviations
-            out['drift_from_width'] = drift_from_width
-            out['combined_drift_scores'] = mean_squared_loss_deviations * drift_from_width
-
-            torch.save(out, test_outputs)
-
-            overall_scores[dir.name] = {
-                'test_accuracy_rolling': (preds_flat == targets_flat).float().mean().item(),
-                'test_mcc_rolling': matthews_corrcoef(targets_np, preds_np),
-                'test_precision_rolling': precision_score(targets_np, preds_np),
-                'test_recall_rolling': recall_score(targets_np, preds_np),
-                'test_f1_rolling': f1_score(targets_np, preds_np),
-                'test_precision_neg_rolling': precision_score(1 - targets_np, 1 - preds_np),
-                'test_recall_neg_rolling': recall_score(1 - targets_np, 1 - preds_np),
-                'test_f1_neg_rolling': f1_score(1 - targets_np, 1 - preds_np),
-                'msd_mean': msd_mean,
-                'widths_mean': widths_mean,
-                'combined_drift_score_mean': combined_drift_score_mean
-            }
+                overall_scores[dir.name].update({
+                    'msd_mean': msd_mean,
+                    'widths_mean': widths_mean,
+                    'combined_drift_score_mean': combined_drift_score_mean
+                })
+        
+        if not overall_scores:
+            return
         
         overall_scores = pd.DataFrame.from_dict(overall_scores, orient='index')
         model_scores[overall_scores.columns] = overall_scores
         model_scores.to_csv(self.results_path / 'model_scores.csv')
 
     def random_intercept_mixed_effects(self):
+        import itertools
+        from scipy import stats
+        import matplotlib.pyplot as plt
 
         mcc_df = pd.DataFrame()
         drift_df = pd.DataFrame()
@@ -204,30 +225,113 @@ class Eval:
         mcc_df = mcc_df.melt(id_vars=['stock_id'], var_name='setting', value_name='mcc')
         drift_df = drift_df.melt(id_vars=['stock_id'], var_name='setting', value_name='drift')
 
-        mcc_df['transformer'] = mcc_df['setting'].str.contains('transformer').astype(int)
-        mcc_df['news'] = mcc_df['setting'].str.contains('news').astype(int)
-        mcc_df['social'] = mcc_df['setting'].str.contains('social').astype(int)
-        mcc_df['pred_30'] = mcc_df['setting'].str.contains('30').astype(int)
-        mcc_df.drop(columns=['setting'], inplace=True)
+        for df in [mcc_df, drift_df]:
+            df['transformer'] = df['setting'].str.contains('transformer').astype(int)
+            df['news'] = df['setting'].str.contains('news').astype(int)
+            df['social'] = df['setting'].str.contains('social').astype(int)
+            df['pred_30'] = df['setting'].str.contains('30').astype(int)
+            df.drop(columns=['setting'], inplace=True)
 
-        drift_df['transformer'] = drift_df['setting'].str.contains('transformer').astype(int)
-        drift_df['news'] = drift_df['setting'].str.contains('news').astype(int)
-        drift_df['social'] = drift_df['setting'].str.contains('social').astype(int)
-        drift_df['pred_30'] = drift_df['setting'].str.contains('30').astype(int)
-        drift_df.drop(columns=['setting'], inplace=True)
+        factors = ['transformer', 'news', 'social', 'pred_30']
+        formula_two_way = "(transformer + news + social + pred_30)**2"
+        formula_main = "transformer + news + social + pred_30"
+        out_dir = self.results_path / 'mixed_effects'
+        out_dir.mkdir(exist_ok=True)
 
-        mcc_model = smf.mixedlm(
-            "mcc ~ (transformer + news + social + pred_30)**2",
-            data=mcc_df,
-            groups=mcc_df["stock_id"]
-        )
-        mcc_result = mcc_model.fit()
-        print(mcc_result.summary())
+        def analyze(df, outcome):
+            # --- Fit models ---
+            model_2way = smf.mixedlm(f"{outcome} ~ {formula_two_way}", data=df, groups=df["stock_id"]).fit(reml=False)
+            model_main = smf.mixedlm(f"{outcome} ~ {formula_main}", data=df, groups=df["stock_id"]).fit(reml=False)
+            model_reml = smf.mixedlm(f"{outcome} ~ {formula_two_way}", data=df, groups=df["stock_id"]).fit()
 
-        drift_model = smf.mixedlm(
-            "drift ~ (transformer + news + social + pred_30)**2",
-            data=drift_df,
-            groups=drift_df["stock_id"]
-        )
-        drift_result = drift_model.fit()
-        print(drift_result.summary())
+            # --- Coefficients ---
+            coef_df = pd.DataFrame({
+                'coef': model_reml.fe_params,
+                'std_err': model_reml.bse_fe,
+                'z': model_reml.tvalues,
+                'p_value': model_reml.pvalues,
+                'ci_lower': model_reml.conf_int()[0],
+                'ci_upper': model_reml.conf_int()[1],
+                'abs_coef': model_reml.fe_params.abs()
+            }).sort_values('abs_coef', ascending=False)
+            coef_df.to_csv(out_dir / f'{outcome}_coefficients.csv')
+
+            # --- Model comparison ---
+            lr_stat = 2 * (model_2way.llf - model_main.llf)
+            df_diff = len(model_2way.params) - len(model_main.params)
+            p_lrt = stats.chi2.sf(lr_stat, df_diff)
+            group_var = model_reml.cov_re.iloc[0, 0]
+            resid_var = model_reml.scale
+            icc = group_var / (group_var + resid_var)
+            model_comparison_df = pd.DataFrame([{
+                'lr_stat': lr_stat,
+                'df_diff': df_diff,
+                'p_lrt': p_lrt,
+                'aic_two_way': model_2way.aic,
+                'aic_main': model_main.aic,
+                'bic_two_way': model_2way.bic,
+                'bic_main': model_main.bic,
+                'icc': icc,
+                'group_var': group_var,
+                'resid_var': resid_var,
+            }])
+            model_comparison_df.to_csv(out_dir / f'{outcome}_model_comparison.csv', index=False)
+
+            # --- Marginal means ---
+            configs = list(itertools.product([0, 1], repeat=4))
+            config_df = pd.DataFrame(configs, columns=factors)
+            config_df['stock_id'] = 0
+            config_df[f'{outcome}_pred'] = model_reml.predict(config_df)
+            config_df = config_df.drop(columns=['stock_id']).sort_values(f'{outcome}_pred', ascending=False)
+            config_df.to_csv(out_dir / f'{outcome}_marginal_means.csv', index=False)
+
+            # --- Simple effects ---
+            simple_effects_rows = []
+            for focal in factors:
+                others = [f for f in factors if f != focal]
+                for vals in itertools.product([0, 1], repeat=len(others)):
+                    cond = dict(zip(others, vals))
+                    row0 = {**cond, focal: 0, 'stock_id': 0}
+                    row1 = {**cond, focal: 1, 'stock_id': 0}
+                    pred0 = model_reml.predict(pd.DataFrame([row0]))[0]
+                    pred1 = model_reml.predict(pd.DataFrame([row1]))[0]
+                    simple_effects_rows.append({
+                        'focal_factor': focal,
+                        **cond,
+                        'effect': pred1 - pred0,
+                        'pred_at_0': pred0,
+                        'pred_at_1': pred1,
+                    })
+            simple_effects_df = pd.DataFrame(simple_effects_rows)
+            simple_effects_df.to_csv(out_dir / f'{outcome}_simple_effects.csv', index=False)
+
+            # --- Residual diagnostics ---
+            resids = model_reml.resid
+            _, p_shapiro = stats.shapiro(resids)
+            resid_df = pd.DataFrame({
+                'residual': resids.values,
+            })
+            resid_df.to_csv(out_dir / f'{outcome}_residuals.csv', index=False)
+            pd.DataFrame([{
+                'shapiro_p': p_shapiro,
+                'resid_mean': resids.mean(),
+                'resid_std': resids.std(),
+                'resid_skew': resids.skew(),
+                'resid_kurt': resids.kurt(),
+            }]).to_csv(out_dir / f'{outcome}_residual_stats.csv', index=False)
+
+            fig, axes = plt.subplots(1, 2, figsize=(10, 4))
+            axes[0].hist(resids, bins=30)
+            axes[0].set_title(f'{outcome} residuals histogram')
+            stats.probplot(resids, plot=axes[1])
+            axes[1].set_title(f'{outcome} Q-Q plot')
+            plt.tight_layout()
+            plt.savefig(out_dir / f'{outcome}_residual_diagnostics.png', dpi=150)
+            plt.close()
+
+            return model_reml
+
+        analyze(mcc_df, 'mcc')
+        analyze(drift_df, 'drift')
+
+        print(f"All results saved to {out_dir}")
