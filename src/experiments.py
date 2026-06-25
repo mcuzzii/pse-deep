@@ -1271,6 +1271,9 @@ class Experiment:
             out_dict[f'{split}_precision'] = precision_score(all_targets_np, all_preds_np)
             out_dict[f'{split}_recall']    = recall_score(all_targets_np, all_preds_np)
             out_dict[f'{split}_f1']        = f1_score(all_targets_np, all_preds_np)
+            out_dict[f'{split}_precision_neg'] = precision_score(1 - all_targets_np, 1 - all_preds_np)
+            out_dict[f'{split}_recall_neg']    = recall_score(1 - all_targets_np, 1 - all_preds_np)
+            out_dict[f'{split}_f1_neg']        = f1_score(1 - all_targets_np, 1 - all_preds_np)
             if not recompute_only:
                 out_dict[f'{split}_avg_loss']  = total_test_loss / len(self.loaders[split])
 
