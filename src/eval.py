@@ -9,6 +9,7 @@ import sys
 from pathlib import Path
 from sklearn.metrics import (
     matthews_corrcoef,
+    accuracy_score,
     precision_score,
     recall_score,
     f1_score
@@ -18,8 +19,50 @@ sys.path.append(str(Path.cwd() / 'src'))
 
 from experiments import mcc_curve
 import statsmodels.formula.api as smf
+import os
+import time
+import joblib
+from sklearn.linear_model import LogisticRegression
+from sklearn.svm import LinearSVC
+from sklearn.ensemble import RandomForestClassifier
+from xgboost import XGBClassifier
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+def expanding_window_thresholds(val_targets, val_scores, test_targets, test_scores):
+    """
+    val_targets, val_scores: (N_val, S) numpy arrays
+    test_targets, test_scores: (N_test, S) numpy arrays
+    Returns best_thresholds: (N_test, S) numpy array
+    """
+    N_test, S = test_targets.shape
+    best_thresholds = torch.zeros((N_test, S), dtype=torch.float32)
+    chunk_size = N_test // 10 + 1
+
+    # seed: optimize on val only
+    val_mccs, thresholds = mcc_curve(val_targets, val_scores)
+    current_thresholds = thresholds[torch.argmax(val_mccs, dim=0)]  # (S,)
+
+    for i in range(0, N_test, chunk_size):
+        start_idx = i
+        end_idx = min(i + chunk_size, N_test)
+
+        # apply threshold from previous window to current window
+        best_thresholds[start_idx:end_idx] = current_thresholds.unsqueeze(0).expand(end_idx - start_idx, -1).contiguous()
+
+        # optimize on val + all test so far for next window
+        combined_targets = torch.cat([
+            torch.tensor(val_targets, device=device, dtype=torch.int32),
+            torch.tensor(test_targets[:end_idx], device=device, dtype=torch.int32)
+        ])
+        combined_scores = torch.cat([
+            torch.tensor(val_scores, device=device, dtype=torch.float32),
+            torch.tensor(test_scores[:end_idx], device=device, dtype=torch.float32)
+        ])
+        mccs, thresholds = mcc_curve(combined_targets, combined_scores)
+        current_thresholds = thresholds[torch.argmax(mccs, dim=0)]  # (S,)
+
+    return best_thresholds.numpy()
 
 class Eval:
     def __init__(self):
@@ -335,3 +378,148 @@ class Eval:
         analyze(drift_df, 'drift')
 
         print(f"All results saved to {out_dir}")
+
+    def train_baseline_models(self):
+
+        marginal_means = pd.read_csv(self.results_path / 'mixed_effects' / 'mcc_marginal_means.csv')
+        best_model = marginal_means.iloc[np.argmax(marginal_means['mcc_pred'].values)]
+        
+        news_pre = 'news_' if best_model['news'] else ''
+        social_pre = 'social_' if best_model['social'] else ''
+        pred_hr = '30m_' if best_model['pred_30'] else '10m_'
+
+        data_filename = f'stock_{news_pre}{social_pre}mlp_{pred_hr}'
+
+        train_path = self.experiment_path / 'data' / f'{data_filename}train.pt'
+        val_path = self.experiment_path / 'data' / f'{data_filename}val.pt'
+        test_path = self.experiment_path / 'data' / f'{data_filename}test.pt'
+
+        out_dir = self.results_path / 'baseline_models'
+        out_dir.mkdir(exist_ok=True)
+
+        print(f"Loading tensors ({data_filename})...")
+
+        train_data = torch.load(train_path, weights_only=True)
+        X_train = train_data['X'].numpy()
+        y_train = train_data['y'].numpy()
+
+        val_data = torch.load(val_path, weights_only=True)
+        X_val   = val_data['X'].numpy()
+        y_val   = val_data['y'].numpy()
+
+        test_data = torch.load(test_path, weights_only=True)
+        X_test  = test_data['X'].numpy()
+        y_test  = test_data['y'].numpy()
+
+        N_train, F = X_train.shape
+        N_val      = X_val.shape[0]
+        N_test     = X_test.shape[0]
+        S          = 30
+
+        print(f"Train: {X_train.shape}, Val: {X_val.shape}, Test: {X_test.shape}")
+
+        # reshape to (S, N, F) and (S, N) for per-stock threshold optimization
+        X_train_s = X_train.reshape(S, N_train // S, F)
+        y_train_s = y_train.reshape(S, N_train // S)
+        X_val_s   = X_val.reshape(S, N_val // S, F)
+        y_val_s   = y_val.reshape(S, N_val // S)
+        X_test_s  = X_test.reshape(S, N_test // S, F)
+        y_test_s  = y_test.reshape(S, N_test // S)
+
+        n_jobs = os.cpu_count()
+        print(f"Using {n_jobs} CPU cores\n")
+
+        models = {
+            'logistic_regression': LogisticRegression(
+                max_iter=1000,
+                n_jobs=n_jobs,
+                verbose=1,
+            ),
+            'linear_svc': LinearSVC(
+                max_iter=2000,
+                verbose=1,
+            ),
+            'random_forest': RandomForestClassifier(
+                n_estimators=100,
+                n_jobs=n_jobs,
+                verbose=2,
+            ),
+            'xgboost': XGBClassifier(
+                n_estimators=100,
+                n_jobs=n_jobs,
+                device='cuda',
+                verbosity=2,
+                eval_metric='logloss',
+            ),
+        }
+
+        results = {}
+        for name, model in models.items():
+            print(f"\n{'='*60}")
+            print(f"Training: {name.upper()}")
+            print(f"{'='*60}")
+            t0 = time.time()
+
+            if name == 'xgboost':
+                model.fit(X_train, y_train, eval_set=[(X_test, y_test)], verbose=10)
+            else:
+                model.fit(X_train, y_train)
+
+            train_time = time.time() - t0
+            print(f"\nTraining time: {train_time:.1f}s")
+
+            # --- get scores per stock ---
+            print("Getting scores per stock for threshold optimization...")
+            if name == 'linear_svc':
+                # LinearSVC has no predict_proba; use decision_function
+                val_scores_flat  = model.decision_function(X_val)
+                test_scores_flat = model.decision_function(X_test)
+            else:
+                val_scores_flat  = model.predict_proba(X_val)[:, 1]
+                test_scores_flat = model.predict_proba(X_test)[:, 1]
+
+            # reshape to (N_per_stock, S) for threshold optimization
+            val_scores_s  = val_scores_flat.reshape(S, N_val // S).T    # (N_val//S, S)
+            test_scores_s = test_scores_flat.reshape(S, N_test // S).T  # (N_test//S, S)
+            val_targets_s  = y_val_s.T    # (N_val//S, S)
+            test_targets_s = y_test_s.T   # (N_test//S, S)
+
+            # --- expanding window threshold optimization ---
+            print("Running expanding-window threshold optimization...")
+            t2 = time.time()
+            best_thresholds = expanding_window_thresholds(
+                val_targets_s, val_scores_s, test_targets_s, test_scores_s
+            )  # (N_test//S, S)
+            print(f"Threshold optimization time: {time.time() - t2:.1f}s")
+
+            # apply thresholds and flatten back
+            y_pred = (test_scores_s >= best_thresholds).astype(int).T.flatten()  # (S, N_test//S) -> flat
+            y_test_flat = y_test_s.flatten()
+
+            t1 = time.time()
+            metrics = {
+                'mcc':          matthews_corrcoef(y_test_flat, y_pred),
+                'accuracy':     accuracy_score(y_test_flat, y_pred),
+                'precision':    precision_score(y_test_flat, y_pred),
+                'recall':       recall_score(y_test_flat, y_pred),
+                'f1':           f1_score(y_test_flat, y_pred),
+                'train_time_s': train_time,
+                'pred_time_s':  time.time() - t1,
+            }
+            results[name] = metrics
+
+            print(f"MCC:       {metrics['mcc']:.4f}")
+            print(f"Accuracy:  {metrics['accuracy']:.4f}")
+            print(f"Precision: {metrics['precision']:.4f}")
+            print(f"Recall:    {metrics['recall']:.4f}")
+            print(f"F1:        {metrics['f1']:.4f}")
+
+            model_path = out_dir / f'{name}.joblib'
+            joblib.dump(model, model_path)
+            print(f"Model saved to {model_path}")
+
+        results_df = pd.DataFrame.from_dict(results, orient='index')
+        results_df.to_csv(out_dir / 'baseline_results.csv')
+        print(f"\nAll results saved to {out_dir / 'baseline_results.csv'}")
+        print(results_df.to_string())
+        return results_df
