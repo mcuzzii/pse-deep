@@ -1223,7 +1223,7 @@ class Experiment:
                         out_dict[f'{split}_all_targets'].append(target)
 
                     # --- SHAP: test split only ---
-                    if split == 'test' and i % (2 if 'mlp' in self.experiment_name else 44) == 0:
+                    if split == 'test' and i % (2 if 'mlp' in self.experiment_name else 44) == 0 and i < len(self.loaders[split]):
                         with torch.enable_grad():
                             shap_wrapper.args = [a.detach() for a in args]
                             gates = torch.ones(args[0].shape[0], num_groups, device=device)
