@@ -202,7 +202,7 @@ def run_experiments():
 def main():
     evaluator = Eval()
     evaluator.overall_metrics()
+    evaluator.compute_experiment_data()
 
 if __name__ == '__main__':
-    run_experiments()
     main()

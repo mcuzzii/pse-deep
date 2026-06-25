@@ -5,6 +5,20 @@ import pandas as pd
 from river.drift import ADWIN
 import numpy as np
 from tqdm import tqdm
+import sys
+from pathlib import Path
+from sklearn.metrics import (
+    matthews_corrcoef,
+    precision_score,
+    recall_score,
+    f1_score
+)
+
+sys.path.append(str(Path.cwd() / 'src'))
+
+from experiments import mcc_curve
+
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 class Eval:
     def __init__(self):
@@ -46,29 +60,63 @@ class Eval:
     def compute_experiment_data(self):
         model_scores = pd.read_csv(self.results_path / 'model_scores.csv', index_col=0)
 
-        overall_model_drift_scores = dict()
+        overall_scores = dict()
         for dir in self.experiments_path.iterdir():
 
             if dir.name in ('data', 'experiments', 'results'):
                 continue
 
+            model_path = dir / f'{dir.name}.pt'
+            model = torch.load(model_path, map_location=device, weights_only=False)
+
             test_outputs = dir / 'test_outputs.pt'
-            out = torch.load(test_outputs, map_location=torch.device('cpu'), weights_only=False)
+            out = torch.load(test_outputs, map_location=device, weights_only=False)
 
-            logit_scores = out['test_logit_scores']                         # N, S, 2
-            targets = out['test_all_targets']                               # N, S
+            val_calib_thresholds = model['best_threshold']                                  # (S,)
+            logit_scores = out['test_logit_scores']
+            softmax_scores = torch.softmax(logit_scores, dim=-1)[..., -1]                   # N, S, 2 -> N, S
+            targets = out['test_all_targets']                                               # N, S
 
-            #torch.softmax(logit_scores, dim=-1)[..., -1] >= 
+            best_thresholds = torch.zeros_like(targets)
+            for i in range(0, logit_scores.shape[0], (logit_scores.shape[0] // 10 + 1)):
+                start_idx = i
+                end_idx = min(i + logit_scores.shape[0] // 10 + 1, logit_scores.shape[0])
+
+                if i == 0:
+                    best_thresholds[start_idx:end_idx] = val_calib_thresholds.unsqueeze(0).expand_as(targets[start_idx:end_idx])
+                else:
+                    thresholds = mcc_curve(targets[start_idx:end_idx], softmax_scores[start_idx:end_idx])
+                    print(f'Best thresholds: {thresholds}')
+                    best_thresholds[start_idx:end_idx] = thresholds[-1].unsqueeze(0).expand_as(targets[start_idx:end_idx])
+                    print(f'Thresholds tensor: {best_thresholds}')
+
+            preds = softmax_scores >= best_thresholds                                       # N, S
+            
+            preds_flat = preds.flatten()
+            targets_flat = targets.flatten()
+            preds_np = preds_flat.cpu().numpy()
+            targets_np = targets_flat.cpu().numpy()
+
+            tp = ((preds == 1) & (targets == 1)).sum(dim=0).float()                         # N, S -> S,
+            tn = ((preds == 0) & (targets == 0)).sum(dim=0).float()
+            fp = ((preds == 1) & (targets == 0)).sum(dim=0).float()
+            fn = ((preds == 0) & (targets == 1)).sum(dim=0).float()
+
+            numerator = tp * tn - fp * fn                                                   # S,
+            denom = torch.sqrt((tp+fp) * (tp+fn) * (tn+fp) * (tn+fn))                       # S,
+
+            mcc = torch.where(denom > 0, numerator / denom, torch.zeros_like(numerator))    # S,
+            out['mcc_scores'] = mcc
+            print(f'MCCs: {mcc}')
+            print()
 
             criterion = nn.CrossEntropyLoss(reduction='none')
-            loss = criterion(logit_scores.permute(0, 2, 1), targets)        # N, S
+            loss = criterion(logit_scores.permute(0, 2, 1), targets)                        # N, S
 
             detectors = [ADWIN() for _ in range(loss.shape[1])]
             windows = [[] for _ in range(loss.shape[1])]
             means = torch.zeros_like(loss)
             width_histories = torch.zeros_like(loss)
-
-            logit_scores = out['test_logit_scores']
 
             for s in tqdm(range(loss.shape[1])):
                 for n in range(loss.shape[0]):
@@ -101,51 +149,20 @@ class Eval:
 
             torch.save(out, test_outputs)
 
-            overall_model_drift_scores[dir.name] = {
+            overall_scores[dir.name] = {
+                'test_accuracy_rolling': (preds_flat == targets_flat).float().mean().item(),
+                'test_mcc_rolling': matthews_corrcoef(targets_np, preds_np),
+                'test_precision_rolling': precision_score(targets_np, preds_np),
+                'test_recall_rolling': recall_score(targets_np, preds_np),
+                'test_f1_rolling': f1_score(targets_np, preds_np),
+                'test_precision_neg_rolling': precision_score(1 - targets_np, 1 - preds_np),
+                'test_recall_neg_rolling': recall_score(1 - targets_np, 1 - preds_np),
+                'test_f1_neg_rolling': f1_score(1 - targets_np, 1 - preds_np),
                 'msd_mean': msd_mean,
                 'widths_mean': widths_mean,
                 'combined_drift_score_mean': combined_drift_score_mean
             }
         
-        overall_model_drift_scores = pd.DataFrame.from_dict(overall_model_drift_scores, orient='index')
-        model_scores[overall_model_drift_scores.columns] = overall_model_drift_scores
+        overall_scores = pd.DataFrame.from_dict(overall_scores, orient='index')
+        model_scores[overall_scores.columns] = overall_scores
         model_scores.to_csv(self.results_path / 'model_scores.csv')
-
-    def compute_per_stock_mccs(self):
-        for dir in self.experiments_path.iterdir():
-
-            if dir.name in ('data', 'experiments', 'results'):
-                continue
-
-            test_outputs = dir / 'test_outputs.pt'
-            out = torch.load(test_outputs, map_location=torch.device('cpu'), weights_only=False)
-    
-    def check_per_stock(self):
-        import time
-        for dir in self.experiments_path.iterdir():
-
-            if dir.name in ('data', 'experiments', 'results'):
-                continue
-
-            outputs_path = dir / 'test_outputs.pt'
-            test_outputs = torch.load(outputs_path, map_location=torch.device('cpu'), weights_only=False)
-
-            best_path = dir / f'{dir.name.split('/')[-1]}.pt'
-            model = torch.load(best_path, map_location=torch.device('cpu'), weights_only=False)
-
-            print(dir.name)
-            print()
-            print(test_outputs['train_logit_scores'].shape)
-            print(model['val_logit_scores'].shape)
-            print(test_outputs['test_logit_scores'].shape)
-            print()
-            print(test_outputs['train_all_targets'].shape)
-            print(model['val_all_targets'].shape)
-            print(test_outputs['test_all_targets'].shape)
-            print()
-            print(torch.softmax(test_outputs['train_logit_scores'], dim=-1).flatten(0, 1).mean(dim=0))
-            print(torch.softmax(model['val_logit_scores'], dim=-1).flatten(0, 1).mean(dim=0))
-            print(torch.softmax(test_outputs['test_logit_scores'], dim=-1).flatten(0, 1).mean(dim=0))
-            print()
-
-            time.sleep(3)
