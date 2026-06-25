@@ -1256,6 +1256,8 @@ class Experiment:
                 if 'transformer' in self.experiment_name:
                     out_dict[f'{split}_logit_scores'] = out_dict[f'{split}_logit_scores'][..., [1, 0]]
                     out_dict[f'{split}_all_targets']  = 1 - out_dict[f'{split}_all_targets']
+            
+            out_dict[f'{split}_logit_scores'] = out_dict[f'{split}_logit_scores'].to(device)
 
             all_preds_flat   = (
                 torch.softmax(out_dict[f'{split}_logit_scores'], dim=-1)[..., 1] >= best_thresholds.unsqueeze(0)
