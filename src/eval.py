@@ -17,6 +17,7 @@ from sklearn.metrics import (
 sys.path.append(str(Path.cwd() / 'src'))
 
 from experiments import mcc_curve
+import statsmodels.formula.api as smf
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -74,21 +75,36 @@ class Eval:
 
             val_calib_thresholds = model['best_threshold']                                  # (S,)
             logit_scores = out['test_logit_scores']
+            val_logit_scores = model['val_logit_scores']
             softmax_scores = torch.softmax(logit_scores, dim=-1)[..., -1]                   # N, S, 2 -> N, S
+            val_softmax_scores = torch.softmax(val_logit_scores, dim=-1)[..., -1]
             targets = out['test_all_targets']                                               # N, S
+            val_targets = model['val_all_targets']
 
-            best_thresholds = torch.zeros_like(targets)
+            best_thresholds = torch.zeros_like(targets, dtype=torch.float32)
             for i in range(0, logit_scores.shape[0], (logit_scores.shape[0] // 10 + 1)):
                 start_idx = i
                 end_idx = min(i + logit_scores.shape[0] // 10 + 1, logit_scores.shape[0])
 
                 if i == 0:
-                    best_thresholds[start_idx:end_idx] = val_calib_thresholds.unsqueeze(0).expand_as(targets[start_idx:end_idx])
+                    print(f'Best thresholds: {val_calib_thresholds}')
+                    best_thresholds[start_idx:end_idx] = val_calib_thresholds.unsqueeze(0).expand(end_idx - start_idx, -1).contiguous()
+                    print(f'Thresholds input: {val_calib_thresholds.unsqueeze(0).expand(end_idx - start_idx, -1).shape}')
+                    print(f'Thresholds tensor: {best_thresholds[start_idx:end_idx]}')
+                    print(f'Thresholds tensor shape: {best_thresholds[start_idx:end_idx].shape}')
                 else:
-                    thresholds = mcc_curve(targets[start_idx:end_idx], softmax_scores[start_idx:end_idx])
+                    mccs, thresholds = mcc_curve(
+                        torch.cat([val_targets, targets[:start_idx]]),
+                        torch.cat([val_softmax_scores, softmax_scores[:start_idx]])
+                    )                                                                       # (T, S), (T,)
+
+                    best_idxs = torch.argmax(mccs, dim=0)
+                    thresholds = thresholds[best_idxs]
+
                     print(f'Best thresholds: {thresholds}')
-                    best_thresholds[start_idx:end_idx] = thresholds[-1].unsqueeze(0).expand_as(targets[start_idx:end_idx])
-                    print(f'Thresholds tensor: {best_thresholds}')
+                    best_thresholds[start_idx:end_idx] = thresholds.unsqueeze(0).expand(end_idx - start_idx, -1).contiguous()
+                    print(f'Thresholds tensor: {best_thresholds[start_idx:end_idx]}')
+                    print(f'Thresholds tensor shape: {best_thresholds[start_idx:end_idx].shape}')
 
             preds = softmax_scores >= best_thresholds                                       # N, S
             
@@ -166,3 +182,52 @@ class Eval:
         overall_scores = pd.DataFrame.from_dict(overall_scores, orient='index')
         model_scores[overall_scores.columns] = overall_scores
         model_scores.to_csv(self.results_path / 'model_scores.csv')
+
+    def random_intercept_mixed_effects(self):
+
+        mcc_df = pd.DataFrame()
+        drift_df = pd.DataFrame()
+        for dir in self.experiments_path.iterdir():
+
+            if dir.name in ('data', 'experiments', 'results'):
+                continue
+            
+            test_outputs = dir / 'test_outputs.pt'
+            out = torch.load(test_outputs, map_location=device, weights_only=False)
+
+            mcc_df[dir.name] = pd.Series(out['mcc_scores'].cpu().numpy())
+            drift_df[dir.name] = pd.Series(out['drift_from_width'].cpu().numpy())
+        
+        mcc_df['stock_id'] = range(len(mcc_df))
+        drift_df['stock_id'] = range(len(drift_df))
+
+        mcc_df = mcc_df.melt(id_vars=['stock_id'], var_name='setting', value_name='mcc')
+        drift_df = drift_df.melt(id_vars=['stock_id'], var_name='setting', value_name='drift')
+
+        mcc_df['transformer'] = mcc_df['setting'].str.contains('transformer').astype(int)
+        mcc_df['news'] = mcc_df['setting'].str.contains('news').astype(int)
+        mcc_df['social'] = mcc_df['setting'].str.contains('social').astype(int)
+        mcc_df['pred_30'] = mcc_df['setting'].str.contains('30').astype(int)
+        mcc_df.drop(columns=['setting'], inplace=True)
+
+        drift_df['transformer'] = drift_df['setting'].str.contains('transformer').astype(int)
+        drift_df['news'] = drift_df['setting'].str.contains('news').astype(int)
+        drift_df['social'] = drift_df['setting'].str.contains('social').astype(int)
+        drift_df['pred_30'] = drift_df['setting'].str.contains('30').astype(int)
+        drift_df.drop(columns=['setting'], inplace=True)
+
+        mcc_model = smf.mixedlm(
+            "mcc ~ (transformer + news + social + pred_30)**2",
+            data=mcc_df,
+            groups=mcc_df["stock_id"]
+        )
+        mcc_result = mcc_model.fit()
+        print(mcc_result.summary())
+
+        drift_model = smf.mixedlm(
+            "drift ~ (transformer + news + social + pred_30)**2",
+            data=drift_df,
+            groups=drift_df["stock_id"]
+        )
+        drift_result = drift_model.fit()
+        print(drift_result.summary())
