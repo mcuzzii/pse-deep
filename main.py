@@ -204,4 +204,5 @@ def main():
     evaluator.overall_metrics()
 
 if __name__ == '__main__':
+    run_experiments()
     main()
