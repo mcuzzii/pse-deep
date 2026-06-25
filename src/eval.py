@@ -390,9 +390,9 @@ class Eval:
 
         data_filename = f'stock_{news_pre}{social_pre}mlp_{pred_hr}'
 
-        train_path = self.experiment_path / 'data' / f'{data_filename}train.pt'
-        val_path = self.experiment_path / 'data' / f'{data_filename}val.pt'
-        test_path = self.experiment_path / 'data' / f'{data_filename}test.pt'
+        train_path = self.experiments_path / 'data' / f'{data_filename}train.pt'
+        val_path = self.experiments_path / 'data' / f'{data_filename}val.pt'
+        test_path = self.experiments_path / 'data' / f'{data_filename}test.pt'
 
         out_dir = self.results_path / 'baseline_models'
         out_dir.mkdir(exist_ok=True)
@@ -468,6 +468,10 @@ class Eval:
             train_time = time.time() - t0
             print(f"\nTraining time: {train_time:.1f}s")
 
+            model_path = out_dir / f'{name}.joblib'
+            joblib.dump(model, model_path)
+            print(f"Model saved to {model_path}")
+
             # --- get scores per stock ---
             print("Getting scores per stock for threshold optimization...")
             if name == 'linear_svc':
@@ -513,10 +517,6 @@ class Eval:
             print(f"Precision: {metrics['precision']:.4f}")
             print(f"Recall:    {metrics['recall']:.4f}")
             print(f"F1:        {metrics['f1']:.4f}")
-
-            model_path = out_dir / f'{name}.joblib'
-            joblib.dump(model, model_path)
-            print(f"Model saved to {model_path}")
 
         results_df = pd.DataFrame.from_dict(results, orient='index')
         results_df.to_csv(out_dir / 'baseline_results.csv')
