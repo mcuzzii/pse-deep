@@ -157,9 +157,6 @@ def run_experiments():
             for news in (False, True):
                 for pred_30 in (False, True):
 
-                    if not social and not news and not pred_30:
-                        continue
-
                     news_prefix = 'news_' if news else ''
                     social_prefix = 'social_' if social else ''
                     model_prefix = 'transformer_' if transformer else 'mlp_'
