@@ -1260,7 +1260,9 @@ class Experiment:
                         30, out_dict[f'{split}_all_targets'].shape[0] // 30
                     ).transpose(0, 1)                                                                               # N, S
 
-            all_preds_flat   = out_dict[f'{split}_logit_scores'].argmax(dim=-1).flatten()
+            all_preds_flat   = (
+                torch.softmax(out_dict[f'{split}_logit_scores'], dim=-1)[..., 1] >= best_thresholds.unsqueeze(0)
+            ).float().flatten()
             all_targets_flat = out_dict[f'{split}_all_targets'].flatten()
 
             all_preds_np   = all_preds_flat.cpu().numpy()
