@@ -1118,7 +1118,7 @@ class Experiment:
         torch.save(checkpoint, tmp_path)
         os.replace(tmp_path, best_path)
     
-    def run_testing(self, force=False, no_train=False):
+    def run_testing(self, force=False, mode=None, recompute_only=False):
 
         if (self.experiment_path / 'test_outputs.pt').exists() and not force:
             print("Test results already saved. Skipping...")
@@ -1167,94 +1167,95 @@ class Experiment:
 
         out_dict['shap_group_names'] = list(group_to_indices.keys())
 
-        for split in (('test',) if no_train else ('test', 'train')):
+        for split in (('test',) if mode == 'no_train' else (('train',) if mode == 'train_only' else ('test', 'train'))):
 
-            total_test_loss = 0
-            out_dict[f'{split}_all_targets']  = []
-            out_dict[f'{split}_logit_scores'] = []
-            if split == 'test':
-                out_dict[f'{split}_shap_values'] = []
+            if not recompute_only:
+                total_test_loss = 0
+                out_dict[f'{split}_all_targets']  = []
+                out_dict[f'{split}_logit_scores'] = []
+                if split == 'test':
+                    out_dict[f'{split}_shap_values'] = []
 
-                if self.transformer:
-                    weights_dir = self.experiment_path / 'weights'
-                    weights_dir.mkdir(parents=True, exist_ok=True)
+                    if self.transformer:
+                        weights_dir = self.experiment_path / 'weights'
+                        weights_dir.mkdir(parents=True, exist_ok=True)
 
-            with tqdm(total=len(self.loaders[split]), desc=f"Testing {split}") as pbar:
+                with tqdm(total=len(self.loaders[split]), desc=f"Testing {split}") as pbar:
 
-                accumulated_weights = list()
-                for i, (*args, target) in enumerate(self.loaders[split]):
-                    if interrupted:
-                        raise KeyboardInterrupt
+                    accumulated_weights = list()
+                    for i, (*args, target) in enumerate(self.loaders[split]):
+                        if interrupted:
+                            raise KeyboardInterrupt
 
-                    args   = [a.to(device) for a in args]
-                    target = target.argmax(dim=-1).to(device)
+                        args   = [a.to(device) for a in args]
+                        target = target.argmax(dim=-1).to(device)
 
-                    # --- standard inference ---
-                    with torch.no_grad():
-                        if self.transformer and split == 'test':
-                            results = model(*args, return_weights=True)
-                            logits = results[0]
+                        # --- standard inference ---
+                        with torch.no_grad():
+                            if self.transformer and split == 'test':
+                                results = model(*args, return_weights=True)
+                                logits = results[0]
 
-                            indicators = list()
-                            attn_blocks = list()
-                            for tensor in results[1:]:
-                                if len(tensor.shape) < 5:
-                                    attn_blocks.append(tensor)
-                                else:
-                                    indicators.append(tensor)
-                            
-                            accumulated_weights.append(attn_blocks)
+                                indicators = list()
+                                attn_blocks = list()
+                                for tensor in results[1:]:
+                                    if len(tensor.shape) < 5:
+                                        attn_blocks.append(tensor)
+                                    else:
+                                        indicators.append(tensor)
+                                
+                                accumulated_weights.append(attn_blocks)
 
-                            if (i + 1) % 10 == 0:
-                                accumulated_weights = list(zip(*accumulated_weights))
-                                accumulated_weights = [torch.cat(attn_blocks).sum(dim=0) for attn_blocks in accumulated_weights]
-                                indicators = [tensor[-1] for tensor in indicators]
-                                torch.save(tuple(accumulated_weights + indicators), weights_dir / f'batch_{i}.pt')
-                                accumulated_weights = list()
-                            
-                        else:
-                            logits = model(*args)
+                                if (i + 1) % 10 == 0:
+                                    accumulated_weights = list(zip(*accumulated_weights))
+                                    accumulated_weights = [torch.cat(attn_blocks).sum(dim=0) for attn_blocks in accumulated_weights]
+                                    indicators = [tensor[-1] for tensor in indicators]
+                                    torch.save(tuple(accumulated_weights + indicators), weights_dir / f'batch_{i}.pt')
+                                    accumulated_weights = list()
+                                
+                            else:
+                                logits = model(*args)
 
-                        out_dict[f'{split}_logit_scores'].append(logits)
+                            out_dict[f'{split}_logit_scores'].append(logits)
 
-                        loss = criterion(logits.permute(0, 2, 1), target)
-                        total_test_loss += loss.item()
+                            loss = criterion(logits.permute(0, 2, 1), target)
+                            total_test_loss += loss.item()
 
-                        out_dict[f'{split}_all_targets'].append(target)
+                            out_dict[f'{split}_all_targets'].append(target)
 
-                    # --- SHAP: test split only ---
-                    if split == 'test' and i % (2 if 'mlp' in self.experiment_name else 44) == 0 and i < len(self.loaders[split]) - 1:
-                        with torch.enable_grad():
-                            shap_wrapper.args = [a.detach() for a in args]
-                            gates = torch.ones(args[0].shape[0], num_groups, device=device)
+                        # --- SHAP: test split only ---
+                        if split == 'test' and i % (2 if 'mlp' in self.experiment_name else 44) == 0 and i < len(self.loaders[split]) - 1:
+                            with torch.enable_grad():
+                                shap_wrapper.args = [a.detach() for a in args]
+                                gates = torch.ones(args[0].shape[0], num_groups, device=device)
 
-                            sv = explainer.shap_values(gates, nsamples=32)
+                                sv = explainer.shap_values(gates, nsamples=32)
 
-                            if isinstance(sv, list):
-                                assert len(sv) == 1
-                                sv = sv[0]
+                                if isinstance(sv, list):
+                                    assert len(sv) == 1
+                                    sv = sv[0]
 
-                            sv = torch.tensor(sv)
-                            out_dict[f'{split}_shap_values'].append(sv)
+                                sv = torch.tensor(sv)
+                                out_dict[f'{split}_shap_values'].append(sv)
 
-                    pbar.update(1)
+                        pbar.update(1)
 
-            out_dict[f'{split}_all_targets']  = torch.cat(out_dict[f'{split}_all_targets'])
-            out_dict[f'{split}_logit_scores'] = torch.cat(out_dict[f'{split}_logit_scores'])
-            if split == 'test':
-                out_dict[f'{split}_shap_values'] = torch.cat(out_dict[f'{split}_shap_values'])   # (N, num_groups)
-            
-            if 'mlp' in self.experiment_name:
-                out_dict[f'{split}_logit_scores'] = out_dict[f'{split}_logit_scores'].squeeze(1).reshape(
-                    30, out_dict[f'{split}_logit_scores'].shape[0] // 30, -1
-                ).transpose(0, 1)                                                                               # N, S, 2
-                out_dict[f'{split}_all_targets'] = out_dict[f'{split}_all_targets'].squeeze(1).reshape(
-                    30, out_dict[f'{split}_all_targets'].shape[0] // 30
-                ).transpose(0, 1)                                                                               # N, S
+                out_dict[f'{split}_all_targets']  = torch.cat(out_dict[f'{split}_all_targets'])
+                out_dict[f'{split}_logit_scores'] = torch.cat(out_dict[f'{split}_logit_scores'])
+                if split == 'test':
+                    out_dict[f'{split}_shap_values'] = torch.cat(out_dict[f'{split}_shap_values'])   # (N, num_groups)
+                
+                if 'mlp' in self.experiment_name:
+                    out_dict[f'{split}_logit_scores'] = out_dict[f'{split}_logit_scores'].squeeze(1).reshape(
+                        30, out_dict[f'{split}_logit_scores'].shape[0] // 30, -1
+                    ).transpose(0, 1)                                                                               # N, S, 2
+                    out_dict[f'{split}_all_targets'] = out_dict[f'{split}_all_targets'].squeeze(1).reshape(
+                        30, out_dict[f'{split}_all_targets'].shape[0] // 30
+                    ).transpose(0, 1)                                                                               # N, S
 
-            if 'transformer' in self.experiment_name:
-                out_dict[f'{split}_logit_scores'] = out_dict[f'{split}_logit_scores'][..., [1, 0]]
-                out_dict[f'{split}_all_targets']  = 1 - out_dict[f'{split}_all_targets']
+                if 'transformer' in self.experiment_name:
+                    out_dict[f'{split}_logit_scores'] = out_dict[f'{split}_logit_scores'][..., [1, 0]]
+                    out_dict[f'{split}_all_targets']  = 1 - out_dict[f'{split}_all_targets']
 
             all_preds_flat   = (
                 torch.softmax(out_dict[f'{split}_logit_scores'], dim=-1)[..., 1] >= best_thresholds.unsqueeze(0)

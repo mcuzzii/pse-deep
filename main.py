@@ -152,7 +152,7 @@ def preprocess():
 
 def run_experiments():
 
-    for transformer in (False,):
+    for transformer in (False, True):
         for social in (False, True):
             for news in (False, True):
                 for pred_30 in (False, True):
@@ -200,7 +200,7 @@ def run_experiments():
                     )
                     experiment.plot_loss_curves()
                     experiment.threshold_optimize()
-                    experiment.run_testing(force=True, no_train=True)
+                    experiment.run_testing(force=True, mode='train_only', recompute_only=True)
 
 def main():
     evaluator = Eval()
