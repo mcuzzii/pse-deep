@@ -26,7 +26,14 @@ class Eval:
             metrics_dict = {
                 k: v
                 for k, v in torch.load(test_outputs, map_location=torch.device('cpu'), weights_only=False).items()
-                if not k.endswith('all_targets') and not k.endswith('logit_scores')
+                if (
+                    'accuracy' in k or
+                    'mcc' in k or
+                    'precision' in k or
+                    'recall' in k or
+                    'f1' in k or
+                    'avg_loss' in k
+                )
             }
 
             metrics[dir.name] = metrics_dict
@@ -112,3 +119,33 @@ class Eval:
 
             test_outputs = dir / 'test_outputs.pt'
             out = torch.load(test_outputs, map_location=torch.device('cpu'), weights_only=False)
+    
+    def check_per_stock(self):
+        import time
+        for dir in self.experiments_path.iterdir():
+
+            if dir.name in ('data', 'experiments', 'results'):
+                continue
+
+            outputs_path = dir / 'test_outputs.pt'
+            test_outputs = torch.load(outputs_path, map_location=torch.device('cpu'), weights_only=False)
+
+            best_path = dir / f'{dir.name.split('/')[-1]}.pt'
+            model = torch.load(best_path, map_location=torch.device('cpu'), weights_only=False)
+
+            print(dir.name)
+            print()
+            print(test_outputs['train_logit_scores'].shape)
+            print(model['val_logit_scores'].shape)
+            print(test_outputs['test_logit_scores'].shape)
+            print()
+            print(test_outputs['train_all_targets'].shape)
+            print(model['val_all_targets'].shape)
+            print(test_outputs['test_all_targets'].shape)
+            print()
+            print(torch.softmax(test_outputs['train_logit_scores'], dim=-1).flatten(0, 1).mean(dim=0))
+            print(torch.softmax(model['val_logit_scores'], dim=-1).flatten(0, 1).mean(dim=0))
+            print(torch.softmax(test_outputs['test_logit_scores'], dim=-1).flatten(0, 1).mean(dim=0))
+            print()
+
+            time.sleep(3)

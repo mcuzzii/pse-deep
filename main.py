@@ -196,13 +196,12 @@ def run_experiments():
                         sigma_end=1e-5
                     )
                     experiment.plot_loss_curves()
-                    experiment.threshold_optimize(force=True)
-                    experiment.run_testing(force=True, recompute_only=True)
+                    experiment.threshold_optimize()
+                    experiment.run_testing()
 
 def main():
     evaluator = Eval()
     evaluator.overall_metrics()
-    evaluator.compute_model_drift()
 
 if __name__ == '__main__':
-    run_experiments()
+    main()
