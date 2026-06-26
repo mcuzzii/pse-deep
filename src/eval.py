@@ -82,7 +82,7 @@ def compute_drift(loss):
             means[n, s] = sum(windows[s]) / len(windows[s])
             width_histories[n, s] = detectors[s].width
     
-    msd = ((loss_s - means) ** 2)
+    msd = ((loss - means) ** 2)
 
     msd = (msd - msd.min()) / (msd.max() - msd.min())
     mean_squared_loss_deviations = msd.mean(dim=0)
@@ -488,10 +488,10 @@ class Eval:
                 test_scores_flat = model.decision_function(X_test)
                 probs_pos = expit(test_scores_flat)
                 probs = np.stack([1 - probs_pos, probs_pos], axis=1)
-                loss = -np.log(probs[np.arange(len(y_test)), y_test] + 1e-8)
+                loss = -np.log(probs[np.arange(len(y_test)).astype(int), y_test.astype(int)] + 1e-8)
             else:
                 probs = model.predict_proba(X_test)  # (N, 2)
-                loss = -np.log(probs[np.arange(len(y_test)), y_test] + 1e-8)  # (N,) per-sample cross-entropy
+                loss = -np.log(probs[np.arange(len(y_test)).astype(int), y_test.astype(int)] + 1e-8)  # (N,) per-sample cross-entropy
                 val_scores_flat  = model.predict_proba(X_val)[:, 1]
                 test_scores_flat = probs[:, 1]
 
@@ -500,9 +500,9 @@ class Eval:
             test_scores_s = test_scores_flat.reshape(S, N_test // S).T  # (N_test//S, S)
             val_targets_s  = y_val_s.T    # (N_val//S, S)
             test_targets_s = y_test_s.T   # (N_test//S, S)
-            loss_s = loss.reshape(S, N_test // S).T     # (N_test//S, S)
+            loss_s = torch.tensor(loss.reshape(S, N_test // S).T, dtype=torch.float32)     # (N_test//S, S)
 
-            torch.save(torch.tensor(loss_s, dtype=torch.float32), out_dir / f'{name}_y_loss.pt')
+            torch.save(loss_s, out_dir / f'{name}_y_loss.pt')
 
             # --- computing drift scores ---
             print("Computing drift scores")
