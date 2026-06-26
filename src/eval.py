@@ -26,6 +26,7 @@ from sklearn.linear_model import LogisticRegression
 from sklearn.svm import LinearSVC
 from sklearn.ensemble import RandomForestClassifier
 from xgboost import XGBClassifier
+from scipy.special import expit
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -63,6 +64,37 @@ def expanding_window_thresholds(val_targets, val_scores, test_targets, test_scor
         current_thresholds = thresholds[torch.argmax(mccs, dim=0)]  # (S,)
 
     return best_thresholds.numpy()
+
+def compute_drift(loss):
+
+    detectors = [ADWIN() for _ in range(loss.shape[1])]
+    windows = [[] for _ in range(loss.shape[1])]
+    means = torch.zeros_like(loss)
+    width_histories = torch.zeros_like(loss)
+
+    for s in tqdm(range(loss.shape[1])):
+        for n in range(loss.shape[0]):
+            val = loss[n, s].item()
+            detectors[s].update(val)
+
+            windows[s].append(val)
+            windows[s] = windows[s][int(-detectors[s].width):]
+            means[n, s] = sum(windows[s]) / len(windows[s])
+            width_histories[n, s] = detectors[s].width
+    
+    msd = ((loss_s - means) ** 2)
+
+    msd = (msd - msd.min()) / (msd.max() - msd.min())
+    mean_squared_loss_deviations = msd.mean(dim=0)
+
+    width_histories = (width_histories - width_histories.min()) / (width_histories.max() - width_histories.min())
+    drift_from_width = 1 - width_histories.mean(dim=0)
+
+    msd_mean = msd.mean().item()
+    widths_mean = 1 - width_histories.mean().item()
+    combined_drift_score_mean = msd_mean * widths_mean
+
+    return mean_squared_loss_deviations, drift_from_width, msd_mean, widths_mean, combined_drift_score_mean
 
 class Eval:
     def __init__(self):
@@ -195,32 +227,7 @@ class Eval:
                 criterion = nn.CrossEntropyLoss(reduction='none')
                 loss = criterion(logit_scores.permute(0, 2, 1), targets)                        # N, S
 
-                detectors = [ADWIN() for _ in range(loss.shape[1])]
-                windows = [[] for _ in range(loss.shape[1])]
-                means = torch.zeros_like(loss)
-                width_histories = torch.zeros_like(loss)
-
-                for s in tqdm(range(loss.shape[1])):
-                    for n in range(loss.shape[0]):
-                        val = loss[n, s].item()
-                        detectors[s].update(val)
-
-                        windows[s].append(val)
-                        windows[s] = windows[s][int(-detectors[s].width):]
-                        means[n, s] = sum(windows[s]) / len(windows[s])
-                        width_histories[n, s] = detectors[s].width
-                
-                msd = ((loss - means) ** 2)
-
-                msd = (msd - msd.min()) / (msd.max() - msd.min())
-                mean_squared_loss_deviations = msd.mean(dim=0)
-
-                width_histories = (width_histories - width_histories.min()) / (width_histories.max() - width_histories.min())
-                drift_from_width = 1 - width_histories.mean(dim=0)
-
-                msd_mean = msd.mean().item()
-                widths_mean = 1 - width_histories.mean().item()
-                combined_drift_score_mean = msd_mean * widths_mean
+                mean_squared_loss_deviations, drift_from_width, msd_mean, widths_mean, combined_drift_score_mean = compute_drift(loss)
 
                 print(f'Drift scores: {mean_squared_loss_deviations}')
                 print(f'Drift from width: {drift_from_width}')
@@ -411,7 +418,6 @@ class Eval:
         X_test  = test_data['X'].numpy()
         y_test  = test_data['y'].numpy()
 
-        N_train, F = X_train.shape
         N_val      = X_val.shape[0]
         N_test     = X_test.shape[0]
         S          = 30
@@ -419,11 +425,7 @@ class Eval:
         print(f"Train: {X_train.shape}, Val: {X_val.shape}, Test: {X_test.shape}")
 
         # reshape to (S, N, F) and (S, N) for per-stock threshold optimization
-        X_train_s = X_train.reshape(S, N_train // S, F)
-        y_train_s = y_train.reshape(S, N_train // S)
-        X_val_s   = X_val.reshape(S, N_val // S, F)
         y_val_s   = y_val.reshape(S, N_val // S)
-        X_test_s  = X_test.reshape(S, N_test // S, F)
         y_test_s  = y_test.reshape(S, N_test // S)
 
         n_jobs = os.cpu_count()
@@ -455,68 +457,106 @@ class Eval:
 
         results = {}
         for name, model in models.items():
-            print(f"\n{'='*60}")
-            print(f"Training: {name.upper()}")
-            print(f"{'='*60}")
-            t0 = time.time()
-
-            if name == 'xgboost':
-                model.fit(X_train, y_train, eval_set=[(X_test, y_test)], verbose=10)
-            else:
-                model.fit(X_train, y_train)
-
-            train_time = time.time() - t0
-            print(f"\nTraining time: {train_time:.1f}s")
-
             model_path = out_dir / f'{name}.joblib'
-            joblib.dump(model, model_path)
-            print(f"Model saved to {model_path}")
+
+            if model_path.exists():
+                print(f"Model {name}.joblib already saved. Skipping training...")
+                model = joblib.load(model_path)
+                train_time = 0
+            else:
+                print(f"\n{'='*60}")
+                print(f"Training: {name.upper()}")
+                print(f"{'='*60}")
+                t0 = time.time()
+
+                if name == 'xgboost':
+                    model.fit(X_train, y_train, eval_set=[(X_test, y_test)], verbose=10)
+                else:
+                    model.fit(X_train, y_train)
+
+                train_time = time.time() - t0
+                print(f"\nTraining time: {train_time:.1f}s")
+
+                joblib.dump(model, model_path)
+                print(f"Model saved to {model_path}")
 
             # --- get scores per stock ---
-            print("Getting scores per stock for threshold optimization...")
+            print("Getting scores per stock for loss computation...")
             if name == 'linear_svc':
                 # LinearSVC has no predict_proba; use decision_function
                 val_scores_flat  = model.decision_function(X_val)
                 test_scores_flat = model.decision_function(X_test)
+                probs_pos = expit(test_scores_flat)
+                probs = np.stack([1 - probs_pos, probs_pos], axis=1)
+                loss = -np.log(probs[np.arange(len(y_test)), y_test] + 1e-8)
             else:
+                probs = model.predict_proba(X_test)  # (N, 2)
+                loss = -np.log(probs[np.arange(len(y_test)), y_test] + 1e-8)  # (N,) per-sample cross-entropy
                 val_scores_flat  = model.predict_proba(X_val)[:, 1]
-                test_scores_flat = model.predict_proba(X_test)[:, 1]
+                test_scores_flat = probs[:, 1]
 
             # reshape to (N_per_stock, S) for threshold optimization
             val_scores_s  = val_scores_flat.reshape(S, N_val // S).T    # (N_val//S, S)
             test_scores_s = test_scores_flat.reshape(S, N_test // S).T  # (N_test//S, S)
             val_targets_s  = y_val_s.T    # (N_val//S, S)
             test_targets_s = y_test_s.T   # (N_test//S, S)
+            loss_s = loss.reshape(S, N_test // S).T     # (N_test//S, S)
+
+            torch.save(torch.tensor(loss_s, dtype=torch.float32), out_dir / f'{name}_y_loss.pt')
+
+            # --- computing drift scores ---
+            print("Computing drift scores")
+
+            mean_squared_loss_deviations, drift_from_width, msd_mean, widths_mean, combined_drift_score_mean = compute_drift(loss_s)
+
+            pd.DataFrame({
+                'stock_id': range(S),
+                'mean_squared_loss_deviations': mean_squared_loss_deviations.numpy(),
+                'drift_from_width': drift_from_width.numpy(),
+                'combined_drift_scores': (mean_squared_loss_deviations * drift_from_width).numpy()
+            }).to_csv(out_dir / f'{name}_per_stock_drift.csv', index=False)
+
+            metrics = {
+                'msd_mean': msd_mean,
+                'widths_mean': widths_mean,
+                'combined_drift_score_mean': combined_drift_score_mean
+            }
 
             # --- expanding window threshold optimization ---
-            print("Running expanding-window threshold optimization...")
-            t2 = time.time()
-            best_thresholds = expanding_window_thresholds(
-                val_targets_s, val_scores_s, test_targets_s, test_scores_s
-            )  # (N_test//S, S)
-            print(f"Threshold optimization time: {time.time() - t2:.1f}s")
+            if (out_dir / f'{name}_y_preds.pt').exists():
+                print(f'Model preds already saved at {(out_dir / f'{name}_y_preds.pt')}... Skipping')
+                y_pred_per_stock = torch.load(out_dir / f'{name}_y_preds.pt', map_location=device, weights_only=True).numpy()
+                y_pred = y_pred_per_stock.flatten()
+                y_test_flat = y_test_s.flatten()
+            else:
+                print("Running expanding-window threshold optimization...")
+                t2 = time.time()
+                best_thresholds = expanding_window_thresholds(
+                    val_targets_s, val_scores_s, test_targets_s, test_scores_s
+                )  # (N_test//S, S)
+                print(f"Threshold optimization time: {time.time() - t2:.1f}s")
 
-            # apply thresholds and flatten back
-            y_pred = (test_scores_s >= best_thresholds).astype(int).T.flatten()  # (S, N_test//S) -> flat
-            y_test_flat = y_test_s.flatten()
+                # apply thresholds and flatten back
+                y_pred = (test_scores_s >= best_thresholds).astype(int).T.flatten()  # (S, N_test//S) -> flat
+                y_test_flat = y_test_s.flatten()
 
-            # per-stock MCC
-            y_pred_s = (test_scores_s >= best_thresholds).astype(int)  # (N_test//S, S)
-            per_stock_mcc = np.array([
-                matthews_corrcoef(y_test_s[s], y_pred_s[:, s])
-                for s in range(S)
-            ])
-            pd.DataFrame({'stock_id': range(S), 'mcc': per_stock_mcc}).to_csv(
-                out_dir / f'{name}_per_stock_mcc.csv', index=False
-            )
-            y_pred_per_stock = (test_scores_s >= best_thresholds).astype(int).T  # (S, N_test//S)
-            torch.save(
-                torch.tensor(y_pred_per_stock, dtype=torch.int32),
-                out_dir / f'{name}_y_preds.pt'
-            )
+                # per-stock MCC
+                y_pred_s = (test_scores_s >= best_thresholds).astype(int)  # (N_test//S, S)
+                per_stock_mcc = np.array([
+                    matthews_corrcoef(y_test_s[s], y_pred_s[:, s])
+                    for s in range(S)
+                ])
+                pd.DataFrame({'stock_id': range(S), 'mcc': per_stock_mcc}).to_csv(
+                    out_dir / f'{name}_per_stock_mcc.csv', index=False
+                )
+                y_pred_per_stock = (test_scores_s >= best_thresholds).astype(int).T  # (S, N_test//S)
+                torch.save(
+                    torch.tensor(y_pred_per_stock, dtype=torch.int32),
+                    out_dir / f'{name}_y_preds.pt'
+                )
 
             t1 = time.time()
-            metrics = {
+            metrics.update({
                 'mcc':          matthews_corrcoef(y_test_flat, y_pred),
                 'accuracy':     accuracy_score(y_test_flat, y_pred),
                 'precision':    precision_score(y_test_flat, y_pred),
@@ -524,7 +564,7 @@ class Eval:
                 'f1':           f1_score(y_test_flat, y_pred),
                 'train_time_s': train_time,
                 'pred_time_s':  time.time() - t1,
-            }
+            })
             results[name] = metrics
 
             print(f"MCC:       {metrics['mcc']:.4f}")
