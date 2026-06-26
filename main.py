@@ -205,6 +205,7 @@ def main():
     evaluator.compute_experiment_data()
     evaluator.random_intercept_mixed_effects()
     evaluator.train_baseline_models()
+    evaluator.wilcoxon_baseline_comparison()
 
 if __name__ == '__main__':
     main()
