@@ -27,6 +27,8 @@ from sklearn.svm import LinearSVC
 from sklearn.ensemble import RandomForestClassifier
 from xgboost import XGBClassifier
 from scipy.special import expit
+from scipy.stats import wilcoxon
+import itertools
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -578,3 +580,107 @@ class Eval:
         print(f"\nAll results saved to {out_dir / 'baseline_results.csv'}")
         print(results_df.to_string())
         return results_df
+
+    def wilcoxon_baseline_comparison(self):
+
+        out_dir = self.results_path / 'baseline_comparison'
+        out_dir.mkdir(exist_ok=True)
+
+        baseline_dir = self.results_path / 'baseline_models'
+        baseline_names = ['logistic_regression', 'linear_svc', 'random_forest', 'xgboost']
+
+        # --- load deep learning model mcc and drift scores ---
+        # find the best deep learning model (same logic as train_baseline_models)
+        marginal_means = pd.read_csv(self.results_path / 'mixed_effects' / 'mcc_marginal_means.csv')
+        best_model_row = marginal_means.iloc[np.argmax(marginal_means['mcc_pred'].values)]
+
+        news_pre    = 'news_'        if best_model_row['news']        else ''
+        social_pre  = 'social_'      if best_model_row['social']      else ''
+        transformer = 'transformer_' if best_model_row['transformer'] else 'mlp_'
+        pred_hr     = '30'         if best_model_row['pred_30']     else '10'
+
+        best_dl_name = f'stock_{news_pre}{social_pre}{transformer}{pred_hr}'
+        data_filename = f'stock_{news_pre}{social_pre}mlp_{pred_hr}'
+
+        dl_test_outputs = self.experiments_path / best_dl_name / 'test_outputs.pt'
+        dl_out = torch.load(dl_test_outputs, map_location=device, weights_only=False)
+
+        dl_mcc_per_stock   = dl_out['mcc_scores'].cpu().numpy()             # (S,)
+        dl_drift_per_stock = dl_out['drift_from_width'].cpu().numpy()       # (S,)
+
+        S = len(dl_mcc_per_stock)
+
+        # --- collect all model scores ---
+        all_mcc   = {'deep_learning': dl_mcc_per_stock}
+        all_drift = {'deep_learning': dl_drift_per_stock}
+
+        for name in baseline_names:
+            mcc_path = baseline_dir / f'{name}_per_stock_mcc.csv'
+            mcc_df   = pd.read_csv(mcc_path)
+            all_mcc[name] = mcc_df['mcc'].values  # (S,)
+
+            drift_path = baseline_dir / f'{name}_per_stock_drift.csv'
+            drift_df = pd.read_csv(drift_path)
+            all_drift[name] = drift_df['drift_from_width'].values
+
+        # --- summary dataframes ---
+        mcc_summary_df   = pd.DataFrame(all_mcc,   index=[f'stock_{i}' for i in range(S)])
+        drift_summary_df = pd.DataFrame(all_drift, index=[f'stock_{i}' for i in range(S)])
+        mcc_summary_df.to_csv(out_dir / 'per_stock_mcc_all_models.csv')
+        drift_summary_df.to_csv(out_dir / 'per_stock_drift_all_models.csv')
+
+        # --- wilcoxon: deep learning vs each baseline ---
+        all_models = ['deep_learning'] + baseline_names
+
+        def run_wilcoxon_table(score_dict, metric_name, higher_is_better=True):
+            rows = []
+            dl_scores = score_dict['deep_learning']
+            for name in baseline_names:
+                baseline_scores = score_dict[name]
+                diff = dl_scores - baseline_scores
+                if np.all(diff == 0):
+                    stat, p = np.nan, np.nan
+                else:
+                    stat, p = wilcoxon(dl_scores, baseline_scores, alternative='greater' if higher_is_better else 'less')
+                mean_dl   = dl_scores.mean()
+                mean_base = baseline_scores.mean()
+                rows.append({
+                    'baseline':        name,
+                    f'mean_dl_{metric_name}':       mean_dl,
+                    f'mean_baseline_{metric_name}': mean_base,
+                    f'mean_diff_{metric_name}':     mean_dl - mean_base,
+                    'wilcoxon_stat':   stat,
+                    'p_value':         p,
+                    'significant_p05': p < 0.05 if not np.isnan(p) else False,
+                    'significant_p01': p < 0.01 if not np.isnan(p) else False,
+                })
+            df = pd.DataFrame(rows)
+            df.to_csv(out_dir / f'wilcoxon_{metric_name}.csv', index=False)
+            return df
+
+        mcc_wilcoxon_df   = run_wilcoxon_table(all_mcc,   'mcc',   higher_is_better=True)
+        drift_wilcoxon_df = run_wilcoxon_table(all_drift, 'drift', higher_is_better=False)
+
+        # --- descriptive stats per model ---
+        def descriptive_stats(score_dict, metric_name):
+            rows = []
+            for model_name, scores in score_dict.items():
+                rows.append({
+                    'model':  model_name,
+                    'mean':   scores.mean(),
+                    'median': np.median(scores),
+                    'std':    scores.std(),
+                    'min':    scores.min(),
+                    'max':    scores.max(),
+                    'q25':    np.percentile(scores, 25),
+                    'q75':    np.percentile(scores, 75),
+                    'n_positive': (scores > 0).sum(),
+                })
+            df = pd.DataFrame(rows)
+            df.to_csv(out_dir / f'descriptive_stats_{metric_name}.csv', index=False)
+            return df
+
+        descriptive_stats(all_mcc,   'mcc')
+        descriptive_stats(all_drift, 'drift')
+
+        print(f"All results saved to {out_dir}")
