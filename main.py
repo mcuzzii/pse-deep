@@ -207,6 +207,7 @@ def main():
     #evaluator.train_baseline_models()
     #evaluator.wilcoxon_baseline_comparison()
     evaluator.get_closing_prices()
+    evaluator.trading_simulations()
 
 if __name__ == '__main__':
     main()
