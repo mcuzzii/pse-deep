@@ -841,6 +841,7 @@ class Eval:
 
                 filtered_ref = reference.loc[valid_times(reference.index, offset, pred_horizon)].values     # 30, n filtered future close prices
                 filtered_ref = torch.tensor(filtered_ref, dtype=torch.float32).to(device)
+                print(f'filtered_ref shape: {filtered_ref.shape}')
                 corr_matrix = torch.corrcoef(torch.cat([filtered_ref, filtered_close], dim=0))              # 60, 60
                 stock_map = torch.argmax(corr_matrix[-30:, :30], dim=-1)
 
