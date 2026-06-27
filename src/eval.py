@@ -841,8 +841,6 @@ class Eval:
                 price_tensor = torch.cat([init_tensor.transpose(0, 1), close_tensor], dim=0)
                 filtered_ref = reference.loc[valid_times(reference.index, offset, pred_horizon)].values     # 30, n filtered future close prices
                 filtered_ref = torch.tensor(filtered_ref, dtype=torch.float32).transpose(0, 1).to(device)
-                print(f'filtered_ref shape: {filtered_ref.shape}')
-                print(f'filtered_close shape: {filtered_close.shape}')
                 corr_matrix = torch.corrcoef(torch.cat([filtered_ref, filtered_close], dim=0))              # 60, 60
                 stock_map = torch.argmax(corr_matrix[-30:, :30], dim=-1)
 
@@ -864,6 +862,7 @@ class Eval:
 
                     mean_profits = (long_profits + short_profits) / (2 * (k + 1))
 
+                    print(f'mean_profits shape: {mean_profits.shape}')
                     profits = torch.cumprod(mean_profits)
                     results_dict[dir.name][offset][k] = profits
 
