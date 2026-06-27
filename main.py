@@ -206,6 +206,7 @@ def main():
     evaluator.random_intercept_mixed_effects()
     evaluator.train_baseline_models()
     evaluator.wilcoxon_baseline_comparison()
+    evaluator.get_closing_prices()
 
 if __name__ == '__main__':
     main()
