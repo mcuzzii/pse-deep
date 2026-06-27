@@ -17,6 +17,7 @@ from sklearn.metrics import (
 
 sys.path.append(str(Path.cwd() / 'src'))
 
+from processing import DataSource, get_stocks
 from experiments import mcc_curve
 import statsmodels.formula.api as smf
 import os
@@ -684,3 +685,47 @@ class Eval:
         descriptive_stats(all_drift, 'drift')
 
         print(f"All results saved to {out_dir}")
+
+    def get_closing_prices(self):
+        self._ref_30 = joblib.load('data/processed/ac_30m.joblib').filtered_date_times
+        self._ref_10 = joblib.load('data/processed/ac_10m.joblib').filtered_date_times
+
+        ts_30 = self._ref_30[int(len(self._ref_30) * 0.9) + 1:]
+        ts_10 = self._ref_10[int(len(self._ref_10) * 0.9) + 1:]
+
+        stocks = get_stocks()
+
+        close_prices = pd.DataFrame(index=self._ref_10)
+        for stock in stocks:
+            stock_df = DataSource()
+            stock_df.create_df(stock)
+            stock_df.df.loc[self._ts_30, f'{stock}_close']
+
+            for offset in range(0, 10):
+                _ts_10 = ts_10[ts_10.minute in range(0 + offset, 60 + offset, 10)]
+                close_prices[f'{stock}_10_{offset}'] = stock_df.df.loc[_ts_10, f'{stock}_close']
+            
+            for offset in range(0, 30):
+                _ts_30 = ts_30[ts_30.minute in range(0 + offset, 60 + offset, 30)]
+                close_prices[f'{stock}_30_{offset}'] = stock_df.df.loc[_ts_30, f'{stock}_close']
+        
+        out_dir = self.results_path / 'trading_sim'
+        close_prices.to_csv(out_dir / 'close_prices.csv')
+    
+    def trading_simulations(self):
+
+        ref_30 = joblib.load('data/processed/ac_30m.joblib').filtered_date_times
+        ref_10 = joblib.load('data/processed/ac_10m.joblib').filtered_date_times
+
+        ts_30 = ref_30[int(len(ref_30) * 0.9) + 1:]
+        ts_10 = ref_10[int(len(ref_10) * 0.9) + 1:]
+
+        for dir in self.experiments_path:
+
+            if dir.name in ('data', 'experiments', 'results'):
+                continue
+
+            out_path = dir / 'test_outputs.pt'
+            out = torch.load(out_path, map_location=device, weights_only=False)
+
+            logits = out['test_logit_scores']
