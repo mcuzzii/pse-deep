@@ -770,7 +770,7 @@ class Eval:
 
         results_dict = dict()
 
-        for dir in self.experiments_path:
+        for dir in self.experiments_path.iterdir():
 
             if dir.name in ('data', 'experiments', 'results'):
                 continue
