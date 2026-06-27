@@ -813,7 +813,7 @@ class Eval:
             )['features' if transformer else 'X']                                       # 30, N, features if transformer; N*30, features if mlp
 
             if transformer:
-                close = features[:, -len(ts_30):, c_idx]                                # 30, N current close prices
+                close = features[:, -len(ts):, c_idx]                                # 30, N current close prices
             else:
                 features = features.reshape(30, features.shape[0] // 30, -1)            # 30, N, features
                 close = features[:, :, c_idx]                                           # 30, N current close prices
@@ -824,8 +824,6 @@ class Eval:
 
             for offset in range(pred_horizon):
 
-                print(f'ts shape: {ts.shape}')
-                print(f'close shape: {close.shape}')
                 filtered_close = close[:, valid_times(ts, offset, pred_horizon)]        # 30, n filtered future close prices
 
                 reference = pd.read_csv(
