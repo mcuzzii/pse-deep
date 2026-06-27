@@ -795,7 +795,6 @@ class Eval:
             if news and not transformer:
                 news_df = joblib.load(f'data/processed/news_{pred_horizon}m.joblib')
                 ts = ts.intersection(news_df.df.dropna().index)
-                print(f'ts shape: {len(ts)}')
 
             data_fn = (
                 f'stock_transformer_{pred_horizon}m_test.pt'
@@ -812,11 +811,9 @@ class Eval:
 
             if transformer:
                 close = features[:, -len(ts_30):, c_idx]                                # 30, N current close prices
-                print(f'Transformer Shape: {close.shape}')
             else:
                 features = features.reshape(30, features.shape[0] // 30, -1)            # 30, N, features
                 close = features[:, :, c_idx]                                           # 30, N current close prices
-                print(f'MLP Shape: {close.shape}')
             
             close = torch.roll(close, -pred_horizon, 1)                                 # 30, N future close prices
 
@@ -862,8 +859,7 @@ class Eval:
 
                     mean_profits = (long_profits + short_profits) / (2 * (k + 1))
 
-                    print(f'mean_profits shape: {mean_profits.shape}')
-                    profits = torch.cumprod(mean_profits)
+                    profits = torch.cumprod(mean_profits, dim=0)
                     results_dict[dir.name][offset][k] = profits
 
                     plt.figure(figsize=(8, 5))
