@@ -825,6 +825,7 @@ class Eval:
             for offset in range(pred_horizon):
 
                 print(f'ts shape: {ts.shape}')
+                print(f'close shape: {close.shape}')
                 filtered_close = close[:, valid_times(ts, offset, pred_horizon)]        # 30, n filtered future close prices
 
                 reference = pd.read_csv(
