@@ -830,6 +830,7 @@ class Eval:
                     f'experiments/results/trading_sim/close_prices/{pred_horizon}_{offset}.csv',
                     index_col=0
                 )
+                reference.index = pd.to_datetime(reference.index)
                 init_prices = pd.read_csv(
                     f'experiments/results/trading_sim/close_prices/init_{pred_horizon}_{offset}.csv',
                     index_col=0
