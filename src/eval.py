@@ -884,3 +884,5 @@ class Eval:
 
                     plt.savefig(save_path, dpi=300)
                     plt.close()
+
+        torch.save(results_dict, self.results_path / 'trading_sim' / 'results.pt')
