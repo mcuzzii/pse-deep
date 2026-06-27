@@ -795,6 +795,7 @@ class Eval:
             if news and not transformer:
                 news_df = joblib.load(f'data/processed/news_{pred_horizon}m.joblib')
                 ts = ts.intersection(news_df.df.index)
+                print(f'ts shape: {len(ts)}')
 
             data_fn = (
                 f'stock_transformer_{pred_horizon}m_test.pt'
