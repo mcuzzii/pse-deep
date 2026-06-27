@@ -865,7 +865,10 @@ class Eval:
                     plt.grid(False)
                     plt.tight_layout()
 
-                    save_path = self.results_path / 'trading_sim' / 'plots' / f'{dir.name}_{k + 1}_{offset}.png'
+                    plots_path = self.results_path / 'trading_sim' / 'plots'
+                    plots_path.mkdir(parents=True, exist_ok=True)
+
+                    save_path = plots_path / f'{dir.name}_{k + 1}_{offset}.png'
 
                     plt.savefig(save_path, dpi=300)
                     plt.close()
