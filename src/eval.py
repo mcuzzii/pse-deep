@@ -774,6 +774,8 @@ class Eval:
 
             if dir.name in ('data', 'experiments', 'results'):
                 continue
+                
+            print(f'Simulating for {dir.name}...')
 
             out_path = dir / 'test_outputs.pt'
             out = torch.load(out_path, map_location=device, weights_only=False)
