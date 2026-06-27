@@ -774,6 +774,9 @@ class Eval:
 
             if dir.name in ('data', 'experiments', 'results'):
                 continue
+
+            if 'mlp' in dir.name:
+                continue
                 
             print(f'Simulating for {dir.name}...')
 
@@ -821,6 +824,7 @@ class Eval:
 
             for offset in range(pred_horizon):
 
+                print(f'ts shape: {ts.shape}')
                 filtered_close = close[:, valid_times(ts, offset, pred_horizon)]        # 30, n filtered future close prices
 
                 reference = pd.read_csv(
@@ -836,8 +840,10 @@ class Eval:
                 close_tensor = torch.tensor(reference.values, dtype=torch.float32).to(device)
                 init_tensor = torch.tensor(init_prices.values, dtype=torch.float32).to(device)
                 price_tensor = torch.cat([init_tensor.transpose(0, 1), close_tensor], dim=0)
+
                 filtered_ref = reference.loc[valid_times(reference.index, offset, pred_horizon)].values     # 30, n filtered future close prices
                 filtered_ref = torch.tensor(filtered_ref, dtype=torch.float32).transpose(0, 1).to(device)
+
                 corr_matrix = torch.corrcoef(torch.cat([filtered_ref, filtered_close], dim=0))              # 60, 60
                 stock_map = torch.argmax(corr_matrix[-30:, :30], dim=-1)
 
