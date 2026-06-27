@@ -754,7 +754,11 @@ class Eval:
         for key, value in init_prices.items():
             value.to_csv(close_prices_dir / f'init_{key}.csv')
     
-    def trading_simulations(self):
+    def trading_simulations(self, force=False):
+
+        if (self.results_path / 'trading_sim' / 'results.pt').exists() and not force:
+            print("Trading simulations already implemented, skipping...")
+            return
 
         ref_30 = joblib.load('data/processed/ac_30m.joblib')
         ref_10 = joblib.load('data/processed/ac_10m.joblib')
@@ -773,9 +777,6 @@ class Eval:
         for dir in self.experiments_path.iterdir():
 
             if dir.name in ('data', 'experiments', 'results'):
-                continue
-
-            if 'mlp' in dir.name:
                 continue
                 
             print(f'Simulating for {dir.name}...')
