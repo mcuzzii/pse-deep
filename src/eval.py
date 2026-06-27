@@ -700,12 +700,12 @@ class Eval:
 
         print(f"All results saved to {out_dir}")
 
-    def get_closing_prices(self):
+    def get_closing_prices(self, force=True):
 
         out_dir = self.results_path / 'trading_sim'
         out_dir.mkdir(parents=True, exist_ok=True)
 
-        if (out_dir / 'close_prices').exists():
+        if (out_dir / 'close_prices').exists() and not force:
             print("Closing prices already saved. Skipping...")
             return
 
