@@ -201,11 +201,11 @@ def run_experiments():
 
 def main():
     evaluator = Eval()
-    evaluator.overall_metrics()
-    evaluator.compute_experiment_data()
-    evaluator.random_intercept_mixed_effects()
-    evaluator.train_baseline_models()
-    evaluator.wilcoxon_baseline_comparison()
+    #evaluator.overall_metrics()
+    #evaluator.compute_experiment_data()
+    #evaluator.random_intercept_mixed_effects()
+    #evaluator.train_baseline_models()
+    #evaluator.wilcoxon_baseline_comparison()
     evaluator.get_closing_prices()
 
 if __name__ == '__main__':
