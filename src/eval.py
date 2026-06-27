@@ -700,7 +700,7 @@ class Eval:
 
         print(f"All results saved to {out_dir}")
 
-    def get_closing_prices(self, force=True):
+    def get_closing_prices(self, force=False):
 
         out_dir = self.results_path / 'trading_sim'
         out_dir.mkdir(parents=True, exist_ok=True)
@@ -805,9 +805,11 @@ class Eval:
 
             if transformer:
                 close = features[:, -len(ts_30):, c_idx]                                # 30, N current close prices
+                print(f'Transformer Shape: {close.shape}')
             else:
                 features = features.reshape(30, features.shape[0] // 30, -1)            # 30, N, features
                 close = features[:, :, c_idx]                                           # 30, N current close prices
+                print(f'MLP Shape: {close.shape}')
             
             close = torch.roll(close, -pred_horizon, 1)                                 # 30, N future close prices
 
