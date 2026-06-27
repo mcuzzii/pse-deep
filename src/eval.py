@@ -836,7 +836,7 @@ class Eval:
                 )
                 close_tensor = torch.tensor(reference.values, dtype=torch.float32).to(device)
                 init_tensor = torch.tensor(init_prices.values, dtype=torch.float32).to(device)
-                price_tensor = torch.cat([init_tensor, close_tensor], dim=0)
+                price_tensor = torch.cat([init_tensor.unsqueeze(0), close_tensor], dim=0)
 
                 filtered_ref = reference.loc[valid_times(reference.index, offset, pred_horizon)].values     # 30, n filtered future close prices
                 filtered_ref = torch.tensor(filtered_ref, dtype=torch.float32).to(device)
