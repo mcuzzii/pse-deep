@@ -29,6 +29,7 @@ from sklearn.ensemble import RandomForestClassifier
 from xgboost import XGBClassifier
 from scipy.special import expit
 from scipy.stats import wilcoxon
+import matplotlib.pyplot as plt
 import itertools
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -98,6 +99,19 @@ def compute_drift(loss):
     combined_drift_score_mean = msd_mean * widths_mean
 
     return mean_squared_loss_deviations, drift_from_width, msd_mean, widths_mean, combined_drift_score_mean
+
+def valid_times(ts, offset, pred_horizon):
+    last_valid_min = '00' if pred_horizon == 30 else '40'
+    return (
+        ts.minute.isin(range(0 + offset, 60 + offset, pred_horizon)) &
+        (
+            (ts.time <= pd.Timestamp(f'11:{last_valid_min}').time()) |
+            (
+                (ts.time >= pd.Timestamp('13:00').time()) &
+                (ts.time <= pd.Timestamp(f'14:{last_valid_min}').time())
+            )
+        )
+    )
 
 class Eval:
     def __init__(self):
@@ -695,11 +709,11 @@ class Eval:
             print("Closing prices already saved. Skipping...")
             return
 
-        self._ref_30 = joblib.load('data/processed/ac_30m.joblib').filtered_date_times
-        self._ref_10 = joblib.load('data/processed/ac_10m.joblib').filtered_date_times
+        ref_30 = joblib.load('data/processed/ac_30m.joblib').filtered_date_times
+        ref_10 = joblib.load('data/processed/ac_10m.joblib').filtered_date_times
 
-        ts_30 = self._ref_30[int(len(self._ref_30) * 0.9) + 1:]
-        ts_10 = self._ref_10[int(len(self._ref_10) * 0.9) + 1:]
+        ts_30 = ref_30[int(len(ref_30) * 0.9) + 1:]
+        ts_10 = ref_10[int(len(ref_10) * 0.9) + 1:]
 
         stocks = get_stocks()
 
@@ -711,6 +725,14 @@ class Eval:
             f'30_{offset}': pd.DataFrame(index=ts_30[ts_30.minute.isin(range(0 + offset, 60 + offset, 30))])
             for offset in range(0, 30)
         })
+        init_prices = {
+            f'10_{offset}': pd.Series()
+            for offset in range(0, 10)
+        }
+        init_prices.update({
+            f'30_{offset}': pd.Series()
+            for offset in range(0, 30)
+        })
         for stock in stocks:
             print(f'Computing for {stock}...')
             stock_df = DataSource()
@@ -718,23 +740,35 @@ class Eval:
 
             for offset in range(0, 10):
                 close_prices[f'10_{offset}'][stock] = stock_df.df[f'{stock}_close'].shift(-10)[close_prices[f'10_{offset}'].index]
+                init_prices[f'10_{offset}'][stock] = stock_df.df.loc[close_prices[f'10_{offset}'].index[0], f'{stock}_close']
             
             for offset in range(0, 30):
                 close_prices[f'30_{offset}'][stock] = stock_df.df[f'{stock}_close'].shift(-30)[close_prices[f'30_{offset}'].index]
+                init_prices[f'30_{offset}'][stock] = stock_df.df.loc[close_prices[f'30_{offset}'].index[0], f'{stock}_close']
         
         close_prices_dir = out_dir / 'close_prices'
         close_prices_dir.mkdir(parents=True, exist_ok=True)
 
         for key, value in close_prices.items():
             value.to_csv(close_prices_dir / f'{key}.csv')
+        for key, value in init_prices.items():
+            value.to_csv(close_prices_dir / f'init_{key}.csv')
     
     def trading_simulations(self):
 
-        ref_30 = joblib.load('data/processed/ac_30m.joblib').filtered_date_times
-        ref_10 = joblib.load('data/processed/ac_10m.joblib').filtered_date_times
+        ref_30 = joblib.load('data/processed/ac_30m.joblib')
+        ref_10 = joblib.load('data/processed/ac_10m.joblib')
 
-        ts_30 = ref_30[int(len(ref_30) * 0.9) + 1:]
-        ts_10 = ref_10[int(len(ref_10) * 0.9) + 1:]
+        ts_30 = ref_30.filtered_date_times
+        ts_10 = ref_10.filtered_date_times
+
+        ts_30 = ts_30[int(len(ts_30) * 0.9) + 1:]
+        ts_10 = ts_10[int(len(ts_10) * 0.9) + 1:]
+
+        c_30 = ref_30.features.index('ac_close')
+        c_10 = ref_10.features.index('ac_close')
+
+        results_dict = dict()
 
         for dir in self.experiments_path:
 
@@ -744,4 +778,94 @@ class Eval:
             out_path = dir / 'test_outputs.pt'
             out = torch.load(out_path, map_location=device, weights_only=False)
 
-            logits = out['test_logit_scores']
+            logits = out['test_logit_scores']                           # N, 30, 2
+            softmax_scores = torch.softmax(logits, dim=-1)[..., -1]     # N, 30
+
+            news = 'news' in dir.name
+            social = 'social' in dir.name
+            transformer = 'transformer' in dir.name
+            pred_30 = '30' in dir.name
+
+            pred_horizon = 30 if pred_30 else 10
+            c_idx = c_30 if pred_30 else c_10
+            ts = ts_30 if pred_30 else ts_10
+
+            data_fn = (
+                f'stock_transformer_{pred_horizon}m_test.pt'
+                if transformer else (
+                    f'stock_{'news_' if news else ''}{'social_' if social else ''}mlp_{pred_horizon}m_test.pt'
+                )
+            )
+
+            features = torch.load(
+                self.experiments_path / 'data' / data_fn,
+                map_location=device,
+                weights_only=True
+            )['features' if transformer else 'X']                                       # 30, N, features if transformer; N*30, features if mlp
+
+            if transformer:
+                close = features[:, -len(ts_30):, c_idx]                                # 30, N current close prices
+            else:
+                features = features.reshape(30, features.shape[0] // 30, -1)            # 30, N, features
+                close = features[:, :, c_idx]                                           # 30, N current close prices
+            
+            close = torch.roll(close, -pred_horizon, 1)                                 # 30, N future close prices
+
+            results_dict[dir.name] = dict()
+
+            for offset in range(pred_horizon):
+
+                filtered_close = close[:, valid_times(ts, offset, pred_horizon)]        # 30, n filtered future close prices
+
+                reference = pd.read_csv(
+                    f'experiments/results/trading_sim/close_prices/{pred_horizon}_{offset}.csv',
+                    index_col=0
+                )
+                init_prices = pd.read_csv(
+                    f'experiments/results/trading_sim/close_prices/init_{pred_horizon}_{offset}.csv',
+                    index_col=0
+                )
+                close_tensor = torch.tensor(reference.values, dtype=torch.float32).to(device)
+                init_tensor = torch.tensor(init_prices.values, dtype=torch.float32).to(device)
+                price_tensor = torch.cat([init_tensor, close_tensor], dim=0)
+
+                filtered_ref = reference.loc[valid_times(reference.index, offset, pred_horizon)].values     # 30, n filtered future close prices
+                filtered_ref = torch.tensor(filtered_ref, dtype=torch.float32).to(device)
+                corr_matrix = torch.corrcoef(torch.cat([filtered_ref, filtered_close], dim=0))              # 60, 60
+                stock_map = torch.argmax(corr_matrix[-30:, :30], dim=-1)
+
+                results_dict[dir.name][offset] = dict()
+            
+                for k in range(15):
+                    filtered_softmax = softmax_scores[ts.minute.isin(range(0 + offset, 60 + offset, pred_horizon)), :]
+                    top_k = torch.topk(filtered_softmax, k + 1).indices                                 # n, k
+                    bottom_k = torch.topk(filtered_softmax, k + 1, largest=False).indices               # n, k
+
+                    long_before = torch.gather(price_tensor[:-1], 1, stock_map[top_k])                  # n, k
+                    long_after = torch.gather(price_tensor[1:], 1, stock_map[top_k])                    # n, k
+
+                    short_before = torch.gather(price_tensor[:-1], 1, stock_map[bottom_k])              # n, k
+                    short_after = torch.gather(price_tensor[1:], 1, stock_map[bottom_k])                # n, k
+
+                    long_profits = (long_after / long_before).sum(dim=-1)
+                    short_profits = (short_before / short_after).sum(dim=-1)
+
+                    mean_profits = (long_profits + short_profits) / (2 * (k + 1))
+
+                    profits = torch.cumprod(mean_profits)
+                    results_dict[dir.name][offset][k] = profits
+
+                    plt.figure(figsize=(8, 5))
+
+                    plt.plot(profits.cpu().numpy(), label='Profits')
+
+                    plt.xlabel("Time")
+                    plt.ylabel("Money")
+                    plt.title(f"Trading Simulation")
+                    plt.grid(False)
+                    plt.tight_layout()
+
+                    save_path = self.results_path / 'trading_sim' / 'plots' / f'{dir.name}_{k + 1}_{offset}.png'
+
+                    plt.savefig(save_path, dpi=300)
+                    plt.close()
