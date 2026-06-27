@@ -830,6 +830,7 @@ class Eval:
                     f'experiments/results/trading_sim/close_prices/{pred_horizon}_{offset}.csv',
                     index_col=0
                 )
+                reference = reference.loc[reference.index.get_level_values(0).isin(ts)]
                 reference.index = pd.to_datetime(reference.index)
                 init_prices = pd.read_csv(
                     f'experiments/results/trading_sim/close_prices/init_{pred_horizon}_{offset}.csv',
@@ -838,9 +839,10 @@ class Eval:
                 close_tensor = torch.tensor(reference.values, dtype=torch.float32).to(device)
                 init_tensor = torch.tensor(init_prices.values, dtype=torch.float32).to(device)
                 price_tensor = torch.cat([init_tensor.transpose(0, 1), close_tensor], dim=0)
-
                 filtered_ref = reference.loc[valid_times(reference.index, offset, pred_horizon)].values     # 30, n filtered future close prices
                 filtered_ref = torch.tensor(filtered_ref, dtype=torch.float32).transpose(0, 1).to(device)
+                print(f'filtered_ref shape: {filtered_ref.shape}')
+                print(f'filtered_close shape: {filtered_close.shape}')
                 corr_matrix = torch.corrcoef(torch.cat([filtered_ref, filtered_close], dim=0))              # 60, 60
                 stock_map = torch.argmax(corr_matrix[-30:, :30], dim=-1)
 
