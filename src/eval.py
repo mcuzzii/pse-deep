@@ -792,6 +792,10 @@ class Eval:
             c_idx = c_30 if pred_30 else c_10
             ts = ts_30 if pred_30 else ts_10
 
+            if news and not transformer:
+                news_df = joblib.load(f'data/processed/news_{pred_horizon}m.joblib')
+                ts = ts.intersection(news_df.df.index)
+
             data_fn = (
                 f'stock_transformer_{pred_horizon}m_test.pt'
                 if transformer else (
