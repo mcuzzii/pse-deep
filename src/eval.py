@@ -948,8 +948,8 @@ class Eval:
             model_df = model_df.reset_index().melt(id_vars='local_time').dropna()
             group_freq = '30min' if pred_30 else '10min'
             model_df = model_df.loc[
-                (model_df.index.time != pd.Timestamp('11:30' if pred_30 else '11:50')) &
-                (model_df.index.time != pd.Timestamp('14:30' if pred_30 else '14:50'))
+                (model_df['local_time'].dt.time != pd.Timestamp('11:30' if pred_30 else '11:50').time()) &
+                (model_df['local_time'].dt.time != pd.Timestamp('14:30' if pred_30 else '14:50').time())
             ]
             groups = model_df['local_time'].dt.floor(group_freq)
             group_means = model_df.groupby(groups)['value'].mean()
