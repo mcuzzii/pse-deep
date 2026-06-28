@@ -944,7 +944,8 @@ class Eval:
             model_df = model_df.reset_index().melt(id_vars='local_time').dropna()
             group_freq = '30min' if pred_30 else '10min'
             groups = model_df['local_time'].dt.floor(group_freq)
-            summary_df.loc[groups.unique(), key] = model_df.groupby(groups)['value'].mean()
+            group_means = model_df.groupby(groups)['value'].mean()
+            summary_df.loc[group_means.index, key] = group_means.values
 
             model_df.to_csv(snapshots_dir / f'model_{key}.csv')
             summary_df.to_csv(snapshots_dir / f'summary_{key}.csv')
