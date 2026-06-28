@@ -942,6 +942,8 @@ class Eval:
             group_freq = '30min' if pred_30 else '10min'
             groups = model_df['local_time'].dt.floor(group_freq)
             summary_df.loc[groups.unique(), key] = model_df.groupby(groups)['value'].mean()
+            print(model_df)
+            print(summary_df)
         
         summary_df = summary_df.reset_index().melt(id_vars='local_time', var_name='setting', value_name='profit_perc')
 
