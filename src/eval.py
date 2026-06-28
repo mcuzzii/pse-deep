@@ -929,7 +929,7 @@ class Eval:
                 reference.index = pd.to_datetime(reference.index)
                 reference = reference.loc[reference.index.get_level_values(0).isin(ts)]
 
-                offset_tensor = torch.stack(offset.values(), dim=0)               # k (N,) -> (k, N)
+                offset_tensor = torch.stack(list(offset.values()), dim=0)               # k (N,) -> (k, N)
 
                 offset_df = pd.DataFrame(offset_tensor.cpu().numpy(), index=reference.index)
                 model_df = model_df.join(offset_df, how='left', rsuffix=offset_key)
