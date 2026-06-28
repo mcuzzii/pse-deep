@@ -30,10 +30,13 @@ from xgboost import XGBClassifier
 from scipy.special import expit
 from scipy.stats import wilcoxon
 import matplotlib.pyplot as plt
+import matplotlib.ticker as ticker
 import seaborn as sns
 import itertools
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+sns.set_theme(style='whitegrid', font='serif')
 
 def expanding_window_thresholds(val_targets, val_scores, test_targets, test_scores):
     """
@@ -976,7 +979,49 @@ class Eval:
 
         summary_df['time_idx'] = summary_df.groupby(['transformer', 'pred_30', 'news', 'social']).cumcount()
 
-        g = sns.FacetGrid(summary_df, row='transformer', col='pred_30', height=4, aspect=1.5)
-        g.map_dataframe(sns.lineplot, x='time_idx', y='profit_perc', hue='news', style='social')
-        g.add_legend()
-        g.savefig(self.results_path / 'trading_sim' / 'overall.png', dpi=300)
+        palette = {'With news': '#2166ac', 'No news': '#d6604d'}
+        dashes = {'With social media': (1, 0), 'Without social media': (4, 1.5)}
+
+        # Apply rolling average to smooth spikes while preserving trend
+        window = 5
+        summary_df['profit_smooth'] = (
+            summary_df.groupby(['transformer', 'pred_30', 'news', 'social'])['profit_perc']
+            .transform(lambda x: x.rolling(window, center=True, min_periods=1).mean())
+        )
+
+        row_order = ['Transformer', 'MLP']
+        col_order = ['30-min return target', '10-min return target']
+
+        g = sns.FacetGrid(
+            summary_df,
+            row='transformer', col='pred_30',
+            row_order=row_order, col_order=col_order,
+            height=3.5, aspect=1.6,
+            despine=True,
+        )
+
+        # Plot smoothed line on top of faint raw line
+        g.map_dataframe(
+            sns.lineplot, x='time_idx', y='profit_perc',
+            hue='news', style='social',
+            palette=palette, dashes=dashes,
+            alpha=0.15, linewidth=0.8, legend=False,
+        )
+        g.map_dataframe(
+            sns.lineplot, x='time_idx', y='profit_smooth',
+            hue='news', style='social',
+            palette=palette, dashes=dashes,
+            alpha=1.0, linewidth=1.5,
+        )
+
+        g.set_axis_labels('Time', 'Cumulative Return')
+        g.set_titles(row_template='{row_name}', col_template='{col_name}')
+        g.add_legend(title='')
+        g.figure.subplots_adjust(top=0.92)
+        g.figure.suptitle('Trading Simulation Results', fontsize=13, fontweight='bold')
+
+        for ax in g.axes.flat:
+            ax.axhline(1.0, color='black', linewidth=0.6, linestyle=':', alpha=0.5)
+            ax.yaxis.set_major_formatter(ticker.FuncFormatter(lambda y, _: f'{y:.2f}'))
+
+        g.savefig(self.results_path / 'trading_sim' / 'overall.png', dpi=300, bbox_inches='tight')
