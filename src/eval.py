@@ -1002,7 +1002,6 @@ class Eval:
             sns.lineplot, x='time_idx', y='profit_perc',
             hue='news', style='social',
             palette=palette, dashes=dashes,
-            legend=False,
         )
 
         g.set_axis_labels('Time', 'Cumulative Return')
