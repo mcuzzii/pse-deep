@@ -335,7 +335,7 @@ class Eval:
                     'test_f1_neg_rolling': f1_score(1 - targets_np, 1 - preds_np),
                 })
             
-            if 'drift_from_width' in out:
+            if 'drift_from_width' not in out:
 
                 if dir.name not in overall_scores:
                     overall_scores[dir.name] = dict()

@@ -202,11 +202,11 @@ def run_experiments():
 def main():
     evaluator = Eval()
     #evaluator.overall_metrics()
-    evaluator.compute_experiment_data()
+    #evaluator.compute_experiment_data()
     #evaluator.get_closing_prices()
     #evaluator.trading_simulations()
     #evaluator.interpret_trading_sim()
-    #evaluator.random_intercept_mixed_effects()
+    evaluator.random_intercept_mixed_effects()
     #evaluator.train_baseline_models()
     #evaluator.wilcoxon_baseline_comparison()
 
