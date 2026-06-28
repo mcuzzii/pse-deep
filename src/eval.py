@@ -923,7 +923,7 @@ class Eval:
 
             for offset_key, offset in value.items():
                 reference = pd.read_csv(
-                    f'experiments/results/trading_sim/close_prices/{pred_horizon}_{offset}.csv',
+                    f'experiments/results/trading_sim/close_prices/{pred_horizon}_{offset_key}.csv',
                     index_col=0
                 )
                 reference.index = pd.to_datetime(reference.index)
