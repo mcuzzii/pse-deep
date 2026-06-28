@@ -206,8 +206,8 @@ def main():
     #evaluator.get_closing_prices()
     #evaluator.trading_simulations()
     #evaluator.interpret_trading_sim()
-    evaluator.random_intercept_mixed_effects()
-    #evaluator.train_baseline_models()
+    #evaluator.random_intercept_mixed_effects()
+    evaluator.train_baseline_models()
     #evaluator.wilcoxon_baseline_comparison()
 
 if __name__ == '__main__':
