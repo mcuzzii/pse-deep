@@ -400,8 +400,8 @@ class Eval:
             mcc_df[dir.name] = pd.Series(mcc_reordered.cpu().numpy())
             drift_df[dir.name] = pd.Series(drift_reordered.cpu().numpy())
         
-        mcc_df['stock_id'] = next(list(stock_map.values()))['stocks']
-        drift_df['stock_id'] = next(list(stock_map.values()))['stocks']
+        mcc_df['stock_id'] = next(iter(stock_map.values()))['stocks']
+        drift_df['stock_id'] = next(iter(stock_map.values()))['stocks']
 
         mcc_df = mcc_df.melt(id_vars=['stock_id'], var_name='setting', value_name='mcc')
         drift_df = drift_df.melt(id_vars=['stock_id'], var_name='setting', value_name='drift')
