@@ -865,11 +865,11 @@ class Eval:
                 corr_matrix = torch.corrcoef(torch.cat([filtered_ref, filtered_close], dim=0))              # 60, 60
                 stock_map = torch.argmax(corr_matrix[-30:, :30], dim=-1)
 
-                ref_dict[dir.name] = {
-                    'stocks': reference.columns.tolist(),
-                    'stock_map': corr_matrix[-30:, :30]
-                }
-                break
+                if offset == 0:
+                    ref_dict[dir.name] = {
+                        'stocks': reference.columns.tolist(),
+                        'stock_map': corr_matrix[-30:, :30]
+                    }
 
                 results_dict[dir.name][offset] = dict()
             
@@ -910,7 +910,7 @@ class Eval:
                     plt.savefig(save_path, dpi=300)
                     plt.close()
 
-        # torch.save(results_dict, self.results_path / 'trading_sim' / 'results.pt')
+        torch.save(results_dict, self.results_path / 'trading_sim' / 'results.pt')
 
         ref_dir = self.results_path / 'reference'
         ref_dir.mkdir(parents=True, exist_ok=True)
