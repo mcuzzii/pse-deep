@@ -947,6 +947,10 @@ class Eval:
             
             model_df = model_df.reset_index().melt(id_vars='local_time').dropna()
             group_freq = '30min' if pred_30 else '10min'
+            model_df = model_df.loc[
+                (model_df.index.time != pd.Timestamp('11:30' if pred_30 else '11:50')) &
+                (model_df.index.time != pd.Timestamp('14:30' if pred_30 else '14:50'))
+            ]
             groups = model_df['local_time'].dt.floor(group_freq)
             group_means = model_df.groupby(groups)['value'].mean()
             summary_df.loc[group_means.index, key] = group_means.values
@@ -983,13 +987,6 @@ class Eval:
         palette = {'With news': COLORS['purple'], 'No news': COLORS['green']}
         dashes = {'With social media': (1, 0), 'Without social media': (4, 1.5)}
 
-        # Apply rolling average to smooth spikes while preserving trend
-        window = 5
-        summary_df['profit_smooth'] = (
-            summary_df.groupby(['transformer', 'pred_30', 'news', 'social'])['profit_perc']
-            .transform(lambda x: x.rolling(window, center=True, min_periods=1).mean())
-        )
-
         col_order = ['Transformer', 'MLP']
         row_order = ['10-min return target', '30-min return target']
 
@@ -1001,18 +998,11 @@ class Eval:
             despine=True,
         )
 
-        # Plot smoothed line on top of faint raw line
         g.map_dataframe(
             sns.lineplot, x='time_idx', y='profit_perc',
             hue='news', style='social',
             palette=palette, dashes=dashes,
             alpha=0.15, linewidth=0.8, legend=False,
-        )
-        g.map_dataframe(
-            sns.lineplot, x='time_idx', y='profit_smooth',
-            hue='news', style='social',
-            palette=palette, dashes=dashes,
-            alpha=1.0, linewidth=1.5,
         )
 
         g.set_axis_labels('Time', 'Cumulative Return')
