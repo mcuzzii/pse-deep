@@ -932,7 +932,7 @@ class Eval:
                 offset_tensor = torch.stack(list(offset.values()), dim=0)               # k (N,) -> (k, N)
 
                 offset_df = pd.DataFrame(offset_tensor.cpu().numpy().T, index=reference.index)
-                model_df = model_df.join(offset_df, how='left', rsuffix=offset_key)
+                model_df = model_df.join(offset_df, how='left', rsuffix=f'_{offset_key}')
             
             model_df = model_df.reset_index.melt(id_vars='index').dropna()
 
