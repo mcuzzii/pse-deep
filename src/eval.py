@@ -372,18 +372,11 @@ class Eval:
         mcc_df = pd.DataFrame()
         drift_df = pd.DataFrame()
 
-        stocks = get_stocks()
-
-        close_30 = pd.DataFrame()
-        for stock in stocks:
-            print(f'Loading {stock}...')
-            stock_30 = DataSource()
-            stock_10 = DataSource()
-            stock_30.create_df(f'{stock}_30m')
-            stock_10.create_df(f'{stock}_10m')
-            idx_30 = stock_30.features.index(f'{stock}_close')
-            idx_10 = stock_10.features.index(f'{stock}_close')
-
+        stock_map = torch.load(
+            self.results_path / 'reference' / 'stock_maps.pt',
+            map_location=device,
+            weights_only=False
+        )
 
         for dir in self.experiments_path.iterdir():
 
@@ -393,11 +386,22 @@ class Eval:
             test_outputs = dir / 'test_outputs.pt'
             out = torch.load(test_outputs, map_location=device, weights_only=False)
 
-            mcc_df[dir.name] = pd.Series(out['mcc_scores'].cpu().numpy())
-            drift_df[dir.name] = pd.Series(out['drift_from_width'].cpu().numpy())
+            mcc = out['mcc_scores']
+            drift = out['drift_from_width']
+
+            reorder = torch.argmax(stock_map[dir.name]['stock_map'], dim=-1)
+
+            mcc_reordered = torch.zeros_like(mcc)
+            drift_reordered = torch.zeros_like(drift)
+
+            mcc_reordered[reorder] = mcc
+            drift_reordered[reorder] = drift
+
+            mcc_df[dir.name] = pd.Series(mcc_reordered.cpu().numpy())
+            drift_df[dir.name] = pd.Series(drift_reordered.cpu().numpy())
         
-        mcc_df['stock_id'] = range(len(mcc_df))
-        drift_df['stock_id'] = range(len(drift_df))
+        mcc_df['stock_id'] = next(stock_map.values())['stocks']
+        drift_df['stock_id'] = next(stock_map.values())['stocks']
 
         mcc_df = mcc_df.melt(id_vars=['stock_id'], var_name='setting', value_name='mcc')
         drift_df = drift_df.melt(id_vars=['stock_id'], var_name='setting', value_name='drift')
