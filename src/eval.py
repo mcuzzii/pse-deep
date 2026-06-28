@@ -939,8 +939,9 @@ class Eval:
                 model_df = model_df.join(offset_df, how='left')
             
             model_df = model_df.reset_index().melt(id_vars='local_time').dropna()
-            groups_10 = model_df['local_time'].dt.floor('10min')
-            summary_df.loc[groups_10.unique(), key] = model_df.groupby(groups_10)['value'].mean()
+            group_freq = '30min' if pred_30 else '10min'
+            groups = model_df['local_time'].dt.floor(group_freq)
+            summary_df.loc[groups.unique(), key] = model_df.groupby(groups)['value'].mean()
         
         summary_df = summary_df.reset_index().melt(id_vars='local_time', var_name='setting', value_name='profit_perc')
 
