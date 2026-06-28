@@ -887,3 +887,56 @@ class Eval:
                     plt.close()
 
         torch.save(results_dict, self.results_path / 'trading_sim' / 'results.pt')
+    
+    def interpret_trading_sim(self):
+
+        results = torch.load(
+            self.results_path / 'trading_sim' / 'results.pt',
+            map_location=device,
+            weights_only=False
+        )
+
+        ref_30 = joblib.load('data/processed/ac_30m.joblib')
+        ref_10 = joblib.load('data/processed/ac_10m.joblib')
+
+        ts_30 = ref_30.filtered_date_times
+        ts_10 = ref_10.filtered_date_times
+
+        ts_30 = ts_30[int(len(ts_30) * 0.9) + 1:]
+        ts_10 = ts_10[int(len(ts_10) * 0.9) + 1:]
+        
+        summary_df = pd.DataFrame(index=ts_10.floor('10min').unique())
+        for key, value in results.items():
+            news = 'news' in key
+            social = 'social' in key
+            transformer = 'transformer' in key
+            pred_30 = '30' in key
+
+            pred_horizon = 30 if pred_30 else 10
+            ts = ts_30 if pred_30 else ts_10
+
+            if news and not transformer:
+                news_df = joblib.load(f'data/processed/news_{pred_horizon}m.joblib')
+                ts = ts.intersection(news_df.df.dropna().index)
+            
+            model_df = pd.DataFrame(index=ts_10)
+
+            for offset_key, offset in value.items():
+                reference = pd.read_csv(
+                    f'experiments/results/trading_sim/close_prices/{pred_horizon}_{offset}.csv',
+                    index_col=0
+                )
+                reference.index = pd.to_datetime(reference.index)
+                reference = reference.loc[reference.index.get_level_values(0).isin(ts)]
+
+                offset_tensor = torch.stack(offset.values(), dim=0)               # k (N,) -> (k, N)
+
+                offset_df = pd.DataFrame(offset_tensor.cpu().numpy(), index=reference.index)
+                model_df = model_df.join(offset_df, how='left', rsuffix=offset_key)
+            
+            model_df = model_df.reset_index.melt(id_vars='index').dropna()
+
+            groups_10 = model_df['index'].dt.floor('10min')
+            summary_df.loc[groups_10.unique(), key] = model_df.groupby(groups_10).mean()
+        
+        print(summary_df)
