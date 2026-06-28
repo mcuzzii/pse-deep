@@ -19,6 +19,7 @@ sys.path.append(str(Path.cwd() / 'src'))
 
 from processing import DataSource, get_stocks
 from experiments import mcc_curve
+from utils import setup_plot_style
 import statsmodels.formula.api as smf
 import os
 import time
@@ -36,8 +37,7 @@ import itertools
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-sns.set_theme(style='whitegrid', font='serif')
-plt.rcParams['font.family'] = 'EB Garamond'
+setup_plot_style()
 
 def expanding_window_thresholds(val_targets, val_scores, test_targets, test_scores):
     """
@@ -980,7 +980,7 @@ class Eval:
 
         summary_df['time_idx'] = summary_df.groupby(['transformer', 'pred_30', 'news', 'social']).cumcount()
 
-        palette = {'With news': '#5b8db8', 'No news': '#b5632a'}
+        palette = {'With news': '#3d6b8f', 'No news': '#c4622d'}
         dashes = {'With social media': (1, 0), 'Without social media': (4, 1.5)}
 
         # Apply rolling average to smooth spikes while preserving trend
@@ -995,7 +995,7 @@ class Eval:
 
         g = sns.FacetGrid(
             summary_df,
-            row='transformer', col='pred_30',
+            row='pred_30', col='transformer',
             row_order=row_order, col_order=col_order,
             height=3.5, aspect=1.6,
             despine=True,

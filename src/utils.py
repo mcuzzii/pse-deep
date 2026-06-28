@@ -2,6 +2,18 @@ import os
 import torch
 import random
 import numpy as np
+import matplotlib.pyplot as plt
+import matplotlib.font_manager as fm
+import seaborn as sns
+from pathlib import Path
+
+def setup_plot_style():
+    font_dir = Path('assets/fonts/EBGaramond')
+    for font_file in font_dir.glob('*.ttf'):
+        fm.fontManager.addfont(str(font_file))
+    
+    sns.set_theme(style='white')
+    plt.rcParams['font.family'] = 'EB Garamond'
 
 def seed_everything(seed=42):
     random.seed(seed)
