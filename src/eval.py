@@ -905,9 +905,9 @@ class Eval:
         ts_30 = ts_30[int(len(ts_30) * 0.9) + 1:]
         ts_10 = ts_10[int(len(ts_10) * 0.9) + 1:]
 
-        print(ts_30.union(ts_10))
+        ts_all = ts_30.union(ts_10)
         
-        summary_df = pd.DataFrame(index=ts_10.floor('10min').unique())
+        summary_df = pd.DataFrame(index=ts_all.floor('10min').unique())
         for key, value in results.items():
             news = 'news' in key
             social = 'social' in key
@@ -921,7 +921,7 @@ class Eval:
                 news_df = joblib.load(f'data/processed/news_{pred_horizon}m.joblib')
                 ts = ts.intersection(news_df.df.dropna().index)
             
-            model_df = pd.DataFrame(index=ts_10)
+            model_df = pd.DataFrame(index=ts_all)
 
             for offset_key, offset in value.items():
                 reference = pd.read_csv(
@@ -937,6 +937,7 @@ class Eval:
                 offset_df = pd.DataFrame(offset_tensor.cpu().numpy().T, index=reference.index)
                 print(offset_df)
                 print(model_df)
+                print(f'Offset key: {offset_key}')
                 model_df = model_df.join(offset_df, how='left', rsuffix=f'_{offset_key}')
             
             model_df = model_df.reset_index.melt(id_vars='index').dropna()
