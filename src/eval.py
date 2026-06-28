@@ -909,6 +909,9 @@ class Eval:
         ts_all = ts_30.union(ts_10)
         
         summary_df = pd.DataFrame(index=ts_all.floor('10min').unique().union(ts_all.floor('30min').unique()))
+        snapshots_dir = self.results_path / 'trading_sim' / 'snapshots'
+        snapshots_dir.mkdir(parents=True, exist_ok=True)
+
         for key, value in results.items():
             news = 'news' in key
             social = 'social' in key
@@ -942,8 +945,9 @@ class Eval:
             group_freq = '30min' if pred_30 else '10min'
             groups = model_df['local_time'].dt.floor(group_freq)
             summary_df.loc[groups.unique(), key] = model_df.groupby(groups)['value'].mean()
-            print(model_df)
-            print(summary_df)
+
+            model_df.to_csv(snapshots_dir / f'model_{key}.csv')
+            summary_df.to_csv(snapshots_dir / f'summary_{key}.csv')
         
         summary_df = summary_df.reset_index().melt(id_vars='local_time', var_name='setting', value_name='profit_perc')
 
