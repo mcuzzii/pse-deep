@@ -935,9 +935,10 @@ class Eval:
                 print(offset_tensor.shape)
 
                 offset_df = pd.DataFrame(offset_tensor.cpu().numpy().T, index=reference.index)
+                offset_df = offset_df.add_suffix(f'_{offset_key}')
                 print(offset_df)
                 print(f'Offset key: {offset_key}')
-                model_df = model_df.join(offset_df, how='left', rsuffix=f'_{offset_key}')
+                model_df = model_df.join(offset_df, how='left')
                 print(model_df)
             
             model_df = model_df.reset_index.melt(id_vars='index').dropna()
