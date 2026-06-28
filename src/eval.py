@@ -905,8 +905,7 @@ class Eval:
         ts_30 = ts_30[int(len(ts_30) * 0.9) + 1:]
         ts_10 = ts_10[int(len(ts_10) * 0.9) + 1:]
 
-        print(ts_30)
-        print(ts_10)
+        print(ts_30.union(ts_10))
         
         summary_df = pd.DataFrame(index=ts_10.floor('10min').unique())
         for key, value in results.items():
