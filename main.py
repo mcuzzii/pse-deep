@@ -208,6 +208,7 @@ def main():
     #evaluator.wilcoxon_baseline_comparison()
     evaluator.get_closing_prices()
     evaluator.trading_simulations()
+    evaluator.interpret_trading_sim()
 
 if __name__ == '__main__':
     main()
