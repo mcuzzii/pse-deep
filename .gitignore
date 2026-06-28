@@ -9,6 +9,9 @@ data/
 # -- Experiments --
 experiments/
 
+# -- Assets --
+assets/
+
 # -- Cache --
 __pycache__/
 
