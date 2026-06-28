@@ -930,6 +930,7 @@ class Eval:
                 reference = reference.loc[reference.index.get_level_values(0).isin(ts)]
 
                 offset_tensor = torch.stack(list(offset.values()), dim=0)               # k (N,) -> (k, N)
+                print(offset_tensor.shape)
 
                 offset_df = pd.DataFrame(offset_tensor.cpu().numpy().T, index=reference.index)
                 print(offset_df)
