@@ -937,8 +937,7 @@ class Eval:
                 offset_df = offset_df.add_suffix(f'_{offset_key}')
                 model_df = model_df.join(offset_df, how='left')
             
-            print(model_df)
-            model_df = model_df.reset_index().melt(id_vars='index').dropna()
+            model_df = model_df.reset_index().melt(id_vars='local_time').dropna()
             print(model_df)
             groups_10 = model_df['index'].dt.floor('10min')
             summary_df.loc[groups_10.unique(), key] = model_df.groupby(groups_10).mean()
