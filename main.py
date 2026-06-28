@@ -203,12 +203,12 @@ def main():
     evaluator = Eval()
     #evaluator.overall_metrics()
     #evaluator.compute_experiment_data()
+    evaluator.get_closing_prices()
+    evaluator.trading_simulations(True)
+    evaluator.interpret_trading_sim()
     #evaluator.random_intercept_mixed_effects()
     #evaluator.train_baseline_models()
     #evaluator.wilcoxon_baseline_comparison()
-    evaluator.get_closing_prices()
-    evaluator.trading_simulations()
-    evaluator.interpret_trading_sim()
 
 if __name__ == '__main__':
     main()

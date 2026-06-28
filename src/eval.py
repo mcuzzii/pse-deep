@@ -30,6 +30,7 @@ from sklearn.ensemble import RandomForestClassifier
 from xgboost import XGBClassifier
 from scipy.special import expit
 from scipy.stats import wilcoxon
+from scipy import stats
 import matplotlib.pyplot as plt
 import matplotlib.ticker as ticker
 import seaborn as sns
@@ -104,6 +105,99 @@ def compute_drift(loss):
     combined_drift_score_mean = msd_mean * widths_mean
 
     return mean_squared_loss_deviations, drift_from_width, msd_mean, widths_mean, combined_drift_score_mean
+
+def analyze(df, outcome, factors, formula_two_way, formula_main, out_dir):
+    # --- Fit models ---
+    model_2way = smf.mixedlm(f"{outcome} ~ {formula_two_way}", data=df, groups=df["stock_id"]).fit(reml=False)
+    model_main = smf.mixedlm(f"{outcome} ~ {formula_main}", data=df, groups=df["stock_id"]).fit(reml=False)
+    model_reml = smf.mixedlm(f"{outcome} ~ {formula_two_way}", data=df, groups=df["stock_id"]).fit()
+
+    # --- Coefficients ---
+    coef_df = pd.DataFrame({
+        'coef': model_reml.fe_params,
+        'std_err': model_reml.bse_fe,
+        'z': model_reml.tvalues,
+        'p_value': model_reml.pvalues,
+        'ci_lower': model_reml.conf_int()[0],
+        'ci_upper': model_reml.conf_int()[1],
+        'abs_coef': model_reml.fe_params.abs()
+    }).sort_values('abs_coef', ascending=False)
+    coef_df.to_csv(out_dir / f'{outcome}_coefficients.csv')
+
+    # --- Model comparison ---
+    lr_stat = 2 * (model_2way.llf - model_main.llf)
+    df_diff = len(model_2way.params) - len(model_main.params)
+    p_lrt = stats.chi2.sf(lr_stat, df_diff)
+    group_var = model_reml.cov_re.iloc[0, 0]
+    resid_var = model_reml.scale
+    icc = group_var / (group_var + resid_var)
+    model_comparison_df = pd.DataFrame([{
+        'lr_stat': lr_stat,
+        'df_diff': df_diff,
+        'p_lrt': p_lrt,
+        'aic_two_way': model_2way.aic,
+        'aic_main': model_main.aic,
+        'bic_two_way': model_2way.bic,
+        'bic_main': model_main.bic,
+        'icc': icc,
+        'group_var': group_var,
+        'resid_var': resid_var,
+    }])
+    model_comparison_df.to_csv(out_dir / f'{outcome}_model_comparison.csv', index=False)
+
+    # --- Marginal means ---
+    configs = list(itertools.product([0, 1], repeat=4))
+    config_df = pd.DataFrame(configs, columns=factors)
+    config_df['stock_id'] = 0
+    config_df[f'{outcome}_pred'] = model_reml.predict(config_df)
+    config_df = config_df.drop(columns=['stock_id']).sort_values(f'{outcome}_pred', ascending=False)
+    config_df.to_csv(out_dir / f'{outcome}_marginal_means.csv', index=False)
+
+    # --- Simple effects ---
+    simple_effects_rows = []
+    for focal in factors:
+        others = [f for f in factors if f != focal]
+        for vals in itertools.product([0, 1], repeat=len(others)):
+            cond = dict(zip(others, vals))
+            row0 = {**cond, focal: 0, 'stock_id': 0}
+            row1 = {**cond, focal: 1, 'stock_id': 0}
+            pred0 = model_reml.predict(pd.DataFrame([row0]))[0]
+            pred1 = model_reml.predict(pd.DataFrame([row1]))[0]
+            simple_effects_rows.append({
+                'focal_factor': focal,
+                **cond,
+                'effect': pred1 - pred0,
+                'pred_at_0': pred0,
+                'pred_at_1': pred1,
+            })
+    simple_effects_df = pd.DataFrame(simple_effects_rows)
+    simple_effects_df.to_csv(out_dir / f'{outcome}_simple_effects.csv', index=False)
+
+    # --- Residual diagnostics ---
+    resids = model_reml.resid
+    _, p_shapiro = stats.shapiro(resids)
+    resid_df = pd.DataFrame({
+        'residual': resids.values,
+    })
+    resid_df.to_csv(out_dir / f'{outcome}_residuals.csv', index=False)
+    pd.DataFrame([{
+        'shapiro_p': p_shapiro,
+        'resid_mean': resids.mean(),
+        'resid_std': resids.std(),
+        'resid_skew': resids.skew(),
+        'resid_kurt': resids.kurt(),
+    }]).to_csv(out_dir / f'{outcome}_residual_stats.csv', index=False)
+
+    fig, axes = plt.subplots(1, 2, figsize=(10, 4))
+    axes[0].hist(resids, bins=30)
+    axes[0].set_title(f'{outcome} residuals histogram')
+    stats.probplot(resids, plot=axes[1])
+    axes[1].set_title(f'{outcome} Q-Q plot')
+    plt.tight_layout()
+    plt.savefig(out_dir / f'{outcome}_residual_diagnostics.png', dpi=150)
+    plt.close()
+
+    return model_reml
 
 def valid_times(ts, offset, pred_horizon):
     last_valid_min = '00' if pred_horizon == 30 else '40'
@@ -274,12 +368,23 @@ class Eval:
         model_scores.to_csv(self.results_path / 'model_scores.csv')
 
     def random_intercept_mixed_effects(self):
-        import itertools
-        from scipy import stats
-        import matplotlib.pyplot as plt
 
         mcc_df = pd.DataFrame()
         drift_df = pd.DataFrame()
+
+        stocks = get_stocks()
+
+        close_30 = pd.DataFrame()
+        for stock in stocks:
+            print(f'Loading {stock}...')
+            stock_30 = DataSource()
+            stock_10 = DataSource()
+            stock_30.create_df(f'{stock}_30m')
+            stock_10.create_df(f'{stock}_10m')
+            idx_30 = stock_30.features.index(f'{stock}_close')
+            idx_10 = stock_10.features.index(f'{stock}_close')
+
+
         for dir in self.experiments_path.iterdir():
 
             if dir.name in ('data', 'experiments', 'results'):
@@ -310,101 +415,8 @@ class Eval:
         out_dir = self.results_path / 'mixed_effects'
         out_dir.mkdir(exist_ok=True)
 
-        def analyze(df, outcome):
-            # --- Fit models ---
-            model_2way = smf.mixedlm(f"{outcome} ~ {formula_two_way}", data=df, groups=df["stock_id"]).fit(reml=False)
-            model_main = smf.mixedlm(f"{outcome} ~ {formula_main}", data=df, groups=df["stock_id"]).fit(reml=False)
-            model_reml = smf.mixedlm(f"{outcome} ~ {formula_two_way}", data=df, groups=df["stock_id"]).fit()
-
-            # --- Coefficients ---
-            coef_df = pd.DataFrame({
-                'coef': model_reml.fe_params,
-                'std_err': model_reml.bse_fe,
-                'z': model_reml.tvalues,
-                'p_value': model_reml.pvalues,
-                'ci_lower': model_reml.conf_int()[0],
-                'ci_upper': model_reml.conf_int()[1],
-                'abs_coef': model_reml.fe_params.abs()
-            }).sort_values('abs_coef', ascending=False)
-            coef_df.to_csv(out_dir / f'{outcome}_coefficients.csv')
-
-            # --- Model comparison ---
-            lr_stat = 2 * (model_2way.llf - model_main.llf)
-            df_diff = len(model_2way.params) - len(model_main.params)
-            p_lrt = stats.chi2.sf(lr_stat, df_diff)
-            group_var = model_reml.cov_re.iloc[0, 0]
-            resid_var = model_reml.scale
-            icc = group_var / (group_var + resid_var)
-            model_comparison_df = pd.DataFrame([{
-                'lr_stat': lr_stat,
-                'df_diff': df_diff,
-                'p_lrt': p_lrt,
-                'aic_two_way': model_2way.aic,
-                'aic_main': model_main.aic,
-                'bic_two_way': model_2way.bic,
-                'bic_main': model_main.bic,
-                'icc': icc,
-                'group_var': group_var,
-                'resid_var': resid_var,
-            }])
-            model_comparison_df.to_csv(out_dir / f'{outcome}_model_comparison.csv', index=False)
-
-            # --- Marginal means ---
-            configs = list(itertools.product([0, 1], repeat=4))
-            config_df = pd.DataFrame(configs, columns=factors)
-            config_df['stock_id'] = 0
-            config_df[f'{outcome}_pred'] = model_reml.predict(config_df)
-            config_df = config_df.drop(columns=['stock_id']).sort_values(f'{outcome}_pred', ascending=False)
-            config_df.to_csv(out_dir / f'{outcome}_marginal_means.csv', index=False)
-
-            # --- Simple effects ---
-            simple_effects_rows = []
-            for focal in factors:
-                others = [f for f in factors if f != focal]
-                for vals in itertools.product([0, 1], repeat=len(others)):
-                    cond = dict(zip(others, vals))
-                    row0 = {**cond, focal: 0, 'stock_id': 0}
-                    row1 = {**cond, focal: 1, 'stock_id': 0}
-                    pred0 = model_reml.predict(pd.DataFrame([row0]))[0]
-                    pred1 = model_reml.predict(pd.DataFrame([row1]))[0]
-                    simple_effects_rows.append({
-                        'focal_factor': focal,
-                        **cond,
-                        'effect': pred1 - pred0,
-                        'pred_at_0': pred0,
-                        'pred_at_1': pred1,
-                    })
-            simple_effects_df = pd.DataFrame(simple_effects_rows)
-            simple_effects_df.to_csv(out_dir / f'{outcome}_simple_effects.csv', index=False)
-
-            # --- Residual diagnostics ---
-            resids = model_reml.resid
-            _, p_shapiro = stats.shapiro(resids)
-            resid_df = pd.DataFrame({
-                'residual': resids.values,
-            })
-            resid_df.to_csv(out_dir / f'{outcome}_residuals.csv', index=False)
-            pd.DataFrame([{
-                'shapiro_p': p_shapiro,
-                'resid_mean': resids.mean(),
-                'resid_std': resids.std(),
-                'resid_skew': resids.skew(),
-                'resid_kurt': resids.kurt(),
-            }]).to_csv(out_dir / f'{outcome}_residual_stats.csv', index=False)
-
-            fig, axes = plt.subplots(1, 2, figsize=(10, 4))
-            axes[0].hist(resids, bins=30)
-            axes[0].set_title(f'{outcome} residuals histogram')
-            stats.probplot(resids, plot=axes[1])
-            axes[1].set_title(f'{outcome} Q-Q plot')
-            plt.tight_layout()
-            plt.savefig(out_dir / f'{outcome}_residual_diagnostics.png', dpi=150)
-            plt.close()
-
-            return model_reml
-
-        analyze(mcc_df, 'mcc')
-        analyze(drift_df, 'drift')
+        analyze(mcc_df, 'mcc', factors, formula_two_way, formula_main, out_dir)
+        analyze(drift_df, 'drift', factors, formula_two_way, formula_main, out_dir)
 
         print(f"All results saved to {out_dir}")
 
@@ -778,6 +790,7 @@ class Eval:
         c_10 = ref_10.features.index('ac_close')
 
         results_dict = dict()
+        ref_dict = dict()
 
         for dir in self.experiments_path.iterdir():
 
@@ -852,6 +865,12 @@ class Eval:
                 corr_matrix = torch.corrcoef(torch.cat([filtered_ref, filtered_close], dim=0))              # 60, 60
                 stock_map = torch.argmax(corr_matrix[-30:, :30], dim=-1)
 
+                ref_dict[dir.name] = {
+                    'stocks': reference.columns.tolist(),
+                    'stock_map': corr_matrix[-30:, :30]
+                }
+                break
+
                 results_dict[dir.name][offset] = dict()
             
                 for k in range(15):
@@ -891,7 +910,11 @@ class Eval:
                     plt.savefig(save_path, dpi=300)
                     plt.close()
 
-        torch.save(results_dict, self.results_path / 'trading_sim' / 'results.pt')
+        # torch.save(results_dict, self.results_path / 'trading_sim' / 'results.pt')
+
+        ref_dir = self.results_path / 'reference'
+        ref_dir.mkdir(parents=True, exist_ok=True)
+        torch.save(ref_dict, ref_dir / 'stock_maps.pt')
     
     def interpret_trading_sim(self):
 
@@ -916,6 +939,7 @@ class Eval:
         snapshots_dir = self.results_path / 'trading_sim' / 'snapshots'
         snapshots_dir.mkdir(parents=True, exist_ok=True)
 
+        final_returns_per_model = dict()
         for key, value in results.items():
             news = 'news' in key
             social = 'social' in key
@@ -931,6 +955,7 @@ class Eval:
             
             model_df = pd.DataFrame(index=ts_all)
 
+            final_returns_per_offset = []
             for offset_key, offset in value.items():
                 reference = pd.read_csv(
                     f'experiments/results/trading_sim/close_prices/{pred_horizon}_{offset_key}.csv',
@@ -940,10 +965,13 @@ class Eval:
                 reference = reference.loc[reference.index.get_level_values(0).isin(ts)]
 
                 offset_tensor = torch.stack(list(offset.values()), dim=0)               # k (N,) -> (k, N)
+                final_returns_per_offset.append(offset_tensor[:, -1])                   # k
 
                 offset_df = pd.DataFrame(offset_tensor.cpu().numpy().T, index=reference.index)
                 offset_df = offset_df.add_suffix(f'_{offset_key}')
                 model_df = model_df.join(offset_df, how='left')
+            
+            final_returns_per_model[key] = torch.cat(final_returns_per_offset, dim=0).cpu().numpy()   # k * offset
             
             model_df = model_df.reset_index().melt(id_vars='local_time').dropna()
             group_freq = '30min' if pred_30 else '10min'
@@ -1020,3 +1048,5 @@ class Eval:
             ax.yaxis.set_major_formatter(ticker.FuncFormatter(lambda y, _: f'{y:.2f}'))
 
         g.savefig(self.results_path / 'trading_sim' / 'overall.png', dpi=300, bbox_inches='tight')
+
+        tsim_df = pd.DataFrame(final_returns_per_model)
