@@ -991,7 +991,7 @@ class Eval:
         )
 
         col_order = ['Transformer', 'MLP']
-        row_order = ['30-min return target', '10-min return target']
+        row_order = ['10-min return target', '30-min return target']
 
         g = sns.FacetGrid(
             summary_df,
