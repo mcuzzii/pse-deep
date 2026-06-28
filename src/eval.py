@@ -908,7 +908,7 @@ class Eval:
 
         ts_all = ts_30.union(ts_10)
         
-        summary_df = pd.DataFrame(index=ts_all.floor('10min').unique())
+        summary_df = pd.DataFrame(index=ts_all.floor('10min').unique().union(ts_all.floor('30min').unique()))
         for key, value in results.items():
             news = 'news' in key
             social = 'social' in key
