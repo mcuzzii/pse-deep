@@ -15,6 +15,15 @@ def setup_plot_style():
     sns.set_theme(style='white')
     plt.rcParams['font.family'] = 'EB Garamond'
 
+COLORS = {
+    'purple':     '#43338a',   # viridis dark end
+    'teal':       '#27848a',   # viridis mid
+    'green':      '#3a9e5f',   # viridis mid-light
+    'yellow':     '#c2df23',   # viridis light end (use sparingly)
+    'indigo':     '#30628b',   # viridis blue-purple
+    'seafoam':    '#1fa094',   # viridis teal variant
+}
+
 def seed_everything(seed=42):
     random.seed(seed)
     np.random.seed(seed)

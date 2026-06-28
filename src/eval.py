@@ -19,7 +19,7 @@ sys.path.append(str(Path.cwd() / 'src'))
 
 from processing import DataSource, get_stocks
 from experiments import mcc_curve
-from utils import setup_plot_style
+from utils import setup_plot_style, COLORS
 import statsmodels.formula.api as smf
 import os
 import time
@@ -980,7 +980,7 @@ class Eval:
 
         summary_df['time_idx'] = summary_df.groupby(['transformer', 'pred_30', 'news', 'social']).cumcount()
 
-        palette = {'With news': '#4393c3', 'No news': '#d6604d'}
+        palette = {'With news': COLORS['purple'], 'No news': COLORS['green']}
         dashes = {'With social media': (1, 0), 'Without social media': (4, 1.5)}
 
         # Apply rolling average to smooth spikes while preserving trend
