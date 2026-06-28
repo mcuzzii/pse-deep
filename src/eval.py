@@ -1010,6 +1010,11 @@ class Eval:
         g.figure.subplots_adjust(top=0.92)
         g.figure.suptitle('Trading Simulation Results', fontsize=13, fontweight='bold')
 
+        legend = g.legend
+        for text in legend.get_texts():
+            if text.get_text() in ('news', 'social'):
+                text.set_visible(False)
+
         for ax in g.axes.flat:
             ax.axhline(1.0, color='black', linewidth=0.6, linestyle=':', alpha=0.5)
             ax.yaxis.set_major_formatter(ticker.FuncFormatter(lambda y, _: f'{y:.2f}'))
