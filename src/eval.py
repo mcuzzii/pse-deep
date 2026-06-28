@@ -966,19 +966,9 @@ class Eval:
         )
         summary_df.drop(columns=['setting'], inplace=True)
 
-        g = sns.FacetGrid(
-            summary_df,
-            row='transformer',
-            col='pred_30',
-            height=4,
-            aspect=1.5
-        )
-        g.map_dataframe(
-            sns.lineplot,
-            x='local_time',
-            y='profit_perc',
-            hue='news',
-            style='social',
-        )
+        summary_df['time_idx'] = summary_df.groupby(['transformer', 'pred_30', 'news', 'social']).cumcount()
+
+        g = sns.FacetGrid(summary_df, row='transformer', col='pred_30', height=4, aspect=1.5)
+        g.map_dataframe(sns.lineplot, x='time_idx', y='profit_perc', hue='news', style='social')
         g.add_legend()
         g.savefig(self.results_path / 'trading_sim' / 'overall.png', dpi=300)
