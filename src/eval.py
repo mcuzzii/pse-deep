@@ -980,7 +980,7 @@ class Eval:
 
         summary_df['time_idx'] = summary_df.groupby(['transformer', 'pred_30', 'news', 'social']).cumcount()
 
-        palette = {'With news': '#3d6b8f', 'No news': '#c4622d'}
+        palette = {'With news': '#4393c3', 'No news': '#d6604d'}
         dashes = {'With social media': (1, 0), 'Without social media': (4, 1.5)}
 
         # Apply rolling average to smooth spikes while preserving trend
