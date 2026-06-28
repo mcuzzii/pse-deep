@@ -990,8 +990,8 @@ class Eval:
             .transform(lambda x: x.rolling(window, center=True, min_periods=1).mean())
         )
 
-        row_order = ['Transformer', 'MLP']
-        col_order = ['30-min return target', '10-min return target']
+        col_order = ['Transformer', 'MLP']
+        row_order = ['30-min return target', '10-min return target']
 
         g = sns.FacetGrid(
             summary_df,
