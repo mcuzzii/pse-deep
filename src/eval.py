@@ -938,10 +938,46 @@ class Eval:
                 model_df = model_df.join(offset_df, how='left')
             
             model_df = model_df.reset_index().melt(id_vars='local_time').dropna()
-            print(model_df)
             groups_10 = model_df['local_time'].dt.floor('10min')
-            print(groups_10)
             summary_df.loc[groups_10.unique(), key] = model_df.groupby(groups_10)['value'].mean()
-            print(summary_df)
         
-        print(summary_df)
+        summary_df = summary_df.reset_index().melt(id_vars='local_time', var_name='setting', value_name='profit_perc')
+
+        summary_df['transformer'] = np.where(
+            summary_df['setting'].str.contains('transformer'),
+            'Transformer',
+            'MLP'
+        )
+        summary_df['news'] = np.where(
+            summary_df['setting'].str.contains('news').astype(int),
+            'With news',
+            'No news'
+        )
+        summary_df['social'] = np.where(
+            summary_df['setting'].str.contains('social').astype(int),
+            'With social media',
+            'Without social media'
+        )
+        summary_df['pred_30'] = np.where(
+            summary_df['setting'].str.contains('30').astype(int),
+            '30-min return target',
+            '10-min return target'
+        )
+        summary_df.drop(columns=['setting'], inplace=True)
+
+        g = sns.FacetGrid(
+            summary_df,
+            row='transformer',
+            col='pred_30',
+            height=4,
+            aspect=1.5
+        )
+        g.map_dataframe(
+            sns.lineplot,
+            x='local_time',
+            y='profit_perc',
+            hue='news',
+            style='social',
+        )
+        g.add_legend()
+        g.savefig(self.results_path / 'trading_sim' / 'overall.png', dpi=300)
