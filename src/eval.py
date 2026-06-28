@@ -932,18 +932,15 @@ class Eval:
                 reference = reference.loc[reference.index.get_level_values(0).isin(ts)]
 
                 offset_tensor = torch.stack(list(offset.values()), dim=0)               # k (N,) -> (k, N)
-                print(offset_tensor.shape)
 
                 offset_df = pd.DataFrame(offset_tensor.cpu().numpy().T, index=reference.index)
                 offset_df = offset_df.add_suffix(f'_{offset_key}')
-                print(offset_df)
-                print(f'Offset key: {offset_key}')
                 model_df = model_df.join(offset_df, how='left')
-                print(model_df)
             
-            model_df = model_df.reset_index.melt(id_vars='index').dropna()
-
+            model_df = model_df.reset_index().melt(id_vars='index').dropna()
+            print(model_df)
             groups_10 = model_df['index'].dt.floor('10min')
             summary_df.loc[groups_10.unique(), key] = model_df.groupby(groups_10).mean()
+            print(summary_df)
         
         print(summary_df)
