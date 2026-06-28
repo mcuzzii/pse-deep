@@ -30,6 +30,7 @@ from xgboost import XGBClassifier
 from scipy.special import expit
 from scipy.stats import wilcoxon
 import matplotlib.pyplot as plt
+import seaborn as sns
 import itertools
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
