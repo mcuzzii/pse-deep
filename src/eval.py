@@ -37,6 +37,7 @@ import itertools
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 sns.set_theme(style='whitegrid', font='serif')
+plt.rcParams['font.family'] = 'EB Garamond'
 
 def expanding_window_thresholds(val_targets, val_scores, test_targets, test_scores):
     """
@@ -979,7 +980,7 @@ class Eval:
 
         summary_df['time_idx'] = summary_df.groupby(['transformer', 'pred_30', 'news', 'social']).cumcount()
 
-        palette = {'With news': '#2166ac', 'No news': '#d6604d'}
+        palette = {'With news': '#5b8db8', 'No news': '#b5632a'}
         dashes = {'With social media': (1, 0), 'Without social media': (4, 1.5)}
 
         # Apply rolling average to smooth spikes while preserving trend
