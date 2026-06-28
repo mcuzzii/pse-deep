@@ -92,7 +92,7 @@ def compute_drift(loss):
             means[n, s] = sum(windows[s]) / len(windows[s])
             width_histories[n, s] = detectors[s].width
     
-    msd = ((loss - means) ** 2)
+    msd = (loss - means).abs()
 
     msd = (msd - msd.min()) / (msd.max() - msd.min())
     mean_squared_loss_deviations = msd.mean(dim=0)
@@ -335,7 +335,7 @@ class Eval:
                     'test_f1_neg_rolling': f1_score(1 - targets_np, 1 - preds_np),
                 })
             
-            if 'drift_from_width' not in out:
+            if 'drift_from_width' in out:
 
                 if dir.name not in overall_scores:
                     overall_scores[dir.name] = dict()
@@ -387,7 +387,7 @@ class Eval:
             out = torch.load(test_outputs, map_location=device, weights_only=False)
 
             mcc = out['mcc_scores']
-            drift = out['drift_from_width']
+            drift = out['combined_drift_scores']
 
             reorder = torch.argmax(stock_map[dir.name]['stock_map'], dim=-1)
 
@@ -617,9 +617,13 @@ class Eval:
         print(results_df.to_string())
         return results_df
 
-    def wilcoxon_baseline_comparison(self):
+    def wilcoxon_baseline_comparison(self, trading_sim=False):
 
-        out_dir = self.results_path / 'baseline_comparison'
+        out_dir = (
+            self.results_path / 'baseline_comparison'
+            if not trading_sim
+            else self.results_path / 'trading_sim' / 'baseline_comparison'
+        )
         out_dir.mkdir(exist_ok=True)
 
         baseline_dir = self.results_path / 'baseline_models'
@@ -627,13 +631,23 @@ class Eval:
 
         # --- load deep learning model mcc and drift scores ---
         # find the best deep learning model (same logic as train_baseline_models)
-        marginal_means = pd.read_csv(self.results_path / 'mixed_effects' / 'mcc_marginal_means.csv')
-        best_model_row = marginal_means.iloc[np.argmax(marginal_means['mcc_pred'].values)]
+        marginal_means = pd.read_csv(
+            self.results_path / 'mixed_effects' / 'mcc_marginal_means.csv'
+            if not trading_sim
+            else self.results_path / 'trading_sim' / 'mixed_effects' / 'cum_profit_marginal_means.csv'
+        )
+        best_mcc_row = marginal_means.iloc[np.argmax(marginal_means['mcc_pred'].values)]
 
         news_pre    = 'news_'        if best_model_row['news']        else ''
         social_pre  = 'social_'      if best_model_row['social']      else ''
         transformer = 'transformer_' if best_model_row['transformer'] else 'mlp_'
         pred_hr     = '30'         if best_model_row['pred_30']     else '10'
+
+        stock_map = torch.load(
+            self.results_path / 'reference' / 'stock_maps.pt',
+            map_location=device,
+            weights_only=False
+        )
 
         best_dl_name = f'stock_{news_pre}{social_pre}{transformer}{pred_hr}'
         data_filename = f'stock_{news_pre}{social_pre}mlp_{pred_hr}'
@@ -641,8 +655,19 @@ class Eval:
         dl_test_outputs = self.experiments_path / best_dl_name / 'test_outputs.pt'
         dl_out = torch.load(dl_test_outputs, map_location=device, weights_only=False)
 
-        dl_mcc_per_stock   = dl_out['mcc_scores'].cpu().numpy()             # (S,)
-        dl_drift_per_stock = dl_out['drift_from_width'].cpu().numpy()       # (S,)
+        dl_reorder = torch.argmax(stock_map[best_dl_name]['stock_map'], dim=-1)
+
+        dl_mcc = dl_out['mcc_scores']
+        dl_drift = dl_out['drift_from_width']
+
+        dl_mcc_reordered = torch.zeros_like(dl_mcc)
+        dl_drift_reordered = torch.zeros_like(dl_drift)
+
+        dl_mcc_reordered[dl_reorder] = dl_mcc
+        dl_drift_reordered[dl_reorder] = dl_drift
+
+        dl_mcc_per_stock   = dl_mcc_reordered.cpu().numpy()             # (S,)
+        dl_drift_per_stock = dl_drift_reordered.cpu().numpy()           # (S,)
 
         S = len(dl_mcc_per_stock)
 
