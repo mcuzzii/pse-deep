@@ -1185,7 +1185,7 @@ class Eval:
         results_dict = dict()
 
         for model in ml_models:
-            probs = torch.load(baseline_models / f'{model}_probs.pt', map_location=device, weights_only=True)       # N, S
+            probs = torch.load(baseline_models / f'{model}_probs.pt', map_location=device, weights_only=False)       # N, S
 
             results_dict[score] = dict()
             for offset in range(pred_horizon):
