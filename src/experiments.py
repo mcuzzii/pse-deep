@@ -16,9 +16,7 @@ from sklearn.metrics import (
     matthews_corrcoef,
     precision_score,
     recall_score,
-    f1_score,
-    classification_report,
-    confusion_matrix,
+    f1_score
 )
 import shap
 import os

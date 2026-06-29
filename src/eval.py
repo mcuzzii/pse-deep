@@ -1012,7 +1012,8 @@ class Eval:
             model_df = pd.DataFrame(index=ts_all)
 
             final_returns_per_offset = []
-            for offset_key, offset in value.items():
+            num_offset = len(value.items())
+            for i, (offset_key, offset) in enumerate(value.items()):
                 reference = pd.read_csv(
                     f'experiments/results/trading_sim/close_prices/{pred_horizon}_{offset_key}.csv',
                     index_col=0
@@ -1021,7 +1022,8 @@ class Eval:
                 reference = reference.loc[reference.index.get_level_values(0).isin(ts)]
 
                 offset_tensor = torch.stack(list(offset.values()), dim=0)               # k (N,) -> (k, N)
-                final_returns_per_offset.append(offset_tensor[:, -1])                   # k
+                if (num_offset // 10) % i == 0:
+                    final_returns_per_offset.append(offset_tensor[:, -1])               # k
 
                 offset_df = pd.DataFrame(offset_tensor.cpu().numpy().T, index=reference.index)
                 offset_df = offset_df.add_suffix(f'_{offset_key}')
@@ -1106,3 +1108,4 @@ class Eval:
         g.savefig(self.results_path / 'trading_sim' / 'overall.png', dpi=300, bbox_inches='tight')
 
         tsim_df = pd.DataFrame(final_returns_per_model)
+        tsim_df.to_csv('experiments/results/trading_sim/snapshots/tsim_df.csv')
