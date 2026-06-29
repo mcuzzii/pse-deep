@@ -594,6 +594,7 @@ class Eval:
             loss_s = torch.tensor(loss.reshape(S, N_test // S).T, dtype=torch.float32)     # (N_test//S, S)
 
             torch.save(loss_s, score_dir / f'{name}_y_loss.pt')
+            torch.save(test_scores_s, score_dir / f'{name}_probs.pt')
 
             model_outs[name] = (val_scores_s, test_scores_s, val_targets_s, test_targets_s, loss_s, train_time)
         
@@ -1143,3 +1144,9 @@ class Eval:
 
         score = get_best_dataset('cum_profit', self.results_path / 'trading_sim' / 'mixed_effects')
         self._train_ml_models(score)
+
+        ml_models = ['logistic_regression', 'linear_svc', 'random_forest', 'xgboost']
+        baseline_models = self.results_path / 'baseline_models' / score
+
+        for model in ml_models:
+            probs = torch.load(baseline_models / f'{model}_probs.pt', map_location=device, weights_only=True)       # N, S
