@@ -226,6 +226,51 @@ def get_best_dataset(score, mixed_effects_path):
 
     return f'stock_{news_pre}{social_pre}mlp_{pred_hr}'
 
+def run_wilcoxon_table(score_dict, metric_name, out_dir, higher_is_better=True):
+    rows = []
+    dl_scores = score_dict['deep_learning']
+    baseline_names = [k for k in score_dict.keys() if k != 'deep_learning']
+    for name in baseline_names:
+        baseline_scores = score_dict[name]
+        diff = dl_scores - baseline_scores
+        if np.all(diff == 0):
+            stat, p = np.nan, np.nan
+        else:
+            stat, p = wilcoxon(dl_scores, baseline_scores, alternative='greater' if higher_is_better else 'less')
+        mean_dl   = dl_scores.mean()
+        mean_base = baseline_scores.mean()
+        rows.append({
+            'baseline':        name,
+            f'mean_dl_{metric_name}':       mean_dl,
+            f'mean_baseline_{metric_name}': mean_base,
+            f'mean_diff_{metric_name}':     mean_dl - mean_base,
+            'wilcoxon_stat':   stat,
+            'p_value':         p,
+            'significant_p05': p < 0.05 if not np.isnan(p) else False,
+            'significant_p01': p < 0.01 if not np.isnan(p) else False,
+        })
+    df = pd.DataFrame(rows)
+    df.to_csv(out_dir / f'wilcoxon_{metric_name}.csv', index=False)
+    return df
+
+def descriptive_stats(score_dict, metric_name, out_dir):
+    rows = []
+    for model_name, scores in score_dict.items():
+        rows.append({
+            'model':  model_name,
+            'mean':   scores.mean(),
+            'median': np.median(scores),
+            'std':    scores.std(),
+            'min':    scores.min(),
+            'max':    scores.max(),
+            'q25':    np.percentile(scores, 25),
+            'q75':    np.percentile(scores, 75),
+            'n_positive': (scores > 0).sum(),
+        })
+    df = pd.DataFrame(rows)
+    df.to_csv(out_dir / f'descriptive_stats_{metric_name}.csv', index=False)
+    return df
+
 class Eval:
     def __init__(self):
         self.experiments_path = Path('experiments')
@@ -675,11 +720,24 @@ class Eval:
 
         dl_reorder = torch.argmax(self.stock_map[best_dl_name]['stock_map'], dim=-1)
 
-        score_tensor = dl_out['mcc_scores' if score == 'mcc' else 'drift_from_width']
+        score_tensor = dl_out['mcc_scores' if score == 'mcc' else 'combined_drift_scores']
         score_reordered = torch.zeros_like(score_tensor)
         score_reordered[dl_reorder] = score_tensor
 
         print(f'Best model for {score}: {best_dl_name}')
+
+        return score_reordered.cpu().numpy()
+    
+    def _ml_best_scores(self, model_name, score, mixed_effects_path):
+        score_dir = get_best_dataset(score, mixed_effects_path)
+        score_path = self.results_path / 'baseline_models' / score_dir / f'{model_name}_per_stock_{score}.csv'
+        score_df = pd.read_csv(score_path)
+
+        score_col = 'mcc' if score == 'mcc' else 'combined_drift_scores'
+        score_values = torch.tensor(score_df[score_col].values, dtype=torch.float32, device=device)
+        score_reorder = torch.argmax(self.stock_map[score_dir]['stock_map'], dim=-1)
+        score_reordered = torch.zeros_like(score_values)
+        score_reordered[score_reorder] = score_values
 
         return score_reordered.cpu().numpy()
 
@@ -688,7 +746,6 @@ class Eval:
         out_dir = (self.results_path / 'baseline_comparison')
         out_dir.mkdir(exist_ok=True)
 
-        baseline_dir = self.results_path / 'baseline_models'
         baseline_names = ['logistic_regression', 'linear_svc', 'random_forest', 'xgboost']
 
         dl_mcc_per_stock   = self._dl_best_scores('mcc', self.results_path / 'mixed_effects')             # (S,)
@@ -696,78 +753,23 @@ class Eval:
 
         S = len(dl_mcc_per_stock)
 
-        # --- collect all model scores ---
-        all_mcc   = {'deep_learning': dl_mcc_per_stock}
+        all_mcc = {'deep_learning': dl_mcc_per_stock}
         all_drift = {'deep_learning': dl_drift_per_stock}
 
         for name in baseline_names:
-            mcc_path = baseline_dir / f'{name}_per_stock_mcc.csv'
-            mcc_df   = pd.read_csv(mcc_path)
-            all_mcc[name] = mcc_df['mcc'].values  # (S,)
+            all_mcc[name] = self._ml_best_scores(name, 'mcc', self.results_path / 'mixed_effects')
+            all_drift[name] = self._ml_best_scores(name, 'drift', self.results_path / 'mixed_effects')
 
-            drift_path = baseline_dir / f'{name}_per_stock_drift.csv'
-            drift_df = pd.read_csv(drift_path)
-            all_drift[name] = drift_df['drift_from_width'].values
-
-        # --- summary dataframes ---
         mcc_summary_df   = pd.DataFrame(all_mcc,   index=[f'stock_{i}' for i in range(S)])
         drift_summary_df = pd.DataFrame(all_drift, index=[f'stock_{i}' for i in range(S)])
         mcc_summary_df.to_csv(out_dir / 'per_stock_mcc_all_models.csv')
         drift_summary_df.to_csv(out_dir / 'per_stock_drift_all_models.csv')
 
-        # --- wilcoxon: deep learning vs each baseline ---
-        all_models = ['deep_learning'] + baseline_names
+        mcc_wilcoxon_df   = run_wilcoxon_table(all_mcc,   'mcc',   out_dir, higher_is_better=True)
+        drift_wilcoxon_df = run_wilcoxon_table(all_drift, 'drift', out_dir, higher_is_better=False)
 
-        def run_wilcoxon_table(score_dict, metric_name, higher_is_better=True):
-            rows = []
-            dl_scores = score_dict['deep_learning']
-            for name in baseline_names:
-                baseline_scores = score_dict[name]
-                diff = dl_scores - baseline_scores
-                if np.all(diff == 0):
-                    stat, p = np.nan, np.nan
-                else:
-                    stat, p = wilcoxon(dl_scores, baseline_scores, alternative='greater' if higher_is_better else 'less')
-                mean_dl   = dl_scores.mean()
-                mean_base = baseline_scores.mean()
-                rows.append({
-                    'baseline':        name,
-                    f'mean_dl_{metric_name}':       mean_dl,
-                    f'mean_baseline_{metric_name}': mean_base,
-                    f'mean_diff_{metric_name}':     mean_dl - mean_base,
-                    'wilcoxon_stat':   stat,
-                    'p_value':         p,
-                    'significant_p05': p < 0.05 if not np.isnan(p) else False,
-                    'significant_p01': p < 0.01 if not np.isnan(p) else False,
-                })
-            df = pd.DataFrame(rows)
-            df.to_csv(out_dir / f'wilcoxon_{metric_name}.csv', index=False)
-            return df
-
-        mcc_wilcoxon_df   = run_wilcoxon_table(all_mcc,   'mcc',   higher_is_better=True)
-        drift_wilcoxon_df = run_wilcoxon_table(all_drift, 'drift', higher_is_better=False)
-
-        # --- descriptive stats per model ---
-        def descriptive_stats(score_dict, metric_name):
-            rows = []
-            for model_name, scores in score_dict.items():
-                rows.append({
-                    'model':  model_name,
-                    'mean':   scores.mean(),
-                    'median': np.median(scores),
-                    'std':    scores.std(),
-                    'min':    scores.min(),
-                    'max':    scores.max(),
-                    'q25':    np.percentile(scores, 25),
-                    'q75':    np.percentile(scores, 75),
-                    'n_positive': (scores > 0).sum(),
-                })
-            df = pd.DataFrame(rows)
-            df.to_csv(out_dir / f'descriptive_stats_{metric_name}.csv', index=False)
-            return df
-
-        descriptive_stats(all_mcc,   'mcc')
-        descriptive_stats(all_drift, 'drift')
+        descriptive_stats(all_mcc,   'mcc', out_dir)
+        descriptive_stats(all_drift, 'drift', out_dir)
 
         print(f"All results saved to {out_dir}")
 
