@@ -1031,7 +1031,7 @@ class Eval:
                 model_df = model_df.join(offset_df, how='left')
             
             final_returns_per_model[key] = torch.cat(final_returns_per_offset, dim=0).cpu().numpy()   # k * offset
-            print(f'Final returns for {key}: {final_returns_per_model.shape}')
+            print(f'Final returns for {key}: {torch.cat(final_returns_per_offset, dim=0).cpu().numpy().shape}')
             
             model_df = model_df.reset_index().melt(id_vars='local_time').dropna()
             group_freq = '30min' if pred_30 else '10min'
