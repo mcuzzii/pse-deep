@@ -1003,10 +1003,10 @@ class Eval:
         ref_dir.mkdir(parents=True, exist_ok=True)
         torch.save(ref_dict, ref_dir / 'stock_maps.pt')
     
-    def interpret_trading_sim(self):
+    def interpret_trading_sim(self, score=None):
 
         results = torch.load(
-            self.results_path / 'trading_sim' / 'results.pt',
+            self.results_path / 'trading_sim' / ('results.pt' if score is None else 'baseline_results.pt'),
             map_location=device,
             weights_only=False
         )
@@ -1028,10 +1028,12 @@ class Eval:
 
         final_returns_per_model = dict()
         for key, value in results.items():
-            news = 'news' in key
-            social = 'social' in key
-            transformer = 'transformer' in key
-            pred_30 = '30' in key
+            model_name = key if score is None else score
+
+            news = 'news' in model_name
+            social = 'social' in model_name
+            transformer = 'transformer' in model_name
+            pred_30 = '30' in model_name
 
             pred_horizon = 30 if pred_30 else 10
             ts = ts_30 if pred_30 else ts_10
@@ -1055,7 +1057,6 @@ class Eval:
                 offset_tensor = torch.stack(list(offset.values()), dim=0)               # k (N,) -> (k, N)
                 if i % (num_offset // 10) == 0:
                     final_returns_per_offset.append(offset_tensor[:, -1])               # k
-                
 
                 offset_df = pd.DataFrame(offset_tensor.cpu().numpy().T, index=reference.index)
                 offset_df = offset_df.add_suffix(f'_{offset_key}')
@@ -1078,86 +1079,87 @@ class Eval:
         
         summary_df = summary_df.reset_index().melt(id_vars='local_time', var_name='setting', value_name='profit_perc')
 
-        summary_df['transformer'] = np.where(
-            summary_df['setting'].str.contains('transformer'),
-            'Transformer',
-            'MLP'
-        )
-        summary_df['news'] = np.where(
-            summary_df['setting'].str.contains('news').astype(int),
-            'With news',
-            'No news'
-        )
-        summary_df['social'] = np.where(
-            summary_df['setting'].str.contains('social').astype(int),
-            'With social media',
-            'Without social media'
-        )
-        summary_df['pred_30'] = np.where(
-            summary_df['setting'].str.contains('30').astype(int),
-            '30-min return target',
-            '10-min return target'
-        )
-        summary_df.drop(columns=['setting'], inplace=True)
+        if score is None:
+            summary_df['transformer'] = np.where(
+                summary_df['setting'].str.contains('transformer'),
+                'Transformer',
+                'MLP'
+            )
+            summary_df['news'] = np.where(
+                summary_df['setting'].str.contains('news').astype(int),
+                'With news',
+                'No news'
+            )
+            summary_df['social'] = np.where(
+                summary_df['setting'].str.contains('social').astype(int),
+                'With social media',
+                'Without social media'
+            )
+            summary_df['pred_30'] = np.where(
+                summary_df['setting'].str.contains('30').astype(int),
+                '30-min return target',
+                '10-min return target'
+            )
+            summary_df.drop(columns=['setting'], inplace=True)
 
-        summary_df['time_idx'] = summary_df.groupby(['transformer', 'pred_30', 'news', 'social']).cumcount()
+            summary_df['time_idx'] = summary_df.groupby(['transformer', 'pred_30', 'news', 'social']).cumcount()
 
-        palette = {'With news': COLORS['purple'], 'No news': COLORS['green']}
-        dashes = {'With social media': (1, 0), 'Without social media': (4, 1.5)}
+            palette = {'With news': COLORS['purple'], 'No news': COLORS['green']}
+            dashes = {'With social media': (1, 0), 'Without social media': (4, 1.5)}
 
-        col_order = ['Transformer', 'MLP']
-        row_order = ['10-min return target', '30-min return target']
+            col_order = ['Transformer', 'MLP']
+            row_order = ['10-min return target', '30-min return target']
 
-        g = sns.FacetGrid(
-            summary_df,
-            row='pred_30', col='transformer',
-            row_order=row_order, col_order=col_order,
-            height=3.5, aspect=1.6,
-            despine=True,
-        )
+            g = sns.FacetGrid(
+                summary_df,
+                row='pred_30', col='transformer',
+                row_order=row_order, col_order=col_order,
+                height=3.5, aspect=1.6,
+                despine=True,
+            )
 
-        g.map_dataframe(
-            sns.lineplot, x='time_idx', y='profit_perc',
-            hue='news', style='social',
-            palette=palette, dashes=dashes,
-        )
+            g.map_dataframe(
+                sns.lineplot, x='time_idx', y='profit_perc',
+                hue='news', style='social',
+                palette=palette, dashes=dashes,
+            )
 
-        g.set_axis_labels('Time', 'Cumulative Return')
-        g.set_titles(row_template='{row_name}', col_template='{col_name}')
-        g.add_legend(title='')
-        g.figure.subplots_adjust(top=0.92)
-        g.figure.suptitle('Trading Simulation Results', fontsize=13, fontweight='bold')
+            g.set_axis_labels('Time', 'Cumulative Return')
+            g.set_titles(row_template='{row_name}', col_template='{col_name}')
+            g.add_legend(title='')
+            g.figure.subplots_adjust(top=0.92)
+            g.figure.suptitle('Trading Simulation Results', fontsize=13, fontweight='bold')
 
-        legend = g.legend
-        for text in legend.get_texts():
-            if text.get_text() in ('news', 'social'):
-                text.set_visible(False)
+            legend = g.legend
+            for text in legend.get_texts():
+                if text.get_text() in ('news', 'social'):
+                    text.set_visible(False)
 
-        for ax in g.axes.flat:
-            ax.axhline(1.0, color='black', linewidth=0.6, linestyle=':', alpha=0.5)
-            ax.yaxis.set_major_formatter(ticker.FuncFormatter(lambda y, _: f'{y:.2f}'))
+            for ax in g.axes.flat:
+                ax.axhline(1.0, color='black', linewidth=0.6, linestyle=':', alpha=0.5)
+                ax.yaxis.set_major_formatter(ticker.FuncFormatter(lambda y, _: f'{y:.2f}'))
 
-        g.savefig(self.results_path / 'trading_sim' / 'overall.png', dpi=300, bbox_inches='tight')
+            g.savefig(self.results_path / 'trading_sim' / 'overall.png', dpi=300, bbox_inches='tight')
 
-        tsim_df = pd.DataFrame(final_returns_per_model)
-        tsim_df['k_offset_pair_id'] = range(len(tsim_df))
-        tsim_df = tsim_df.melt(id_vars='k_offset_pair_id', var_name='setting', value_name='cum_profit')
+            tsim_df = pd.DataFrame(final_returns_per_model)
+            tsim_df['k_offset_pair_id'] = range(len(tsim_df))
+            tsim_df = tsim_df.melt(id_vars='k_offset_pair_id', var_name='setting', value_name='cum_profit')
 
-        tsim_df['transformer'] = tsim_df['setting'].str.contains('transformer').astype(int)
-        tsim_df['news'] = tsim_df['setting'].str.contains('news').astype(int)
-        tsim_df['social'] = tsim_df['setting'].str.contains('social').astype(int)
-        tsim_df['pred_30'] = tsim_df['setting'].str.contains('30').astype(int)
-        tsim_df.drop(columns=['setting'], inplace=True)
+            tsim_df['transformer'] = tsim_df['setting'].str.contains('transformer').astype(int)
+            tsim_df['news'] = tsim_df['setting'].str.contains('news').astype(int)
+            tsim_df['social'] = tsim_df['setting'].str.contains('social').astype(int)
+            tsim_df['pred_30'] = tsim_df['setting'].str.contains('30').astype(int)
+            tsim_df.drop(columns=['setting'], inplace=True)
 
-        factors = ['transformer', 'news', 'social', 'pred_30']
-        formula_two_way = "(transformer + news + social + pred_30)**2"
-        formula_main = "transformer + news + social + pred_30"
-        out_dir = self.results_path / 'trading_sim' / 'mixed_effects'
-        out_dir.mkdir(exist_ok=True)
+            factors = ['transformer', 'news', 'social', 'pred_30']
+            formula_two_way = "(transformer + news + social + pred_30)**2"
+            formula_main = "transformer + news + social + pred_30"
+            out_dir = self.results_path / 'trading_sim' / 'mixed_effects'
+            out_dir.mkdir(exist_ok=True)
 
-        analyze(tsim_df, 'cum_profit', 'k_offset_pair_id', factors, formula_two_way, formula_main, out_dir)
+            analyze(tsim_df, 'cum_profit', 'k_offset_pair_id', factors, formula_two_way, formula_main, out_dir)
 
-        print(f"All results saved to {out_dir}")
+            print(f"All results saved to {out_dir}")
     
     def baseline_models_trading_sim(self):
 
@@ -1176,7 +1178,7 @@ class Eval:
         
         stock_map = torch.load(
             self.results_path / 'reference' / 'stock_maps.pt',
-            device=device,
+            map_location=device,
             weights_only=False
         )
 
@@ -1203,3 +1205,8 @@ class Eval:
                     results_dict[score][offset][k] = profits
         
         torch.save(results_dict, self.results_path / 'trading_sim' / 'baseline_results.pt')
+    
+    def interpret_baseline_models_trading_sim(self):
+
+        score = get_best_dataset('cum_profit', self.results_path / 'trading_sim' / 'mixed_effects')
+        self.interpret_trading_sim(score)
