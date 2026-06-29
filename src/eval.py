@@ -222,7 +222,7 @@ def get_best_dataset(score, mixed_effects_path):
     
     news_pre = 'news_' if best_model['news'] else ''
     social_pre = 'social_' if best_model['social'] else ''
-    pred_hr = '30m_' if best_model['pred_30'] else '10m_'
+    pred_hr = '30m' if best_model['pred_30'] else '10m'
 
     return f'stock_{news_pre}{social_pre}mlp_{pred_hr}'
 
@@ -445,9 +445,9 @@ class Eval:
 
         for score in {mcc_filename, drift_filename}:
 
-            train_path = self.experiments_path / 'data' / f'{score}train.pt'
-            val_path = self.experiments_path / 'data' / f'{score}val.pt'
-            test_path = self.experiments_path / 'data' / f'{score}test.pt'
+            train_path = self.experiments_path / 'data' / f'{score}_train.pt'
+            val_path = self.experiments_path / 'data' / f'{score}_val.pt'
+            test_path = self.experiments_path / 'data' / f'{score}_test.pt'
 
             out_dir = self.results_path / 'baseline_models'
             out_dir.mkdir(exist_ok=True)
