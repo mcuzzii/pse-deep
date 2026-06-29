@@ -216,7 +216,7 @@ def get_best_dataset(score, mixed_effects_path):
     marginal_means = pd.read_csv(mixed_effects_path / f'{score}_marginal_means.csv')
     best_model = marginal_means.iloc[
         np.argmax(marginal_means[f'{score}_pred'].values)
-        if score == 'mcc'
+        if score != 'drift'
         else np.argmin(marginal_means[f'{score}_pred'].values)
     ]
     
