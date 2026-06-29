@@ -510,6 +510,8 @@ class Eval:
                 results = pd.read_csv(score_dir / 'baseline_results.csv', index_col=0).to_dict(orient='index')
             else:
                 results = dict()
+            
+            print(score)
 
             for name, model in models.items():
                 model_path = score_dir / f'{name}.joblib'
