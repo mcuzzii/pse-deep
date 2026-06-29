@@ -1031,7 +1031,6 @@ class Eval:
                 model_df = model_df.join(offset_df, how='left')
             
             final_returns_per_model[key] = torch.cat(final_returns_per_offset, dim=0).cpu().numpy()   # k * offset
-            print(f'Final returns for {key}: {torch.cat(final_returns_per_offset, dim=0).cpu().numpy().shape}')
             
             model_df = model_df.reset_index().melt(id_vars='local_time').dropna()
             group_freq = '30min' if pred_30 else '10min'
@@ -1110,4 +1109,21 @@ class Eval:
         g.savefig(self.results_path / 'trading_sim' / 'overall.png', dpi=300, bbox_inches='tight')
 
         tsim_df = pd.DataFrame(final_returns_per_model)
-        tsim_df.to_csv('experiments/results/trading_sim/snapshots/tsim_df.csv')
+        tsim_df['k_offset_pair_id'] = range(len(tsim_df))
+        tsim_df = tsim_df.melt(id_vars='k_offset_pair_id', var_name='setting', value_name='cum_profit')
+
+        tsim_df['transformer'] = tsim_df['setting'].str.contains('transformer').astype(int)
+        tsim_df['news'] = tsim_df['setting'].str.contains('news').astype(int)
+        tsim_df['social'] = tsim_df['setting'].str.contains('social').astype(int)
+        tsim_df['pred_30'] = tsim_df['setting'].str.contains('30').astype(int)
+        tsim_df.drop(columns=['setting'], inplace=True)
+
+        factors = ['transformer', 'news', 'social', 'pred_30']
+        formula_two_way = "(transformer + news + social + pred_30)**2"
+        formula_main = "transformer + news + social + pred_30"
+        out_dir = self.results_path / 'trading_sim' / 'mixed_effects'
+        out_dir.mkdir(exist_ok=True)
+
+        analyze(tsim_df, 'cum_profit', factors, formula_two_way, formula_main, out_dir)
+
+        print(f"All results saved to {out_dir}")
