@@ -1206,10 +1206,9 @@ class Eval:
                 'Best DL model': COLORS['purple']
             }
 
-            g.map_dataframe(
-                sns.lineplot, x='time_idx', y='profit_perc',
-                hue='news', style='social',
-                palette=palette, dashes=dashes,
+            g = sns.lineplot(
+                summary_df, x='time_idx', y='profit_perc',
+                hue='setting', palette=palette,
             )
 
             g.set_axis_labels('Time', 'Cumulative Return')
