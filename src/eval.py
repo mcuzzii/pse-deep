@@ -482,6 +482,122 @@ class Eval:
         analyze(drift_df, 'drift', 'stock_id', factors, formula_two_way, formula_main, out_dir)
 
         print(f"All results saved to {out_dir}")
+    
+    def _train_ml_models(self, score):
+
+        train_path = self.experiments_path / 'data' / f'{score}m_train.pt'
+        val_path = self.experiments_path / 'data' / f'{score}m_val.pt'
+        test_path = self.experiments_path / 'data' / f'{score}m_test.pt'
+
+        out_dir = self.results_path / 'baseline_models'
+        out_dir.mkdir(exist_ok=True)
+
+        score_dir = out_dir / score
+        score_dir.mkdir(parents=True, exist_ok=True)
+
+        print(f"Loading tensors ({score})...")
+
+        train_data = torch.load(train_path, weights_only=True)
+        X_train = train_data['X'].numpy()
+        y_train = train_data['y'].numpy()
+
+        val_data = torch.load(val_path, weights_only=True)
+        X_val   = val_data['X'].numpy()
+        y_val   = val_data['y'].numpy()
+
+        test_data = torch.load(test_path, weights_only=True)
+        X_test  = test_data['X'].numpy()
+        y_test  = test_data['y'].numpy()
+
+        N_val      = X_val.shape[0]
+        N_test     = X_test.shape[0]
+        S          = 30
+
+        print(f"Train: {X_train.shape}, Val: {X_val.shape}, Test: {X_test.shape}")
+
+        # reshape to (S, N, F) and (S, N) for per-stock threshold optimization
+        y_val_s   = y_val.reshape(S, N_val // S)
+        y_test_s  = y_test.reshape(S, N_test // S)
+
+        n_jobs = os.cpu_count()
+        print(f"Using {n_jobs} CPU cores\n")
+
+        models = {
+            'logistic_regression': LogisticRegression(
+                max_iter=1000,
+                n_jobs=n_jobs,
+                verbose=2,
+            ),
+            'linear_svc': LinearSVC(
+                max_iter=2000,
+                verbose=2,
+            ),
+            'random_forest': RandomForestClassifier(
+                n_estimators=100,
+                n_jobs=n_jobs,
+                verbose=2,
+            ),
+            'xgboost': XGBClassifier(
+                n_estimators=100,
+                n_jobs=n_jobs,
+                device='cuda',
+                verbosity=2,
+                eval_metric='logloss',
+            ),
+        }
+
+        model_outs = dict()
+        for name, model in models.items():
+            model_path = score_dir / f'{name}.joblib'
+
+            if model_path.exists():
+                print(f"Model {name}.joblib already saved. Skipping training...")
+                model = joblib.load(model_path)
+                train_time = 0
+            else:
+                print(f"\n{'='*60}")
+                print(f"Training: {name.upper()}")
+                print(f"{'='*60}")
+                t0 = time.time()
+
+                if name == 'xgboost':
+                    model.fit(X_train, y_train, eval_set=[(X_test, y_test)], verbose=10)
+                else:
+                    model.fit(X_train, y_train)
+
+                train_time = time.time() - t0
+                print(f"\nTraining time: {train_time:.1f}s")
+
+                joblib.dump(model, model_path)
+                print(f"Model saved to {model_path}")
+
+            # --- get scores per stock ---
+            print("Getting scores per stock for loss computation...")
+            if name == 'linear_svc':
+                # LinearSVC has no predict_proba; use decision_function
+                val_scores_flat  = model.decision_function(X_val)
+                test_scores_flat = model.decision_function(X_test)
+                probs_pos = expit(test_scores_flat)
+                probs = np.stack([1 - probs_pos, probs_pos], axis=1)
+                loss = -np.log(probs[np.arange(len(y_test)).astype(int), y_test.astype(int)] + 1e-8)
+            else:
+                probs = model.predict_proba(X_test)  # (N, 2)
+                loss = -np.log(probs[np.arange(len(y_test)).astype(int), y_test.astype(int)] + 1e-8)  # (N,) per-sample cross-entropy
+                val_scores_flat  = model.predict_proba(X_val)[:, 1]
+                test_scores_flat = probs[:, 1]
+
+            # reshape to (N_per_stock, S) for threshold optimization
+            val_scores_s  = val_scores_flat.reshape(S, N_val // S).T    # (N_val//S, S)
+            test_scores_s = test_scores_flat.reshape(S, N_test // S).T  # (N_test//S, S)
+            val_targets_s  = y_val_s.T    # (N_val//S, S)
+            test_targets_s = y_test_s.T   # (N_test//S, S)
+            loss_s = torch.tensor(loss.reshape(S, N_test // S).T, dtype=torch.float32)     # (N_test//S, S)
+
+            torch.save(loss_s, score_dir / f'{name}_y_loss.pt')
+
+            model_outs[name] = (val_scores_s, test_scores_s, val_targets_s, test_targets_s, loss_s, train_time)
+        
+        return score_dir, S, y_test_s, model_outs
 
     def train_baseline_models(self):
         
@@ -490,121 +606,16 @@ class Eval:
 
         for score in {mcc_filename, drift_filename}:
 
-            train_path = self.experiments_path / 'data' / f'{score}m_train.pt'
-            val_path = self.experiments_path / 'data' / f'{score}m_val.pt'
-            test_path = self.experiments_path / 'data' / f'{score}m_test.pt'
-
-            out_dir = self.results_path / 'baseline_models'
-            out_dir.mkdir(exist_ok=True)
-
-            score_dir = out_dir / score
-            score_dir.mkdir(parents=True, exist_ok=True)
-
-            print(f"Loading tensors ({score})...")
-
-            train_data = torch.load(train_path, weights_only=True)
-            X_train = train_data['X'].numpy()
-            y_train = train_data['y'].numpy()
-
-            val_data = torch.load(val_path, weights_only=True)
-            X_val   = val_data['X'].numpy()
-            y_val   = val_data['y'].numpy()
-
-            test_data = torch.load(test_path, weights_only=True)
-            X_test  = test_data['X'].numpy()
-            y_test  = test_data['y'].numpy()
-
-            N_val      = X_val.shape[0]
-            N_test     = X_test.shape[0]
-            S          = 30
-
-            print(f"Train: {X_train.shape}, Val: {X_val.shape}, Test: {X_test.shape}")
-
-            # reshape to (S, N, F) and (S, N) for per-stock threshold optimization
-            y_val_s   = y_val.reshape(S, N_val // S)
-            y_test_s  = y_test.reshape(S, N_test // S)
-
-            n_jobs = os.cpu_count()
-            print(f"Using {n_jobs} CPU cores\n")
-
-            models = {
-                'logistic_regression': LogisticRegression(
-                    max_iter=1000,
-                    n_jobs=n_jobs,
-                    verbose=2,
-                ),
-                'linear_svc': LinearSVC(
-                    max_iter=2000,
-                    verbose=2,
-                ),
-                'random_forest': RandomForestClassifier(
-                    n_estimators=100,
-                    n_jobs=n_jobs,
-                    verbose=2,
-                ),
-                'xgboost': XGBClassifier(
-                    n_estimators=100,
-                    n_jobs=n_jobs,
-                    device='cuda',
-                    verbosity=2,
-                    eval_metric='logloss',
-                ),
-            }
-
+            score_dir, S, y_test_s, model_outs = self._train_ml_models(score)
+            
             if (score_dir / 'baseline_results.csv').exists():
                 results = pd.read_csv(score_dir / 'baseline_results.csv', index_col=0).to_dict(orient='index')
             else:
                 results = dict()
-
-            for name, model in models.items():
-                model_path = score_dir / f'{name}.joblib'
-
-                if model_path.exists():
-                    print(f"Model {name}.joblib already saved. Skipping training...")
-                    model = joblib.load(model_path)
-                    train_time = 0
-                else:
-                    print(f"\n{'='*60}")
-                    print(f"Training: {name.upper()}")
-                    print(f"{'='*60}")
-                    t0 = time.time()
-
-                    if name == 'xgboost':
-                        model.fit(X_train, y_train, eval_set=[(X_test, y_test)], verbose=10)
-                    else:
-                        model.fit(X_train, y_train)
-
-                    train_time = time.time() - t0
-                    print(f"\nTraining time: {train_time:.1f}s")
-
-                    joblib.dump(model, model_path)
-                    print(f"Model saved to {model_path}")
-
-                # --- get scores per stock ---
-                print("Getting scores per stock for loss computation...")
-                if name == 'linear_svc':
-                    # LinearSVC has no predict_proba; use decision_function
-                    val_scores_flat  = model.decision_function(X_val)
-                    test_scores_flat = model.decision_function(X_test)
-                    probs_pos = expit(test_scores_flat)
-                    probs = np.stack([1 - probs_pos, probs_pos], axis=1)
-                    loss = -np.log(probs[np.arange(len(y_test)).astype(int), y_test.astype(int)] + 1e-8)
-                else:
-                    probs = model.predict_proba(X_test)  # (N, 2)
-                    loss = -np.log(probs[np.arange(len(y_test)).astype(int), y_test.astype(int)] + 1e-8)  # (N,) per-sample cross-entropy
-                    val_scores_flat  = model.predict_proba(X_val)[:, 1]
-                    test_scores_flat = probs[:, 1]
-
-                # reshape to (N_per_stock, S) for threshold optimization
-                val_scores_s  = val_scores_flat.reshape(S, N_val // S).T    # (N_val//S, S)
-                test_scores_s = test_scores_flat.reshape(S, N_test // S).T  # (N_test//S, S)
-                val_targets_s  = y_val_s.T    # (N_val//S, S)
-                test_targets_s = y_test_s.T   # (N_test//S, S)
-                loss_s = torch.tensor(loss.reshape(S, N_test // S).T, dtype=torch.float32)     # (N_test//S, S)
-
-                torch.save(loss_s, score_dir / f'{name}_y_loss.pt')
-
+            
+            for name in model_outs:
                 metrics = results[name] if name in results else dict()
+                val_scores_s, test_scores_s, val_targets_s, test_targets_s, loss_s, train_time = model_outs[name]
 
                 if score == mcc_filename:
 
@@ -1127,3 +1138,8 @@ class Eval:
         analyze(tsim_df, 'cum_profit', 'k_offset_pair_id', factors, formula_two_way, formula_main, out_dir)
 
         print(f"All results saved to {out_dir}")
+    
+    def baseline_models_trading_sim(self):
+
+        score = get_best_dataset('cum_profit', self.results_path / 'trading_sim' / 'mixed_effects')
+        self._train_ml_models(score)
