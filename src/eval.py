@@ -271,6 +271,26 @@ def descriptive_stats(score_dict, metric_name, out_dir):
     df.to_csv(out_dir / f'descriptive_stats_{metric_name}.csv', index=False)
     return df
 
+def get_price_tensor(ts, pred_horizon, offset):
+
+    reference = pd.read_csv(
+        f'experiments/results/trading_sim/close_prices/{pred_horizon}_{offset}.csv',
+        index_col=0
+    )
+    reference.index = pd.to_datetime(reference.index)
+    reference = reference.loc[reference.index.get_level_values(0).isin(ts)]
+    init_prices = pd.read_csv(
+        f'experiments/results/trading_sim/close_prices/init_{pred_horizon}_{offset}.csv',
+        index_col=0
+    )
+    close_tensor = torch.tensor(reference.values, dtype=torch.float32).to(device)
+    init_tensor = torch.tensor(init_prices.values, dtype=torch.float32).to(device)
+    price_tensor = torch.cat([init_tensor.transpose(0, 1), close_tensor], dim=0)
+
+    ts_mask = ts.minute.isin(range(0 + offset, 60 + offset, pred_horizon))
+
+    return price_tensor, ts_mask, reference
+
 class Eval:
     def __init__(self):
         self.experiments_path = Path('experiments')
@@ -839,6 +859,43 @@ class Eval:
         for key, value in init_prices.items():
             value.to_csv(close_prices_dir / f'init_{key}.csv')
     
+    def _compute_profits(self, probs, price_tensor, stock_map, k, offset, model_name):
+        top_k = torch.topk(probs, k + 1).indices                                 # n, k
+        bottom_k = torch.topk(probs, k + 1, largest=False).indices               # n, k
+
+        long_before = torch.gather(price_tensor[:-1], 1, stock_map[top_k])                  # n, k
+        long_after = torch.gather(price_tensor[1:], 1, stock_map[top_k])                    # n, k
+
+        short_before = torch.gather(price_tensor[:-1], 1, stock_map[bottom_k])              # n, k
+        short_after = torch.gather(price_tensor[1:], 1, stock_map[bottom_k])                # n, k
+
+        long_profits = (long_after / long_before).sum(dim=-1)
+        short_profits = (short_before / short_after).sum(dim=-1)
+
+        mean_profits = (long_profits + short_profits) / (2 * (k + 1))
+
+        profits = torch.cumprod(mean_profits, dim=0)
+
+        plt.figure(figsize=(8, 5))
+
+        plt.plot(profits.cpu().numpy(), label='Profits')
+
+        plt.xlabel("Time")
+        plt.ylabel("Money")
+        plt.title(f"Trading Simulation")
+        plt.grid(False)
+        plt.tight_layout()
+
+        plots_path = self.results_path / 'trading_sim' / 'plots'
+        plots_path.mkdir(parents=True, exist_ok=True)
+
+        save_path = plots_path / f'{model_name}_{k + 1}_{offset}.png'
+
+        plt.savefig(save_path, dpi=300)
+        plt.close()
+
+        return profits
+    
     def trading_simulations(self, force=False):
 
         if (self.results_path / 'trading_sim' / 'results.pt').exists() and not force:
@@ -912,20 +969,8 @@ class Eval:
             for offset in range(pred_horizon):
 
                 filtered_close = close[:, valid_times(ts, offset, pred_horizon)]        # 30, n filtered future close prices
-
-                reference = pd.read_csv(
-                    f'experiments/results/trading_sim/close_prices/{pred_horizon}_{offset}.csv',
-                    index_col=0
-                )
-                reference.index = pd.to_datetime(reference.index)
-                reference = reference.loc[reference.index.get_level_values(0).isin(ts)]
-                init_prices = pd.read_csv(
-                    f'experiments/results/trading_sim/close_prices/init_{pred_horizon}_{offset}.csv',
-                    index_col=0
-                )
-                close_tensor = torch.tensor(reference.values, dtype=torch.float32).to(device)
-                init_tensor = torch.tensor(init_prices.values, dtype=torch.float32).to(device)
-                price_tensor = torch.cat([init_tensor.transpose(0, 1), close_tensor], dim=0)
+                
+                price_tensor, ts_mask, reference = get_price_tensor(ts, pred_horizon, offset)
 
                 filtered_ref = reference.loc[valid_times(reference.index, offset, pred_horizon)].values     # 30, n filtered future close prices
                 filtered_ref = torch.tensor(filtered_ref, dtype=torch.float32).transpose(0, 1).to(device)
@@ -940,43 +985,17 @@ class Eval:
                     }
 
                 results_dict[dir.name][offset] = dict()
-            
+
                 for k in range(15):
-                    filtered_softmax = softmax_scores[ts.minute.isin(range(0 + offset, 60 + offset, pred_horizon)), :]
-                    top_k = torch.topk(filtered_softmax, k + 1).indices                                 # n, k
-                    bottom_k = torch.topk(filtered_softmax, k + 1, largest=False).indices               # n, k
+                    
+                    profits = self._compute_profits(
+                        softmax_scores[ts_mask],
+                        price_tensor,
+                        stock_map, k,
+                        offset, dir.name
+                    )
 
-                    long_before = torch.gather(price_tensor[:-1], 1, stock_map[top_k])                  # n, k
-                    long_after = torch.gather(price_tensor[1:], 1, stock_map[top_k])                    # n, k
-
-                    short_before = torch.gather(price_tensor[:-1], 1, stock_map[bottom_k])              # n, k
-                    short_after = torch.gather(price_tensor[1:], 1, stock_map[bottom_k])                # n, k
-
-                    long_profits = (long_after / long_before).sum(dim=-1)
-                    short_profits = (short_before / short_after).sum(dim=-1)
-
-                    mean_profits = (long_profits + short_profits) / (2 * (k + 1))
-
-                    profits = torch.cumprod(mean_profits, dim=0)
                     results_dict[dir.name][offset][k] = profits
-
-                    plt.figure(figsize=(8, 5))
-
-                    plt.plot(profits.cpu().numpy(), label='Profits')
-
-                    plt.xlabel("Time")
-                    plt.ylabel("Money")
-                    plt.title(f"Trading Simulation")
-                    plt.grid(False)
-                    plt.tight_layout()
-
-                    plots_path = self.results_path / 'trading_sim' / 'plots'
-                    plots_path.mkdir(parents=True, exist_ok=True)
-
-                    save_path = plots_path / f'{dir.name}_{k + 1}_{offset}.png'
-
-                    plt.savefig(save_path, dpi=300)
-                    plt.close()
 
         torch.save(results_dict, self.results_path / 'trading_sim' / 'results.pt')
 
@@ -1148,5 +1167,39 @@ class Eval:
         ml_models = ['logistic_regression', 'linear_svc', 'random_forest', 'xgboost']
         baseline_models = self.results_path / 'baseline_models' / score
 
+        pred_horizon = 30 if '30' in score else 10
+        ts = joblib.load(f'data/processed/ac_{pred_horizon}m.joblib').filtered_date_times
+
+        if 'news' in score:
+            news_df = joblib.load(f'data/processed/news_{pred_horizon}m.joblib')
+            ts = ts.intersection(news_df.df.dropna().index)
+        
+        stock_map = torch.load(
+            self.results_path / 'reference' / 'stock_maps.pt',
+            device=device,
+            weights_only=False
+        )
+
+        results_dict = dict()
+
         for model in ml_models:
             probs = torch.load(baseline_models / f'{model}_probs.pt', map_location=device, weights_only=True)       # N, S
+
+            results_dict[score] = dict()
+            for offset in range(pred_horizon):
+
+                price_tensor, ts_mask, _ = get_price_tensor(ts, pred_horizon, offset)
+
+                results_dict[score][offset] = dict()
+
+                for k in range(15):
+                    profits = self._compute_profits(
+                        probs[ts_mask],
+                        price_tensor,
+                        torch.argmax(stock_map[score]['stock_map'], dim=-1),
+                        k, offset, score
+                    )
+
+                    results_dict[score][offset][k] = profits
+        
+        torch.save(results_dict, self.results_path / 'trading_sim' / 'baseline_results.pt')
