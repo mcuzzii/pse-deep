@@ -1171,17 +1171,12 @@ class Eval:
 
         pred_horizon = 30 if '30' in score else 10
         ts = joblib.load(f'data/processed/ac_{pred_horizon}m.joblib').filtered_date_times
+        ts = ts[int(0.9 * len(ts)) + 1:]
 
         if 'news' in score:
             news_df = joblib.load(f'data/processed/news_{pred_horizon}m.joblib')
             ts = ts.intersection(news_df.df.dropna().index)
-        
-        stock_map = torch.load(
-            self.results_path / 'reference' / 'stock_maps.pt',
-            map_location=device,
-            weights_only=False
-        )
-
+            
         results_dict = dict()
 
         for model in ml_models:
@@ -1198,7 +1193,7 @@ class Eval:
                     profits = self._compute_profits(
                         probs[ts_mask],
                         price_tensor,
-                        torch.argmax(stock_map[score]['stock_map'], dim=-1),
+                        torch.argmax(self.stock_map[score]['stock_map'], dim=-1),
                         k, offset, score
                     )
 
