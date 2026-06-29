@@ -212,6 +212,20 @@ def valid_times(ts, offset, pred_horizon):
         )
     )
 
+def get_best_dataset(score, mixed_effects_path):
+    marginal_means = pd.read_csv(mixed_effects_path / f'{score}_marginal_means.csv')
+    best_model = marginal_means.iloc[
+        np.argmax(marginal_means[f'{score}_pred'].values)
+        if score == 'mcc'
+        else np.argmin(marginal_means[f'{score}_pred'].values)
+    ]
+    
+    news_pre = 'news_' if best_model['news'] else ''
+    social_pre = 'social_' if best_model['social'] else ''
+    pred_hr = '30m_' if best_model['pred_30'] else '10m_'
+
+    return f'stock_{news_pre}{social_pre}mlp_{pred_hr}'
+
 class Eval:
     def __init__(self):
         self.experiments_path = Path('experiments')
@@ -372,7 +386,7 @@ class Eval:
         mcc_df = pd.DataFrame()
         drift_df = pd.DataFrame()
 
-        stock_map = torch.load(
+        self.stock_map = torch.load(
             self.results_path / 'reference' / 'stock_maps.pt',
             map_location=device,
             weights_only=False
@@ -389,7 +403,7 @@ class Eval:
             mcc = out['mcc_scores']
             drift = out['combined_drift_scores']
 
-            reorder = torch.argmax(stock_map[dir.name]['stock_map'], dim=-1)
+            reorder = torch.argmax(self.stock_map[dir.name]['stock_map'], dim=-1)
 
             mcc_reordered = torch.zeros_like(mcc)
             drift_reordered = torch.zeros_like(drift)
@@ -400,8 +414,8 @@ class Eval:
             mcc_df[dir.name] = pd.Series(mcc_reordered.cpu().numpy())
             drift_df[dir.name] = pd.Series(drift_reordered.cpu().numpy())
         
-        mcc_df['stock_id'] = next(iter(stock_map.values()))['stocks']
-        drift_df['stock_id'] = next(iter(stock_map.values()))['stocks']
+        mcc_df['stock_id'] = next(iter(self.stock_map.values()))['stocks']
+        drift_df['stock_id'] = next(iter(self.stock_map.values()))['stocks']
 
         mcc_df = mcc_df.melt(id_vars=['stock_id'], var_name='setting', value_name='mcc')
         drift_df = drift_df.melt(id_vars=['stock_id'], var_name='setting', value_name='drift')
@@ -425,249 +439,260 @@ class Eval:
         print(f"All results saved to {out_dir}")
 
     def train_baseline_models(self):
-
-        marginal_means = pd.read_csv(self.results_path / 'mixed_effects' / 'mcc_marginal_means.csv')
-        best_model = marginal_means.iloc[np.argmax(marginal_means['mcc_pred'].values)]
         
-        news_pre = 'news_' if best_model['news'] else ''
-        social_pre = 'social_' if best_model['social'] else ''
-        pred_hr = '30m_' if best_model['pred_30'] else '10m_'
+        mcc_filename = get_best_dataset('mcc', self.results_path / 'mixed_effects')
+        drift_filename = get_best_dataset('drift', self.results_path / 'mixed_effects')
 
-        data_filename = f'stock_{news_pre}{social_pre}mlp_{pred_hr}'
+        for score in {mcc_filename, drift_filename}:
 
-        train_path = self.experiments_path / 'data' / f'{data_filename}train.pt'
-        val_path = self.experiments_path / 'data' / f'{data_filename}val.pt'
-        test_path = self.experiments_path / 'data' / f'{data_filename}test.pt'
+            train_path = self.experiments_path / 'data' / f'{score}train.pt'
+            val_path = self.experiments_path / 'data' / f'{score}val.pt'
+            test_path = self.experiments_path / 'data' / f'{score}test.pt'
 
-        out_dir = self.results_path / 'baseline_models'
-        out_dir.mkdir(exist_ok=True)
+            out_dir = self.results_path / 'baseline_models'
+            out_dir.mkdir(exist_ok=True)
 
-        print(f"Loading tensors ({data_filename})...")
+            score_dir = out_dir / score
+            score_dir.mkdir(parents=True, exist_ok=True)
 
-        train_data = torch.load(train_path, weights_only=True)
-        X_train = train_data['X'].numpy()
-        y_train = train_data['y'].numpy()
+            print(f"Loading tensors ({score})...")
 
-        val_data = torch.load(val_path, weights_only=True)
-        X_val   = val_data['X'].numpy()
-        y_val   = val_data['y'].numpy()
+            train_data = torch.load(train_path, weights_only=True)
+            X_train = train_data['X'].numpy()
+            y_train = train_data['y'].numpy()
 
-        test_data = torch.load(test_path, weights_only=True)
-        X_test  = test_data['X'].numpy()
-        y_test  = test_data['y'].numpy()
+            val_data = torch.load(val_path, weights_only=True)
+            X_val   = val_data['X'].numpy()
+            y_val   = val_data['y'].numpy()
 
-        N_val      = X_val.shape[0]
-        N_test     = X_test.shape[0]
-        S          = 30
+            test_data = torch.load(test_path, weights_only=True)
+            X_test  = test_data['X'].numpy()
+            y_test  = test_data['y'].numpy()
 
-        print(f"Train: {X_train.shape}, Val: {X_val.shape}, Test: {X_test.shape}")
+            N_val      = X_val.shape[0]
+            N_test     = X_test.shape[0]
+            S          = 30
 
-        # reshape to (S, N, F) and (S, N) for per-stock threshold optimization
-        y_val_s   = y_val.reshape(S, N_val // S)
-        y_test_s  = y_test.reshape(S, N_test // S)
+            print(f"Train: {X_train.shape}, Val: {X_val.shape}, Test: {X_test.shape}")
 
-        n_jobs = os.cpu_count()
-        print(f"Using {n_jobs} CPU cores\n")
+            # reshape to (S, N, F) and (S, N) for per-stock threshold optimization
+            y_val_s   = y_val.reshape(S, N_val // S)
+            y_test_s  = y_test.reshape(S, N_test // S)
 
-        models = {
-            'logistic_regression': LogisticRegression(
-                max_iter=1000,
-                n_jobs=n_jobs,
-                verbose=2,
-            ),
-            'linear_svc': LinearSVC(
-                max_iter=2000,
-                verbose=2,
-            ),
-            'random_forest': RandomForestClassifier(
-                n_estimators=100,
-                n_jobs=n_jobs,
-                verbose=2,
-            ),
-            'xgboost': XGBClassifier(
-                n_estimators=100,
-                n_jobs=n_jobs,
-                device='cuda',
-                verbosity=2,
-                eval_metric='logloss',
-            ),
-        }
+            n_jobs = os.cpu_count()
+            print(f"Using {n_jobs} CPU cores\n")
 
-        results = {}
-        for name, model in models.items():
-            model_path = out_dir / f'{name}.joblib'
-
-            if model_path.exists():
-                print(f"Model {name}.joblib already saved. Skipping training...")
-                model = joblib.load(model_path)
-                train_time = 0
-            else:
-                print(f"\n{'='*60}")
-                print(f"Training: {name.upper()}")
-                print(f"{'='*60}")
-                t0 = time.time()
-
-                if name == 'xgboost':
-                    model.fit(X_train, y_train, eval_set=[(X_test, y_test)], verbose=10)
-                else:
-                    model.fit(X_train, y_train)
-
-                train_time = time.time() - t0
-                print(f"\nTraining time: {train_time:.1f}s")
-
-                joblib.dump(model, model_path)
-                print(f"Model saved to {model_path}")
-
-            # --- get scores per stock ---
-            print("Getting scores per stock for loss computation...")
-            if name == 'linear_svc':
-                # LinearSVC has no predict_proba; use decision_function
-                val_scores_flat  = model.decision_function(X_val)
-                test_scores_flat = model.decision_function(X_test)
-                probs_pos = expit(test_scores_flat)
-                probs = np.stack([1 - probs_pos, probs_pos], axis=1)
-                loss = -np.log(probs[np.arange(len(y_test)).astype(int), y_test.astype(int)] + 1e-8)
-            else:
-                probs = model.predict_proba(X_test)  # (N, 2)
-                loss = -np.log(probs[np.arange(len(y_test)).astype(int), y_test.astype(int)] + 1e-8)  # (N,) per-sample cross-entropy
-                val_scores_flat  = model.predict_proba(X_val)[:, 1]
-                test_scores_flat = probs[:, 1]
-
-            # reshape to (N_per_stock, S) for threshold optimization
-            val_scores_s  = val_scores_flat.reshape(S, N_val // S).T    # (N_val//S, S)
-            test_scores_s = test_scores_flat.reshape(S, N_test // S).T  # (N_test//S, S)
-            val_targets_s  = y_val_s.T    # (N_val//S, S)
-            test_targets_s = y_test_s.T   # (N_test//S, S)
-            loss_s = torch.tensor(loss.reshape(S, N_test // S).T, dtype=torch.float32)     # (N_test//S, S)
-
-            torch.save(loss_s, out_dir / f'{name}_y_loss.pt')
-
-            # --- computing drift scores ---
-            print("Computing drift scores")
-
-            mean_squared_loss_deviations, drift_from_width, msd_mean, widths_mean, combined_drift_score_mean = compute_drift(loss_s)
-
-            pd.DataFrame({
-                'stock_id': range(S),
-                'mean_squared_loss_deviations': mean_squared_loss_deviations.numpy(),
-                'drift_from_width': drift_from_width.numpy(),
-                'combined_drift_scores': (mean_squared_loss_deviations * drift_from_width).numpy()
-            }).to_csv(out_dir / f'{name}_per_stock_drift.csv', index=False)
-
-            metrics = {
-                'msd_mean': msd_mean,
-                'widths_mean': widths_mean,
-                'combined_drift_score_mean': combined_drift_score_mean
+            models = {
+                'logistic_regression': LogisticRegression(
+                    max_iter=1000,
+                    n_jobs=n_jobs,
+                    verbose=2,
+                ),
+                'linear_svc': LinearSVC(
+                    max_iter=2000,
+                    verbose=2,
+                ),
+                'random_forest': RandomForestClassifier(
+                    n_estimators=100,
+                    n_jobs=n_jobs,
+                    verbose=2,
+                ),
+                'xgboost': XGBClassifier(
+                    n_estimators=100,
+                    n_jobs=n_jobs,
+                    device='cuda',
+                    verbosity=2,
+                    eval_metric='logloss',
+                ),
             }
 
-            # --- expanding window threshold optimization ---
-            if (out_dir / f'{name}_y_preds.pt').exists():
-                print(f'Model preds already saved at {(out_dir / f'{name}_y_preds.pt')}... Skipping')
-                y_pred_per_stock = torch.load(out_dir / f'{name}_y_preds.pt', map_location=device, weights_only=True).numpy()
-                y_pred = y_pred_per_stock.flatten()
-                y_test_flat = y_test_s.flatten()
+            if (score_dir / 'baseline_results.csv').exists():
+                results = pd.read_csv(score_dir / 'baseline_results.csv', index_col=0).to_dict(orient='index')
             else:
-                print("Running expanding-window threshold optimization...")
-                t2 = time.time()
-                best_thresholds = expanding_window_thresholds(
-                    val_targets_s, val_scores_s, test_targets_s, test_scores_s
-                )  # (N_test//S, S)
-                print(f"Threshold optimization time: {time.time() - t2:.1f}s")
+                results = dict()
 
-                # apply thresholds and flatten back
-                y_pred = (test_scores_s >= best_thresholds).astype(int).T.flatten()  # (S, N_test//S) -> flat
-                y_test_flat = y_test_s.flatten()
+            for name, model in models.items():
+                model_path = score_dir / f'{name}.joblib'
 
-                # per-stock MCC
-                y_pred_s = (test_scores_s >= best_thresholds).astype(int)  # (N_test//S, S)
-                per_stock_mcc = np.array([
-                    matthews_corrcoef(y_test_s[s], y_pred_s[:, s])
-                    for s in range(S)
-                ])
-                pd.DataFrame({'stock_id': range(S), 'mcc': per_stock_mcc}).to_csv(
-                    out_dir / f'{name}_per_stock_mcc.csv', index=False
-                )
-                y_pred_per_stock = (test_scores_s >= best_thresholds).astype(int).T  # (S, N_test//S)
-                torch.save(
-                    torch.tensor(y_pred_per_stock, dtype=torch.int32),
-                    out_dir / f'{name}_y_preds.pt'
-                )
+                if model_path.exists():
+                    print(f"Model {name}.joblib already saved. Skipping training...")
+                    model = joblib.load(model_path)
+                    train_time = 0
+                else:
+                    print(f"\n{'='*60}")
+                    print(f"Training: {name.upper()}")
+                    print(f"{'='*60}")
+                    t0 = time.time()
 
-            t1 = time.time()
-            metrics.update({
-                'mcc':          matthews_corrcoef(y_test_flat, y_pred),
-                'accuracy':     accuracy_score(y_test_flat, y_pred),
-                'precision':    precision_score(y_test_flat, y_pred),
-                'recall':       recall_score(y_test_flat, y_pred),
-                'f1':           f1_score(y_test_flat, y_pred),
-                'train_time_s': train_time,
-                'pred_time_s':  time.time() - t1,
-            })
-            results[name] = metrics
+                    if name == 'xgboost':
+                        model.fit(X_train, y_train, eval_set=[(X_test, y_test)], verbose=10)
+                    else:
+                        model.fit(X_train, y_train)
 
-            print(f"MCC:       {metrics['mcc']:.4f}")
-            print(f"Accuracy:  {metrics['accuracy']:.4f}")
-            print(f"Precision: {metrics['precision']:.4f}")
-            print(f"Recall:    {metrics['recall']:.4f}")
-            print(f"F1:        {metrics['f1']:.4f}")
+                    train_time = time.time() - t0
+                    print(f"\nTraining time: {train_time:.1f}s")
 
-        results_df = pd.DataFrame.from_dict(results, orient='index')
-        results_df.to_csv(out_dir / 'baseline_results.csv')
-        print(f"\nAll results saved to {out_dir / 'baseline_results.csv'}")
-        print(results_df.to_string())
-        return results_df
+                    joblib.dump(model, model_path)
+                    print(f"Model saved to {model_path}")
 
-    def wilcoxon_baseline_comparison(self, trading_sim=False):
+                # --- get scores per stock ---
+                print("Getting scores per stock for loss computation...")
+                if name == 'linear_svc':
+                    # LinearSVC has no predict_proba; use decision_function
+                    val_scores_flat  = model.decision_function(X_val)
+                    test_scores_flat = model.decision_function(X_test)
+                    probs_pos = expit(test_scores_flat)
+                    probs = np.stack([1 - probs_pos, probs_pos], axis=1)
+                    loss = -np.log(probs[np.arange(len(y_test)).astype(int), y_test.astype(int)] + 1e-8)
+                else:
+                    probs = model.predict_proba(X_test)  # (N, 2)
+                    loss = -np.log(probs[np.arange(len(y_test)).astype(int), y_test.astype(int)] + 1e-8)  # (N,) per-sample cross-entropy
+                    val_scores_flat  = model.predict_proba(X_val)[:, 1]
+                    test_scores_flat = probs[:, 1]
 
-        out_dir = (
-            self.results_path / 'baseline_comparison'
-            if not trading_sim
-            else self.results_path / 'trading_sim' / 'baseline_comparison'
-        )
+                # reshape to (N_per_stock, S) for threshold optimization
+                val_scores_s  = val_scores_flat.reshape(S, N_val // S).T    # (N_val//S, S)
+                test_scores_s = test_scores_flat.reshape(S, N_test // S).T  # (N_test//S, S)
+                val_targets_s  = y_val_s.T    # (N_val//S, S)
+                test_targets_s = y_test_s.T   # (N_test//S, S)
+                loss_s = torch.tensor(loss.reshape(S, N_test // S).T, dtype=torch.float32)     # (N_test//S, S)
+
+                torch.save(loss_s, score_dir / f'{name}_y_loss.pt')
+
+                metrics = results[name] if name in results else dict()
+
+                if score == mcc_filename:
+
+                    # --- expanding window threshold optimization ---
+                    if (score_dir / f'{name}_y_preds.pt').exists():
+                        print(f'Model preds already saved at {(score_dir / f'{name}_y_preds.pt')}... Skipping')
+                        y_pred_per_stock = torch.load(score_dir / f'{name}_y_preds.pt', map_location=device, weights_only=True).numpy()
+                        y_pred = y_pred_per_stock.flatten()
+                        y_test_flat = y_test_s.flatten()
+                    else:
+                        print("Running expanding-window threshold optimization...")
+                        t2 = time.time()
+                        best_thresholds = expanding_window_thresholds(
+                            val_targets_s, val_scores_s, test_targets_s, test_scores_s
+                        )  # (N_test//S, S)
+                        print(f"Threshold optimization time: {time.time() - t2:.1f}s")
+
+                        # apply thresholds and flatten back
+                        y_pred = (test_scores_s >= best_thresholds).astype(int).T.flatten()  # (S, N_test//S) -> flat
+                        y_test_flat = y_test_s.flatten()
+
+                        # per-stock MCC
+                        y_pred_s = (test_scores_s >= best_thresholds).astype(int)  # (N_test//S, S)
+                        per_stock_mcc = np.array([
+                            matthews_corrcoef(y_test_s[s], y_pred_s[:, s])
+                            for s in range(S)
+                        ])
+                        pd.DataFrame({'stock_id': range(S), 'mcc': per_stock_mcc}).to_csv(
+                            score_dir / f'{name}_per_stock_mcc.csv', index=False
+                        )
+                        y_pred_per_stock = (test_scores_s >= best_thresholds).astype(int).T  # (S, N_test//S)
+                        torch.save(
+                            torch.tensor(y_pred_per_stock, dtype=torch.int32),
+                            score_dir / f'{name}_y_preds.pt'
+                        )
+                    
+                    t1 = time.time()
+                    
+                    metrics.update({
+                        'mcc': matthews_corrcoef(y_test_flat, y_pred),
+                        'accuracy': accuracy_score(y_test_flat, y_pred),
+                        'precision': precision_score(y_test_flat, y_pred),
+                        'recall': recall_score(y_test_flat, y_pred),
+                        'f1': f1_score(y_test_flat, y_pred),
+                        'precision_neg': precision_score(1 - y_test_flat, 1 - y_pred),
+                        'recall_neg': recall_score(1 - y_test_flat, 1 - y_pred),
+                        'f1_neg': f1_score(1 - y_test_flat, 1 - y_pred),
+                        'train_time_s': train_time,
+                        'pred_time_s':  time.time() - t1
+                    })
+
+                    print(f"MCC: {metrics['mcc']:.4f}")
+                    print(f"Accuracy: {metrics['accuracy']:.4f}")
+                    print(f"Precision: {metrics['precision']:.4f}")
+                    print(f"Recall: {metrics['recall']:.4f}")
+                    print(f"F1: {metrics['f1']:.4f}")
+                    print(f"Negative Precision: {metrics['precision_neg']:.4f}")
+                    print(f"Negative Recall: {metrics['recall_neg']:.4f}")
+                    print(f"Negative F1: {metrics['f1_neg']:.4f}")
+                    
+                if score == drift_filename:
+
+                    # --- computing drift scores ---
+                    print("Computing drift scores")
+
+                    mean_squared_loss_deviations, drift_from_width, msd_mean, widths_mean, combined_drift_score_mean = compute_drift(loss_s)
+
+                    pd.DataFrame({
+                        'stock_id': range(S),
+                        'mean_squared_loss_deviations': mean_squared_loss_deviations.numpy(),
+                        'drift_from_width': drift_from_width.numpy(),
+                        'combined_drift_scores': (mean_squared_loss_deviations * drift_from_width).numpy()
+                    }).to_csv(score_dir / f'{name}_per_stock_drift.csv', index=False)
+
+                    t1 = time.time()
+
+                    metrics.update({
+                        'msd_mean': msd_mean,
+                        'widths_mean': widths_mean,
+                        'combined_drift_score_mean': combined_drift_score_mean,
+                        'train_time_s': train_time,
+                        'pred_time_s': time.time() - t1
+                    })
+
+                    print(f"MSD: {metrics['msd_mean']:.4f}")
+                    print(f"Widths: {metrics['widths_mean']:.4f}")
+                    print(f"Combined Drift: {metrics['combined_drift_score_mean']:.4f}")
+                
+                results[name] = metrics
+
+            results_df = pd.DataFrame.from_dict(results, orient='index')
+            results_df.to_csv(score_dir / 'baseline_results.csv')
+            print(f"\nAll results saved to {score_dir / 'baseline_results.csv'}")
+            print(results_df.to_string())
+
+    def _dl_best_scores(self, score, mixed_effects_path):
+        marginal_means = pd.read_csv(mixed_effects_path / f'{score}_marginal_means.csv')
+        best_row = marginal_means.iloc[
+            np.argmax(marginal_means[f'{score}_pred'].values)
+            if score == 'mcc'
+            else np.argmin(marginal_means[f'{score}_pred'].values)
+        ]
+
+        news_pre = 'news_' if best_row['news'] else ''
+        social_pre = 'social_' if best_row['social'] else ''
+        transformer = 'transformer_' if best_row['transformer'] else 'mlp_'
+        pred_hr = '30' if best_row['pred_30'] else '10'
+
+        best_dl_name = f'stock_{news_pre}{social_pre}{transformer}{pred_hr}'
+
+        dl_test_outputs = self.experiments_path / best_dl_name / 'test_outputs.pt'
+        dl_out = torch.load(dl_test_outputs, map_location=device, weights_only=False)
+
+        dl_reorder = torch.argmax(self.stock_map[best_dl_name]['stock_map'], dim=-1)
+
+        score_tensor = dl_out['mcc_scores' if score == 'mcc' else 'drift_from_width']
+        score_reordered = torch.zeros_like(score_tensor)
+        score_reordered[dl_reorder] = score_tensor
+
+        print(f'Best model for {score}: {best_dl_name}')
+
+        return score_reordered.cpu().numpy()
+
+    def wilcoxon_baseline_comparison(self):
+
+        out_dir = (self.results_path / 'baseline_comparison')
         out_dir.mkdir(exist_ok=True)
 
         baseline_dir = self.results_path / 'baseline_models'
         baseline_names = ['logistic_regression', 'linear_svc', 'random_forest', 'xgboost']
 
-        # --- load deep learning model mcc and drift scores ---
-        # find the best deep learning model (same logic as train_baseline_models)
-        marginal_means = pd.read_csv(
-            self.results_path / 'mixed_effects' / 'mcc_marginal_means.csv'
-            if not trading_sim
-            else self.results_path / 'trading_sim' / 'mixed_effects' / 'cum_profit_marginal_means.csv'
-        )
-        best_mcc_row = marginal_means.iloc[np.argmax(marginal_means['mcc_pred'].values)]
-
-        news_pre    = 'news_'        if best_model_row['news']        else ''
-        social_pre  = 'social_'      if best_model_row['social']      else ''
-        transformer = 'transformer_' if best_model_row['transformer'] else 'mlp_'
-        pred_hr     = '30'         if best_model_row['pred_30']     else '10'
-
-        stock_map = torch.load(
-            self.results_path / 'reference' / 'stock_maps.pt',
-            map_location=device,
-            weights_only=False
-        )
-
-        best_dl_name = f'stock_{news_pre}{social_pre}{transformer}{pred_hr}'
-        data_filename = f'stock_{news_pre}{social_pre}mlp_{pred_hr}'
-
-        dl_test_outputs = self.experiments_path / best_dl_name / 'test_outputs.pt'
-        dl_out = torch.load(dl_test_outputs, map_location=device, weights_only=False)
-
-        dl_reorder = torch.argmax(stock_map[best_dl_name]['stock_map'], dim=-1)
-
-        dl_mcc = dl_out['mcc_scores']
-        dl_drift = dl_out['drift_from_width']
-
-        dl_mcc_reordered = torch.zeros_like(dl_mcc)
-        dl_drift_reordered = torch.zeros_like(dl_drift)
-
-        dl_mcc_reordered[dl_reorder] = dl_mcc
-        dl_drift_reordered[dl_reorder] = dl_drift
-
-        dl_mcc_per_stock   = dl_mcc_reordered.cpu().numpy()             # (S,)
-        dl_drift_per_stock = dl_drift_reordered.cpu().numpy()           # (S,)
+        dl_mcc_per_stock   = self._dl_best_scores('mcc', self.results_path / 'mixed_effects')             # (S,)
+        dl_drift_per_stock = self._dl_best_scores('drift', self.results_path / 'mixed_effects')           # (S,)
 
         S = len(dl_mcc_per_stock)
 
