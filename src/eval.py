@@ -1042,7 +1042,10 @@ class Eval:
 
         final_returns_per_model = dict()
         for key, value in results.items():
-            model_name = key if score is None else score
+            if score is None or key.startswith('stock'):
+                model_name = key
+            else:
+                model_name = score
 
             news = 'news' in model_name
             social = 'social' in model_name
@@ -1060,7 +1063,6 @@ class Eval:
 
             final_returns_per_offset = []
             num_offset = len(value.items())
-            print(key)
             for i, (offset_key, offset) in enumerate(value.items()):
                 reference = pd.read_csv(
                     f'experiments/results/trading_sim/close_prices/{pred_horizon}_{offset_key}.csv',
