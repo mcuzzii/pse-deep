@@ -106,11 +106,11 @@ def compute_drift(loss):
 
     return mean_squared_loss_deviations, drift_from_width, msd_mean, widths_mean, combined_drift_score_mean
 
-def analyze(df, outcome, factors, formula_two_way, formula_main, out_dir):
+def analyze(df, outcome, group_id, factors, formula_two_way, formula_main, out_dir):
     # --- Fit models ---
-    model_2way = smf.mixedlm(f"{outcome} ~ {formula_two_way}", data=df, groups=df["stock_id"]).fit(reml=False)
-    model_main = smf.mixedlm(f"{outcome} ~ {formula_main}", data=df, groups=df["stock_id"]).fit(reml=False)
-    model_reml = smf.mixedlm(f"{outcome} ~ {formula_two_way}", data=df, groups=df["stock_id"]).fit()
+    model_2way = smf.mixedlm(f"{outcome} ~ {formula_two_way}", data=df, groups=df[group_id]).fit(reml=False)
+    model_main = smf.mixedlm(f"{outcome} ~ {formula_main}", data=df, groups=df[group_id]).fit(reml=False)
+    model_reml = smf.mixedlm(f"{outcome} ~ {formula_two_way}", data=df, groups=df[group_id]).fit()
 
     # --- Coefficients ---
     coef_df = pd.DataFrame({
@@ -148,9 +148,9 @@ def analyze(df, outcome, factors, formula_two_way, formula_main, out_dir):
     # --- Marginal means ---
     configs = list(itertools.product([0, 1], repeat=4))
     config_df = pd.DataFrame(configs, columns=factors)
-    config_df['stock_id'] = 0
+    config_df[group_id] = 0
     config_df[f'{outcome}_pred'] = model_reml.predict(config_df)
-    config_df = config_df.drop(columns=['stock_id']).sort_values(f'{outcome}_pred', ascending=False)
+    config_df = config_df.drop(columns=[group_id]).sort_values(f'{outcome}_pred', ascending=False)
     config_df.to_csv(out_dir / f'{outcome}_marginal_means.csv', index=False)
 
     # --- Simple effects ---
@@ -159,8 +159,8 @@ def analyze(df, outcome, factors, formula_two_way, formula_main, out_dir):
         others = [f for f in factors if f != focal]
         for vals in itertools.product([0, 1], repeat=len(others)):
             cond = dict(zip(others, vals))
-            row0 = {**cond, focal: 0, 'stock_id': 0}
-            row1 = {**cond, focal: 1, 'stock_id': 0}
+            row0 = {**cond, focal: 0, group_id: 0}
+            row1 = {**cond, focal: 1, group_id: 0}
             pred0 = model_reml.predict(pd.DataFrame([row0]))[0]
             pred1 = model_reml.predict(pd.DataFrame([row1]))[0]
             simple_effects_rows.append({
@@ -478,8 +478,8 @@ class Eval:
         out_dir = self.results_path / 'mixed_effects'
         out_dir.mkdir(exist_ok=True)
 
-        analyze(mcc_df, 'mcc', factors, formula_two_way, formula_main, out_dir)
-        analyze(drift_df, 'drift', factors, formula_two_way, formula_main, out_dir)
+        analyze(mcc_df, 'mcc', 'stock_id', factors, formula_two_way, formula_main, out_dir)
+        analyze(drift_df, 'drift', 'stock_id', factors, formula_two_way, formula_main, out_dir)
 
         print(f"All results saved to {out_dir}")
 
@@ -1124,6 +1124,6 @@ class Eval:
         out_dir = self.results_path / 'trading_sim' / 'mixed_effects'
         out_dir.mkdir(exist_ok=True)
 
-        analyze(tsim_df, 'cum_profit', factors, formula_two_way, formula_main, out_dir)
+        analyze(tsim_df, 'cum_profit', 'k_offset_pair_id', factors, formula_two_way, formula_main, out_dir)
 
         print(f"All results saved to {out_dir}")
