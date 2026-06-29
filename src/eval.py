@@ -1024,12 +1024,14 @@ class Eval:
                 offset_tensor = torch.stack(list(offset.values()), dim=0)               # k (N,) -> (k, N)
                 if (num_offset // 10) % (i + 1) == 0:
                     final_returns_per_offset.append(offset_tensor[:, -1])               # k
+                
 
                 offset_df = pd.DataFrame(offset_tensor.cpu().numpy().T, index=reference.index)
                 offset_df = offset_df.add_suffix(f'_{offset_key}')
                 model_df = model_df.join(offset_df, how='left')
             
             final_returns_per_model[key] = torch.cat(final_returns_per_offset, dim=0).cpu().numpy()   # k * offset
+            print(f'Final returns for {key}: {final_returns_per_model.shape}')
             
             model_df = model_df.reset_index().melt(id_vars='local_time').dropna()
             group_freq = '30min' if pred_30 else '10min'
