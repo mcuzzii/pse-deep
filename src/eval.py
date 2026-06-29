@@ -1176,7 +1176,7 @@ class Eval:
         if 'news' in score:
             news_df = joblib.load(f'data/processed/news_{pred_horizon}m.joblib')
             ts = ts.intersection(news_df.df.dropna().index)
-            
+
         results_dict = dict()
 
         for model in ml_models:
@@ -1191,7 +1191,7 @@ class Eval:
 
                 for k in range(15):
                     profits = self._compute_profits(
-                        probs[ts_mask],
+                        torch.tensor(probs[ts_mask], dtype=torch.float32, device=device),
                         price_tensor,
                         torch.argmax(self.stock_map[score]['stock_map'], dim=-1),
                         k, offset, score
