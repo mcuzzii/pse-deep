@@ -1022,7 +1022,7 @@ class Eval:
                 reference = reference.loc[reference.index.get_level_values(0).isin(ts)]
 
                 offset_tensor = torch.stack(list(offset.values()), dim=0)               # k (N,) -> (k, N)
-                if (num_offset // 10) % (i + 1) == 0:
+                if i % (num_offset // 10) == 0:
                     final_returns_per_offset.append(offset_tensor[:, -1])               # k
                 
 
