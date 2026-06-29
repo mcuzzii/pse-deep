@@ -212,7 +212,7 @@ def valid_times(ts, offset, pred_horizon):
         )
     )
 
-def get_best_dataset(score, mixed_effects_path):
+def get_best_dataset(score, mixed_effects_path, mlp_only=True):
     marginal_means = pd.read_csv(mixed_effects_path / f'{score}_marginal_means.csv')
     best_model = marginal_means.iloc[
         np.argmax(marginal_means[f'{score}_pred'].values)
@@ -222,9 +222,10 @@ def get_best_dataset(score, mixed_effects_path):
     
     news_pre = 'news_' if best_model['news'] else ''
     social_pre = 'social_' if best_model['social'] else ''
+    transformer = 'transformer_' if best_model['transformer'] and not mlp_only else 'mlp_'
     pred_hr = '30' if best_model['pred_30'] else '10'
 
-    return f'stock_{news_pre}{social_pre}mlp_{pred_hr}'
+    return f'stock_{news_pre}{social_pre}{transformer}{pred_hr}'
 
 def run_wilcoxon_table(score_dict, metric_name, out_dir, higher_is_better=True):
     rows = []
@@ -1006,10 +1007,23 @@ class Eval:
     def interpret_trading_sim(self, score=None):
 
         results = torch.load(
-            self.results_path / 'trading_sim' / ('results.pt' if score is None else 'baseline_results.pt'),
+            self.results_path / 'trading_sim' / 'results.pt',
             map_location=device,
             weights_only=False
         )
+        if score is not None:
+            best_model_name = get_best_dataset(
+                'cum_profit',
+                self.results_path / 'trading_sim' / 'mixed_effects',
+                False
+            )
+            best_model = results[best_model_name]
+            results = torch.load(
+                self.results_path / 'trading_sim' / 'baseline_results.pt',
+                map_location=device,
+                weights_only=False
+            )
+            results[best_model_name] = best_model
 
         ref_30 = joblib.load('data/processed/ac_30m.joblib')
         ref_10 = joblib.load('data/processed/ac_10m.joblib')
@@ -1160,6 +1174,57 @@ class Eval:
             analyze(tsim_df, 'cum_profit', 'k_offset_pair_id', factors, formula_two_way, formula_main, out_dir)
 
             print(f"All results saved to {out_dir}")
+
+        else:
+            summary_df['setting'] = np.where(
+                summary_df['setting'] == 'logistic_regression',
+                'Logistic Regression',
+                np.where(
+                    summary_df['setting'] == 'linear_svc',
+                    'Linear SVC',
+                    np.where(
+                        summary_df['setting'] == 'random_forest',
+                        'Random Forest',
+                        np.where(
+                            summary_df['setting'] == 'xgboost',
+                            'XGBoost',
+                            'Best DL model'
+                        )
+                    )
+                )
+            )
+            summary_df['time_idx'] = summary_df.groupby('setting').cumcount()
+
+            palette = {
+                'Logistic Regression': COLORS['green'],
+                'Linear SVC': COLORS['yellow'],
+                'Random Forest': COLORS['indigo'],
+                'XGBoost': COLORS['seaform'],
+                'Best DL model': COLORS['purple']
+            }
+
+            g.map_dataframe(
+                sns.lineplot, x='time_idx', y='profit_perc',
+                hue='news', style='social',
+                palette=palette, dashes=dashes,
+            )
+
+            g.set_axis_labels('Time', 'Cumulative Return')
+            g.add_legend(title='')
+            g.figure.suptitle('Trading Simulation Results', fontsize=13, fontweight='bold')
+
+            legend = g.legend
+            for text in legend.get_texts():
+                if text.get_text() == 'setting':
+                    text.set_visible(False)
+
+            for ax in g.axes.flat:
+                ax.axhline(1.0, color='black', linewidth=0.6, linestyle=':', alpha=0.5)
+                ax.yaxis.set_major_formatter(ticker.FuncFormatter(lambda y, _: f'{y:.2f}'))
+
+            g.savefig(self.results_path / 'trading_sim' / 'baseline.png', dpi=300, bbox_inches='tight')
+            
+            run_wilcoxon_table(final_returns_per_model, 'cum_profit', self.results_path / 'baseline_comparison')
     
     def baseline_models_trading_sim(self):
 
@@ -1194,7 +1259,7 @@ class Eval:
                         torch.tensor(probs[ts_mask], dtype=torch.float32, device=device),
                         price_tensor,
                         torch.argmax(self.stock_map[score]['stock_map'], dim=-1),
-                        k, offset, score
+                        k, offset, model
                     )
 
                     results_dict[score][offset][k] = profits
