@@ -1206,25 +1206,27 @@ class Eval:
                 'Best DL model': COLORS['purple']
             }
 
-            g = sns.lineplot(
-                summary_df, x='time_idx', y='profit_perc',
-                hue='setting', palette=palette,
+            fig, ax = plt.subplots(figsize=(8, 5))
+
+            sns.lineplot(
+                data=summary_df, x='time_idx', y='profit_perc',
+                hue='setting', palette=palette, ax=ax
             )
 
-            g.set_axis_labels('Time', 'Cumulative Return')
-            g.add_legend(title='')
-            g.figure.suptitle('Trading Simulation Results', fontsize=13, fontweight='bold')
+            ax.set_xlabel('Time')
+            ax.set_ylabel('Cumulative Return')
+            ax.set_title('Trading Simulation Results', fontsize=13, fontweight='bold')
+            ax.axhline(1.0, color='black', linewidth=0.6, linestyle=':', alpha=0.5)
+            ax.yaxis.set_major_formatter(ticker.FuncFormatter(lambda y, _: f'{y:.2f}'))
 
-            legend = g.legend
+            legend = ax.get_legend()
+            legend.set_title('')
             for text in legend.get_texts():
                 if text.get_text() == 'setting':
                     text.set_visible(False)
 
-            for ax in g.axes.flat:
-                ax.axhline(1.0, color='black', linewidth=0.6, linestyle=':', alpha=0.5)
-                ax.yaxis.set_major_formatter(ticker.FuncFormatter(lambda y, _: f'{y:.2f}'))
-
-            g.savefig(self.results_path / 'trading_sim' / 'baseline.png', dpi=300, bbox_inches='tight')
+            fig.savefig(self.results_path / 'trading_sim' / 'baseline.png', dpi=300, bbox_inches='tight')
+            plt.close(fig)
 
             run_wilcoxon_table(final_returns_per_model, 'cum_profit', self.results_path / 'baseline_comparison')
     
