@@ -1060,6 +1060,7 @@ class Eval:
 
             final_returns_per_offset = []
             num_offset = len(value.items())
+            print(key)
             for i, (offset_key, offset) in enumerate(value.items()):
                 reference = pd.read_csv(
                     f'experiments/results/trading_sim/close_prices/{pred_horizon}_{offset_key}.csv',
@@ -1223,7 +1224,7 @@ class Eval:
                 ax.yaxis.set_major_formatter(ticker.FuncFormatter(lambda y, _: f'{y:.2f}'))
 
             g.savefig(self.results_path / 'trading_sim' / 'baseline.png', dpi=300, bbox_inches='tight')
-            
+
             run_wilcoxon_table(final_returns_per_model, 'cum_profit', self.results_path / 'baseline_comparison')
     
     def baseline_models_trading_sim(self):
