@@ -1202,7 +1202,7 @@ class Eval:
                 'Logistic Regression': COLORS['green'],
                 'Linear SVC': COLORS['yellow'],
                 'Random Forest': COLORS['indigo'],
-                'XGBoost': COLORS['seaform'],
+                'XGBoost': COLORS['seafoam'],
                 'Best DL model': COLORS['purple']
             }
 
