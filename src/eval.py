@@ -108,7 +108,7 @@ def compute_drift(loss):
 
     return mean_squared_loss_deviations, drift_from_width, msd_mean, widths_mean, combined_drift_score_mean
 
-def analyze(df, outcome, group_id, group_labels, factors, formula_two_way, formula_main, out_dir):
+def analyze(df, outcome, group_id, group_labels, settings, factors, formula_two_way, formula_main, out_dir):
     # --- Fit models ---
     model_2way = smf.mixedlm(f"{outcome} ~ {formula_two_way}", data=df, groups=df[group_id]).fit(reml=False)
     model_main = smf.mixedlm(f"{outcome} ~ {formula_main}", data=df, groups=df[group_id]).fit(reml=False)
@@ -200,7 +200,7 @@ def analyze(df, outcome, group_id, group_labels, factors, formula_two_way, formu
     plt.close()
 
     df['residuals'] = resids
-    residual_wide = df.pivot(index='setting', columns=group_id, values='residuals')
+    residual_wide = df.pivot(index=settings, columns=group_id, values='residuals')
     plot_mcc_correlation_heatmap(
         pd.DataFrame(residual_wide.values, columns=residual_wide.columns),  # match expected input shape
         group_labels,
@@ -551,14 +551,13 @@ class Eval:
             df['news'] = df['setting'].str.contains('news').astype(int)
             df['social'] = df['setting'].str.contains('social').astype(int)
             df['pred_30'] = df['setting'].str.contains('30').astype(int)
-            df.drop(columns=['setting'], inplace=True)
 
         factors = ['transformer', 'news', 'social', 'pred_30']
         formula_two_way = "(transformer + news + social + pred_30)**2"
         formula_main = "transformer + news + social + pred_30"
 
-        analyze(mcc_df, 'mcc', 'stock_id', stock_ids, factors, formula_two_way, formula_main, out_dir)
-        analyze(drift_df, 'drift', 'stock_id', stock_ids, factors, formula_two_way, formula_main, out_dir)
+        analyze(mcc_df, 'mcc', 'stock_id', stock_ids, 'setting', factors, formula_two_way, formula_main, out_dir)
+        analyze(drift_df, 'drift', 'stock_id', stock_ids, 'setting', factors, formula_two_way, formula_main, out_dir)
 
         print(f"All results saved to {out_dir}")
     
