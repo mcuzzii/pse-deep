@@ -33,6 +33,7 @@ from scipy.stats import wilcoxon
 from scipy import stats
 import matplotlib.pyplot as plt
 import matplotlib.ticker as ticker
+import matplotlib.colors as mcolors
 import seaborn as sns
 import itertools
 from statsmodels.stats.multitest import multipletests
@@ -297,6 +298,46 @@ def get_price_tensor(ts, pred_horizon, offset):
 
     return price_tensor, ts_mask, reference
 
+def plot_mcc_correlation_heatmap(df, lab, out_path, title):
+    setup_plot_style()
+
+    corr = np.corrcoef(df.values.T)
+    labels = [s.upper() for s in lab]
+
+    # build a viridis-like colormap from your brand colors
+    viridis_cmap = mcolors.LinearSegmentedColormap.from_list(
+        'custom_viridis',
+        [COLORS['purple'], COLORS['indigo'], COLORS['teal'],
+         COLORS['seafoam'], COLORS['green'], COLORS['yellow']]
+    )
+
+    fig, ax = plt.subplots(figsize=(14, 12))
+
+    sns.heatmap(
+        corr,
+        xticklabels=labels,
+        yticklabels=labels,
+        cmap=viridis_cmap,
+        vmin=-1, vmax=1,
+        center=0,
+        square=True,
+        linewidths=0.5,
+        linecolor='white',
+        cbar_kws={'label': 'Correlation', 'shrink': 0.8},
+        ax=ax
+    )
+
+    ax.set_title(title, fontsize=16, pad=16)
+    ax.tick_params(axis='both', labelsize=8)
+    plt.setp(ax.get_xticklabels(), rotation=90)
+    plt.setp(ax.get_yticklabels(), rotation=0)
+
+    plt.tight_layout()
+    plt.savefig(out_path, dpi=300, bbox_inches='tight')
+    plt.close()
+
+    return corr
+
 class Eval:
     def __init__(self):
         self.experiments_path = Path('experiments')
@@ -463,6 +504,9 @@ class Eval:
             weights_only=False
         )
 
+        out_dir = self.results_path / 'mixed_effects'
+        out_dir.mkdir(exist_ok=True)
+
         for dir in self.experiments_path.iterdir():
 
             if dir.name in ('data', 'experiments', 'results'):
@@ -485,8 +529,25 @@ class Eval:
             mcc_df[dir.name] = pd.Series(mcc_reordered.cpu().numpy())
             drift_df[dir.name] = pd.Series(drift_reordered.cpu().numpy())
         
-        mcc_df['stock_id'] = next(iter(self.stock_map.values()))['stocks']
-        drift_df['stock_id'] = next(iter(self.stock_map.values()))['stocks']
+        stock_ids = next(iter(self.stock_map.values()))['stocks']
+
+        plot_mcc_correlation_heatmap(
+            mcc_df,
+            stock_ids,
+            out_dir / 'mcc_correlation_heatmap.png',
+            'MCC Correlation across Stocks'
+        )
+        plot_mcc_correlation_heatmap(
+            drift_df,
+            stock_ids,
+            out_dir / 'drift_correlation_heatmap.png',
+            'Drift Correlation across Stocks'
+        )
+        
+        mcc_df['stock_id'] = stock_ids
+        drift_df['stock_id'] = stock_ids
+
+        np.corrcoef(mcc_df.values.T)
 
         mcc_df = mcc_df.melt(id_vars=['stock_id'], var_name='setting', value_name='mcc')
         drift_df = drift_df.melt(id_vars=['stock_id'], var_name='setting', value_name='drift')
@@ -501,8 +562,6 @@ class Eval:
         factors = ['transformer', 'news', 'social', 'pred_30']
         formula_two_way = "(transformer + news + social + pred_30)**2"
         formula_main = "transformer + news + social + pred_30"
-        out_dir = self.results_path / 'mixed_effects'
-        out_dir.mkdir(exist_ok=True)
 
         analyze(mcc_df, 'mcc', 'stock_id', factors, formula_two_way, formula_main, out_dir)
         analyze(drift_df, 'drift', 'stock_id', factors, formula_two_way, formula_main, out_dir)
@@ -1313,6 +1372,3 @@ class Eval:
                 reshuffled_sv[mask] = sv.squeeze(-1)
                 reshuffled_sv = reshuffled_sv.reshape(30, reshuffled_sv.shape[0] // 30, -1)
                 sv = reshuffled_sv.permute(1, 2, 0)
-                print(sv.shape)
-            
-            
