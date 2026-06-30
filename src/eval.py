@@ -118,6 +118,11 @@ def analyze(
     formula_two_way,
     out_dir
 ):
+    
+    group_1 = pd.factorize(df[cluster_1])[0]
+    group_2 = pd.factorize(df[cluster_2])[0]
+
+    groups = np.column_stack((group_1, group_2))
 
     # --- Fit models ---
     model_2way = smf.ols(
@@ -126,7 +131,7 @@ def analyze(
     ).fit(
         cov_type="cluster",
         cov_kwds={
-            "groups": df[[cluster_1, cluster_2]],
+            "groups": groups,
             "use_correction": True,
             "df_correction": True,
         },
