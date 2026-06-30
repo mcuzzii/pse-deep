@@ -1256,12 +1256,12 @@ class Eval:
         for model in ml_models:
             probs = torch.load(baseline_models / f'{model}_probs.pt', map_location=device, weights_only=False)       # N, S
 
-            results_dict[score] = dict()
+            results_dict[model] = dict()
             for offset in range(pred_horizon):
 
                 price_tensor, ts_mask, _ = get_price_tensor(ts, pred_horizon, offset)
 
-                results_dict[score][offset] = dict()
+                results_dict[model][offset] = dict()
 
                 for k in range(15):
                     profits = self._compute_profits(
@@ -1271,7 +1271,7 @@ class Eval:
                         k, offset, model
                     )
 
-                    results_dict[score][offset][k] = profits
+                    results_dict[model][offset][k] = profits
         
         torch.save(results_dict, self.results_path / 'trading_sim' / 'baseline_results.pt')
     
