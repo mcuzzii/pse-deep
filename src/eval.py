@@ -1309,7 +1309,8 @@ class Eval:
                     mask = mask & (y_id < len(test_y) - 32)
 
                 reshuffled_sv = torch.full_like(test_y, float('nan'))
-                reshuffled_sv.unsqueeze(-1).expand(-1, sv.shape[1])
+                reshuffled_sv.unsqueeze(-1).expand(reshuffled_sv.shape[0], sv.shape[1])
+                print(reshuffled_sv.shape)
                 reshuffled_sv[mask] = sv.squeeze(-1)
                 reshuffled_sv = reshuffled_sv.reshape(30, reshuffled_sv.shape[0] // 30, -1)
                 sv = reshuffled_sv.permute(1, 2, 0)
