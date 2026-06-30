@@ -571,10 +571,9 @@ class Eval:
 
         factors = ['transformer', 'news', 'social', 'pred_30']
         formula_two_way = "(transformer + news + social + pred_30)**2"
-        formula_main = "transformer + news + social + pred_30"
 
-        analyze(mcc_df, 'mcc', 'stock_id', stock_ids, 'setting', factors, formula_two_way, formula_main, out_dir)
-        analyze(drift_df, 'drift', 'stock_id', stock_ids, 'setting', factors, formula_two_way, formula_main, out_dir)
+        analyze(mcc_df, 'mcc', 'stock_id', 'setting', factors, formula_two_way, out_dir)
+        analyze(drift_df, 'drift', 'stock_id', 'setting', factors, formula_two_way, out_dir)
 
         print(f"All results saved to {out_dir}")
     
