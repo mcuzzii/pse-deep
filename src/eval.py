@@ -301,7 +301,7 @@ def get_price_tensor(ts, pred_horizon, offset):
 def plot_mcc_correlation_heatmap(df, lab, out_path, title):
     setup_plot_style()
 
-    corr = np.corrcoef(df.values.T)
+    corr = np.abs(np.corrcoef(df.values))
     labels = [s.upper() for s in lab]
 
     # build a viridis-like colormap from your brand colors
@@ -311,7 +311,7 @@ def plot_mcc_correlation_heatmap(df, lab, out_path, title):
          COLORS['seafoam'], COLORS['green'], COLORS['yellow']]
     )
 
-    fig, ax = plt.subplots(figsize=(14, 12))
+    fig, ax = plt.subplots(figsize=(7, 6))
 
     sns.heatmap(
         corr,
@@ -321,7 +321,7 @@ def plot_mcc_correlation_heatmap(df, lab, out_path, title):
         vmin=-1, vmax=1,
         center=0,
         square=True,
-        linewidths=0.5,
+        linewidths=0,
         linecolor='white',
         cbar_kws={'label': 'Correlation', 'shrink': 0.8},
         ax=ax
@@ -546,8 +546,6 @@ class Eval:
         
         mcc_df['stock_id'] = stock_ids
         drift_df['stock_id'] = stock_ids
-
-        np.corrcoef(mcc_df.values.T)
 
         mcc_df = mcc_df.melt(id_vars=['stock_id'], var_name='setting', value_name='mcc')
         drift_df = drift_df.melt(id_vars=['stock_id'], var_name='setting', value_name='drift')
