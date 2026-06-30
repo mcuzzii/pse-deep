@@ -35,6 +35,7 @@ import matplotlib.pyplot as plt
 import matplotlib.ticker as ticker
 import seaborn as sns
 import itertools
+from statsmodels.stats.multitest import multipletests
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -251,6 +252,10 @@ def run_wilcoxon_table(score_dict, metric_name, out_dir, higher_is_better=True):
             'significant_p01': p < 0.01 if not np.isnan(p) else False,
         })
     df = pd.DataFrame(rows)
+    _, p_corrected, _, _ = multipletests(df['p_value'], alpha=0.05, method='fdr_bh')
+    df['p_corrected'] = pd.Series(p_corrected, index=df.index)
+    df['significant_p05_corrected'] = np.where(df['p_corrected'].notna(), df['p_corrected']  < 0.05, False)
+    df['significant_p01_corrected'] = np.where(df['p_corrected'].notna(), df['p_corrected']  < 0.01, False)
     df.to_csv(out_dir / f'wilcoxon_{metric_name}.csv', index=False)
     return df
 
