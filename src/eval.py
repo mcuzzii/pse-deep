@@ -1282,3 +1282,29 @@ class Eval:
 
         score = get_best_dataset('cum_profit', self.results_path / 'trading_sim' / 'mixed_effects')
         self.interpret_trading_sim(score)
+    
+    def interpret_shap_values(self):
+
+        for dir in self.experiments_path:
+            if dir.name in ('data', 'results'):
+                continue
+
+            out = torch.load(
+                dir / 'test_outputs.pt',
+                map_location=device,
+                weights_only=False
+            )
+
+            sv = out['test_shap_values']
+            if 'mlp' in dir.name:                                               # sv: M, g, 1
+                test_y = torch.load(
+                    self.experiments_path / 'data' / f'{dir.name}m_test.pt',
+                    map_location=device,
+                    weights_only=False
+                )['y']                                                          # N,
+
+                y_id = torch.arange(len(test_y), device=device)
+                mask = (y_id % 64 < 0.5) & (y_id < len(test_y) - 32)
+
+                print(test_y.shape)
+                print(mask.to(float).sum())
