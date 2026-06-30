@@ -319,7 +319,7 @@ def plot_mcc_correlation_heatmap(df, lab, out_path, title):
         yticklabels=labels,
         cmap=viridis_cmap,
         vmin=0, vmax=1,
-        center=0,
+        center=0.5,
         square=True,
         linewidths=0,
         linecolor='white',
