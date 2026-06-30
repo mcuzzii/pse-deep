@@ -108,7 +108,7 @@ def compute_drift(loss):
 
     return mean_squared_loss_deviations, drift_from_width, msd_mean, widths_mean, combined_drift_score_mean
 
-def analyze(df, outcome, group_id, factors, formula_two_way, formula_main, out_dir):
+def analyze(df, outcome, group_id, group_labels, factors, formula_two_way, formula_main, out_dir):
     # --- Fit models ---
     model_2way = smf.mixedlm(f"{outcome} ~ {formula_two_way}", data=df, groups=df[group_id]).fit(reml=False)
     model_main = smf.mixedlm(f"{outcome} ~ {formula_main}", data=df, groups=df[group_id]).fit(reml=False)
@@ -200,10 +200,10 @@ def analyze(df, outcome, group_id, factors, formula_two_way, formula_main, out_d
     plt.close()
 
     df['residuals'] = resids
-    residual_wide = df.pivot(index='model_setting', columns='stock', values='residuals')
+    residual_wide = df.pivot(index='setting', columns=group_id, values='residuals')
     plot_mcc_correlation_heatmap(
         pd.DataFrame(residual_wide.values, columns=residual_wide.columns),  # match expected input shape
-        group_id,
+        group_labels,
         out_dir / f'{outcome}_residual_correlation_heatmap.png',
         f'{outcome.upper()} Correlation'
     )
@@ -539,19 +539,6 @@ class Eval:
             drift_df[dir.name] = pd.Series(drift_reordered.cpu().numpy())
         
         stock_ids = next(iter(self.stock_map.values()))['stocks']
-
-        plot_mcc_correlation_heatmap(
-            mcc_df,
-            stock_ids,
-            out_dir / 'mcc_correlation_heatmap.png',
-            'MCC Correlation across Stocks'
-        )
-        plot_mcc_correlation_heatmap(
-            drift_df,
-            stock_ids,
-            out_dir / 'drift_correlation_heatmap.png',
-            'Drift Correlation across Stocks'
-        )
         
         mcc_df['stock_id'] = stock_ids
         drift_df['stock_id'] = stock_ids
@@ -570,8 +557,8 @@ class Eval:
         formula_two_way = "(transformer + news + social + pred_30)**2"
         formula_main = "transformer + news + social + pred_30"
 
-        analyze(mcc_df, 'mcc', 'stock_id', factors, formula_two_way, formula_main, out_dir)
-        analyze(drift_df, 'drift', 'stock_id', factors, formula_two_way, formula_main, out_dir)
+        analyze(mcc_df, 'mcc', 'stock_id', stock_ids, factors, formula_two_way, formula_main, out_dir)
+        analyze(drift_df, 'drift', 'stock_id', stock_ids, factors, formula_two_way, formula_main, out_dir)
 
         print(f"All results saved to {out_dir}")
     
