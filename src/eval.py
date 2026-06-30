@@ -1303,6 +1303,8 @@ class Eval:
                     weights_only=False
                 )['y']                                                          # N,
 
+                print(test_y.shape)
+
                 y_id = torch.arange(len(test_y), device=device)
                 mask = (y_id % 64 < 0.5) & (y_id < len(test_y) - 32)
 
