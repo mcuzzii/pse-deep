@@ -576,7 +576,7 @@ class Eval:
             df['pred_30'] = df['setting'].str.contains('30').astype(int)
 
         factors = ['transformer', 'news', 'social', 'pred_30']
-        formula_two_way = "(transformer + news + social + pred_30)**2"
+        formula_two_way = "C(stock_id) + (transformer + news + social + pred_30)**2"
 
         analyze(mcc_df, 'mcc', 'stock_id', 'setting', factors, formula_two_way, out_dir)
         analyze(drift_df, 'drift', 'stock_id', 'setting', factors, formula_two_way, out_dir)
@@ -881,31 +881,13 @@ class Eval:
         mcc_summary_df['stock_id'] = self.stock_map[mcc_best_model]['stocks']
         drift_summary_df['stock_id'] = self.stock_map[drift_best_model]['stocks']
 
-        plot_correlation_heatmap(
-            mcc_summary_df[[c for c in mcc_summary_df.columns if c != 'stock_id']],
-            [s.upper() for s in mcc_summary_df['stock_id'].tolist()],
-            self.results_path / 'mixed_effects' / 'stock_mcc_correlation_bet_models.png',
-            'MCC Correlation between Stocks'
-        )
-
-        plot_correlation_heatmap(
-            drift_summary_df[[c for c in drift_summary_df.columns if c != 'stock_id']],
-            [s.upper() for s in drift_summary_df['stock_id'].tolist()],
-            self.results_path / 'mixed_effects' / 'stock_drift_correlation_bet_models.png',
-            'Drift Correlation between Stocks'
-        )
-
         mcc_summary_df = mcc_summary_df.melt(id_vars='stock_id', var_name='setting', value_name='mcc')
         drift_summary_df = drift_summary_df.melt(id_vars='stock_id', var_name='setting', value_name='drift')
-
-        for baseline in baseline_names:
-            mcc_summary_df[baseline] = (mcc_summary_df['setting'] == baseline).astype(int)
-            drift_summary_df[baseline] = (drift_summary_df['setting'] == baseline).astype(int)
 
         mcc_summary_df.to_csv(out_dir / 'per_stock_mcc_all_models.csv', index=False)
         drift_summary_df.to_csv(out_dir / 'per_stock_drift_all_models.csv', index=False)
 
-        formula = f"({' + '.join(baseline_names)})"
+        formula = f"C(stock_id) + C(setting, Treatment(reference='deep_learning'))"
 
         analyze(mcc_summary_df, 'mcc', 'stock_id', 'setting', baseline_names, formula, out_dir, False)
         analyze(drift_summary_df, 'drift', 'stock_id', 'setting', baseline_names, formula, out_dir, False)
