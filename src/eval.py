@@ -1285,7 +1285,7 @@ class Eval:
     
     def interpret_shap_values(self):
 
-        for dir in self.experiments_path:
+        for dir in self.experiments_path.iterdir():
             if dir.name in ('data', 'results'):
                 continue
 
