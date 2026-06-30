@@ -198,10 +198,9 @@ def analyze(df, outcome, group_id, group_labels, settings, factors, formula_two_
 
     df['residuals'] = resids
     residual_wide = df.pivot(index=settings, columns=group_id, values='residuals')
-    print(residual_wide.values.shape)
 
     plot_correlation_heatmap(
-        pd.DataFrame(residual_wide.values, columns=residual_wide.columns),
+        pd.DataFrame(residual_wide.values.T, columns=residual_wide.index),
         group_labels,
         out_dir / f'{outcome}_residual_correlation_heatmap.png',
         f'{outcome.upper()} Correlation'
