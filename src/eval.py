@@ -116,13 +116,14 @@ def analyze(
     cluster_2,
     factors,
     formula_two_way,
-    out_dir
+    out_dir,
+    two_clusters=True
 ):
-    
+
     group_1 = pd.factorize(df[cluster_1])[0]
     group_2 = pd.factorize(df[cluster_2])[0]
 
-    groups = np.column_stack((group_1, group_2))
+    groups = np.column_stack((group_1, group_2)) if two_clusters else df[cluster_1].values
 
     # --- Fit models ---
     model_2way = smf.ols(
@@ -892,8 +893,8 @@ class Eval:
 
         formula = f"({' + '.join(baseline_names)})"
 
-        analyze(mcc_summary_df, 'mcc', 'stock_id', 'setting', baseline_names, formula, out_dir)
-        analyze(drift_summary_df, 'drift', 'stock_id', 'setting', baseline_names, formula, out_dir)
+        analyze(mcc_summary_df, 'mcc', 'stock_id', 'setting', baseline_names, formula, out_dir, False)
+        analyze(drift_summary_df, 'drift', 'stock_id', 'setting', baseline_names, formula, out_dir, False)
 
         descriptive_stats(all_mcc,   'mcc', out_dir)
         descriptive_stats(all_drift, 'drift', out_dir)
