@@ -1063,7 +1063,6 @@ class Eval:
 
             final_returns_per_offset = []
             num_offset = len(value.items())
-            print(key)
             for i, (offset_key, offset) in enumerate(value.items()):
                 reference = pd.read_csv(
                     f'experiments/results/trading_sim/close_prices/{pred_horizon}_{offset_key}.csv',
@@ -1073,8 +1072,6 @@ class Eval:
                 reference = reference.loc[reference.index.get_level_values(0).isin(ts)]
 
                 offset_tensor = torch.stack(list(offset.values()), dim=0)               # k (N,) -> (k, N)
-                print(offset_tensor)
-                print(offset_tensor.shape)
                 if i % (num_offset // 10) == 0:
                     final_returns_per_offset.append(offset_tensor[:, -1])               # k
 
@@ -1231,7 +1228,7 @@ class Eval:
             fig.savefig(self.results_path / 'trading_sim' / 'baseline.png', dpi=300, bbox_inches='tight')
             plt.close(fig)
 
-            final_returns_per_model['deep_learning'] = final_returns_per_model.pop(score)
+            final_returns_per_model['deep_learning'] = final_returns_per_model.pop(best_model_name)
 
             run_wilcoxon_table(final_returns_per_model, 'cum_profit', self.results_path / 'baseline_comparison')
     
