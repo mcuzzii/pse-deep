@@ -881,9 +881,6 @@ class Eval:
         mcc_summary_df['stock_id'] = self.stock_map[mcc_best_model]['stocks']
         drift_summary_df['stock_id'] = self.stock_map[drift_best_model]['stocks']
 
-        mcc_summary_df = mcc_summary_df.melt(id_vars='stock_id', var_name='setting', value_name='mcc')
-        drift_summary_df = drift_summary_df.melt(id_vars='stock_id', var_name='setting', value_name='drift')
-
         plot_correlation_heatmap(
             mcc_summary_df[[c for c in mcc_summary_df.columns if c != 'stock_id']],
             [s.upper() for s in mcc_summary_df['stock_id'].tolist()],
@@ -897,6 +894,9 @@ class Eval:
             self.results_path / 'mixed_effects' / 'stock_drift_correlation_bet_models.png',
             'Drift Correlation between Stocks'
         )
+
+        mcc_summary_df = mcc_summary_df.melt(id_vars='stock_id', var_name='setting', value_name='mcc')
+        drift_summary_df = drift_summary_df.melt(id_vars='stock_id', var_name='setting', value_name='drift')
 
         for baseline in baseline_names:
             mcc_summary_df[baseline] = (mcc_summary_df['setting'] == baseline).astype(int)
