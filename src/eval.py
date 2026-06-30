@@ -198,7 +198,9 @@ def analyze(df, outcome, group_id, group_labels, settings, factors, formula_two_
 
     df['residuals'] = resids
     residual_wide = df.pivot(index=settings, columns=group_id, values='residuals')
-    plot_mcc_correlation_heatmap(
+    print(residual_wide.values.shape)
+
+    plot_correlation_heatmap(
         pd.DataFrame(residual_wide.values, columns=residual_wide.columns),
         group_labels,
         out_dir / f'{outcome}_residual_correlation_heatmap.png',
@@ -304,7 +306,7 @@ def get_price_tensor(ts, pred_horizon, offset):
 
     return price_tensor, ts_mask, reference
 
-def plot_mcc_correlation_heatmap(df, lab, out_path, title):
+def plot_correlation_heatmap(df, lab, out_path, title):
     setup_plot_style()
 
     corr = np.abs(np.corrcoef(df.values))
