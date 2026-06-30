@@ -1303,12 +1303,15 @@ class Eval:
                     weights_only=False
                 )['y']                                                          # N,
 
-                print(test_y.shape)
-
                 y_id = torch.arange(len(test_y), device=device)
                 mask = ((y_id % 64.0) / 64.0 < 0.5)
                 if mask[-1]:
                     mask = mask & (y_id < len(test_y) - 32)
 
+                reshuffled_sv = torch.full_like(test_y, float('nan'))
+                reshuffled_sv.unsqueeze(-1).expand(-1, sv.shape[1])
+                reshuffled_sv[mask] = sv.squeeze(-1)
+                reshuffled_sv = reshuffled_sv.reshape(30, reshuffled_sv.shape[0] // 30, -1)
+                sv = reshuffled_sv.permute(1, 2, 0)
+                print(sv)
                 print(sv.shape)
-                print(mask.to(float).sum())
