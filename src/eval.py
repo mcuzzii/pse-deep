@@ -199,6 +199,15 @@ def analyze(df, outcome, group_id, factors, formula_two_way, formula_main, out_d
     plt.savefig(out_dir / f'{outcome}_residual_diagnostics.png', dpi=150)
     plt.close()
 
+    df['residuals'] = resids
+    residual_wide = df.pivot(index='model_setting', columns='stock', values='residuals')
+    plot_mcc_correlation_heatmap(
+        pd.DataFrame(residual_wide.values, columns=residual_wide.columns),  # match expected input shape
+        group_id,
+        out_dir / f'{outcome}_residual_correlation_heatmap.png',
+        f'{outcome.upper()} Correlation'
+    )
+
     return model_reml
 
 def valid_times(ts, offset, pred_horizon):
