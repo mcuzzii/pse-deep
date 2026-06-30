@@ -860,7 +860,7 @@ class Eval:
         baseline_names = ['logistic_regression', 'linear_svc', 'random_forest', 'xgboost']
 
         dl_mcc_per_stock   = self._dl_best_scores('mcc', self.results_path / 'mixed_effects')             # (S,)
-        dl_drift_per_stock = self._dl_best_scores('drift', self.results_path / 'mixed_effects')           # (S,)
+        dl_drift_per_stock = self._dl_best_scores('drift', self.results_path / 'mixed_effects')           # (S,
 
         S = len(dl_mcc_per_stock)
 
@@ -874,8 +874,11 @@ class Eval:
         mcc_summary_df = pd.DataFrame(all_mcc)
         drift_summary_df = pd.DataFrame(all_drift)
 
-        mcc_summary_df['stock_id'] = self.stock_map[dl_mcc_per_stock]['stocks']
-        drift_summary_df['stock_id'] = self.stock_map[dl_drift_per_stock]['stocks']
+        mcc_best_model = get_best_dataset('mcc', self.results_path / 'mixed_effects', False)
+        drift_best_model = get_best_dataset('drift', self.results_path / 'mixed_effects', False)
+
+        mcc_summary_df['stock_id'] = self.stock_map[mcc_best_model]['stocks']
+        drift_summary_df['stock_id'] = self.stock_map[drift_best_model]['stocks']
 
         mcc_summary_df = mcc_summary_df.melt(id_vars='stock_id', var_name='setting', value_name='mcc')
         drift_summary_df = drift_summary_df.melt(id_vars='stock_id', var_name='setting', value_name='drift')
