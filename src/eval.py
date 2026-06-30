@@ -109,41 +109,40 @@ def compute_drift(loss):
 
     return mean_squared_loss_deviations, drift_from_width, msd_mean, widths_mean, combined_drift_score_mean
 
-def analyze(df, outcome, cluster, cluster_labels, wide_columns, factors, formula_two_way, formula_main, out_dir,
-            cov_struct=None):
-    if cov_struct is None:
-        cov_struct = sm.cov_struct.Exchangeable()
+def analyze(
+    df,
+    outcome,
+    cluster_1,
+    cluster_2,
+    factors,
+    formula_two_way,
+    out_dir
+):
 
     # --- Fit models ---
-    model_2way = smf.gee(f"{outcome} ~ {formula_two_way}", groups=df[cluster], data=df, cov_struct=cov_struct).fit()
-    model_main = smf.gee(f"{outcome} ~ {formula_main}", groups=df[cluster], data=df, cov_struct=cov_struct).fit()
+    model_2way = smf.ols(
+        f"{outcome} ~ {formula_two_way}",
+        data=df,
+    ).fit(
+        cov_type="cluster",
+        cov_kwds={
+            "groups": df[[cluster_1, cluster_2]],
+            "use_correction": True,
+            "df_correction": True,
+        },
+    )
 
     # --- Coefficients ---
     coef_df = pd.DataFrame({
         'coef': model_2way.params,
         'std_err': model_2way.bse,
-        'z': model_2way.tvalues,
+        't': model_2way.tvalues,
         'p_value': model_2way.pvalues,
         'ci_lower': model_2way.conf_int()[0],
         'ci_upper': model_2way.conf_int()[1],
         'abs_coef': model_2way.params.abs()
     }).sort_values('abs_coef', ascending=False)
     coef_df.to_csv(out_dir / f'{outcome}_coefficients.csv')
-
-    # --- Model comparison ---
-    # GEE doesn't have a likelihood, so LRT/AIC/BIC/ICC aren't directly available.
-    # Use QIC (Quasi-likelihood under Independence model Criterion) instead, GEE's analog to AIC.
-    qic_2way, qicu_2way = model_2way.qic()
-    qic_main, qicu_main = model_main.qic()
-    model_comparison_df = pd.DataFrame([{
-        'qic_two_way': qic_2way,
-        'qicu_two_way': qicu_2way,
-        'qic_main': qic_main,
-        'qicu_main': qicu_main,
-        'working_corr_structure': cov_struct.__class__.__name__,
-        'estimated_correlation_param': getattr(model_2way.cov_struct, 'dep_params', None),
-    }])
-    model_comparison_df.to_csv(out_dir / f'{outcome}_model_comparison.csv', index=False)
 
     # --- Marginal means ---
     configs = list(itertools.product([0, 1], repeat=4))
@@ -197,12 +196,19 @@ def analyze(df, outcome, cluster, cluster_labels, wide_columns, factors, formula
     plt.close()
 
     df['residuals'] = resids
-    residual_wide = df.pivot(index=cluster, columns=wide_columns, values='residuals')
+    residual_wide = df.pivot(index=cluster_1, columns=cluster_2, values='residuals')
 
     plot_correlation_heatmap(
-        pd.DataFrame(residual_wide.values, columns=residual_wide.index),
-        cluster_labels,
-        out_dir / f'{outcome}_residual_correlation_heatmap.png',
+        pd.DataFrame(residual_wide.values, columns=residual_wide.columns),
+        residual_wide.index.tolist(),
+        out_dir / f'{outcome}_residual_correlation_heatmap_cluster_1.png',
+        f'{outcome.upper()} Correlation'
+    )
+
+    plot_correlation_heatmap(
+        pd.DataFrame(residual_wide.values.T, columns=residual_wide.index),
+        residual_wide.columns.tolist(),
+        out_dir / f'{outcome}_residual_correlation_heatmap_cluster_2.png',
         f'{outcome.upper()} Correlation'
     )
 
@@ -305,11 +311,10 @@ def get_price_tensor(ts, pred_horizon, offset):
 
     return price_tensor, ts_mask, reference
 
-def plot_correlation_heatmap(df, lab, out_path, title):
+def plot_correlation_heatmap(df, labels, out_path, title):
     setup_plot_style()
 
     corr = np.abs(np.corrcoef(df.values))
-    labels = [s.upper() for s in lab]
 
     # build a viridis-like colormap from your brand colors
     viridis_cmap = mcolors.LinearSegmentedColormap.from_list(
@@ -540,15 +545,15 @@ class Eval:
 
         plot_correlation_heatmap(
             pd.DataFrame(mcc_df.values.T, index=mcc_df.columns, columns=mcc_df.index),
-            mcc_df.columns.tolist(),
-            self.results_path / 'mixed_effects' / 'mcc_correlation_bet_models.png',
+            [s.upper() for s in mcc_df.columns.tolist()],
+            self.results_path / 'mixed_effects' / 'stock_mcc_correlation_bet_models.png',
             'MCC Correlation between Models'
         )
 
         plot_correlation_heatmap(
             pd.DataFrame(drift_df.values.T, index=drift_df.columns, columns=drift_df.index),
-            drift_df.columns.tolist(),
-            self.results_path / 'mixed_effects' / 'drift_correlation_bet_models.png',
+            [s.upper() for s in drift_df.columns.tolist()],
+            self.results_path / 'mixed_effects' / 'stock_drift_correlation_bet_models.png',
             'DRIFT Correlation between Models'
         )
         
