@@ -115,19 +115,20 @@ def analyze(
     cluster_1,
     cluster_2,
     factors,
-    formula_two_way,
+    formula,
     out_dir,
-    two_clusters=True
+    two_clusters=True,
 ):
 
-    group_1 = pd.factorize(df[cluster_1])[0]
-    group_2 = pd.factorize(df[cluster_2])[0]
+    if two_clusters:
+        group1 = pd.factorize(df[cluster_1])[0].astype(int)
+        group2 = pd.factorize(df[cluster_2])[0].astype(int)
+        groups = np.column_stack((group1, group2))
+    else:
+        groups = pd.factorize(df[cluster_1])[0].astype(int)
 
-    groups = np.column_stack((group_1, group_2)) if two_clusters else df[cluster_1].values
-
-    # --- Fit models ---
-    model_2way = smf.ols(
-        f"{outcome} ~ {formula_two_way}",
+    model = smf.ols(
+        f"{outcome} ~ {formula}",
         data=df,
     ).fit(
         cov_type="cluster",
@@ -138,87 +139,181 @@ def analyze(
         },
     )
 
-    # --- Coefficients ---
     coef_df = pd.DataFrame({
-        'coef': model_2way.params,
-        'std_err': model_2way.bse,
-        't': model_2way.tvalues,
-        'p_value': model_2way.pvalues,
-        'ci_lower': model_2way.conf_int()[0],
-        'ci_upper': model_2way.conf_int()[1],
-        'abs_coef': model_2way.params.abs()
-    }).sort_values('abs_coef', ascending=False)
-    coef_df.to_csv(out_dir / f'{outcome}_coefficients.csv')
+        "coef": model.params,
+        "std_err": model.bse,
+        "t": model.tvalues,
+        "p_value": model.pvalues,
+        "ci_lower": model.conf_int()[0],
+        "ci_upper": model.conf_int()[1],
+        "abs_coef": model.params.abs(),
+    }).sort_values("abs_coef", ascending=False)
 
-    # --- Marginal means ---
-    configs = list(itertools.product([0, 1], repeat=4))
-    config_df = pd.DataFrame(configs, columns=factors)
-    config_df[f'{outcome}_pred'] = model_2way.predict(config_df)
-    config_df = config_df.sort_values(f'{outcome}_pred', ascending=False)
-    config_df.to_csv(out_dir / f'{outcome}_marginal_means.csv', index=False)
+    coef_df.to_csv(out_dir / f"{outcome}_coefficients.csv")
 
-    # --- Simple effects ---
-    simple_effects_rows = []
+    categorical_vars = []
+
+    if "C(stock_id)" in formula:
+        categorical_vars.append("stock_id")
+
+    if "C(setting)" in formula:
+        categorical_vars.append("setting")
+
+    def marginal_prediction(base_row):
+        """
+        Returns prediction averaged over any categorical fixed effects.
+        """
+
+        if not categorical_vars:
+            return model.predict(pd.DataFrame([base_row])).iloc[0]
+
+        rows = []
+
+        if categorical_vars == ["stock_id"]:
+            for stock in df["stock_id"].unique():
+                r = base_row.copy()
+                r["stock_id"] = stock
+                rows.append(r)
+
+        elif categorical_vars == ["setting"]:
+            for setting in df["setting"].unique():
+                r = base_row.copy()
+                r["setting"] = setting
+                rows.append(r)
+
+        elif set(categorical_vars) == {"stock_id", "setting"}:
+            for stock in df["stock_id"].unique():
+                for setting in df["setting"].unique():
+                    r = base_row.copy()
+                    r["stock_id"] = stock
+                    r["setting"] = setting
+                    rows.append(r)
+
+        pred = model.predict(pd.DataFrame(rows))
+
+        return pred.mean()
+
+    configs = list(itertools.product([0, 1], repeat=len(factors)))
+
+    marginal_rows = []
+
+    for vals in configs:
+
+        row = dict(zip(factors, vals))
+
+        marginal_rows.append({
+            **row,
+            f"{outcome}_pred": marginal_prediction(row),
+        })
+
+    config_df = (
+        pd.DataFrame(marginal_rows)
+        .sort_values(f"{outcome}_pred", ascending=False)
+    )
+
+    config_df.to_csv(
+        out_dir / f"{outcome}_marginal_means.csv",
+        index=False,
+    )
+
+    simple_effects = []
+
     for focal in factors:
+
         others = [f for f in factors if f != focal]
+
         for vals in itertools.product([0, 1], repeat=len(others)):
+
             cond = dict(zip(others, vals))
+
             row0 = {**cond, focal: 0}
             row1 = {**cond, focal: 1}
-            pred0 = model_2way.predict(pd.DataFrame([row0]))[0]
-            pred1 = model_2way.predict(pd.DataFrame([row1]))[0]
-            simple_effects_rows.append({
-                'focal_factor': focal,
-                **cond,
-                'effect': pred1 - pred0,
-                'pred_at_0': pred0,
-                'pred_at_1': pred1,
-            })
-    simple_effects_df = pd.DataFrame(simple_effects_rows)
-    simple_effects_df.to_csv(out_dir / f'{outcome}_simple_effects.csv', index=False)
 
-    # --- Residual diagnostics ---
-    resids = model_2way.resid
+            pred0 = marginal_prediction(row0)
+            pred1 = marginal_prediction(row1)
+
+            simple_effects.append({
+                "focal_factor": focal,
+                **cond,
+                "pred_at_0": pred0,
+                "pred_at_1": pred1,
+                "effect": pred1 - pred0,
+            })
+
+    simple_df = pd.DataFrame(simple_effects)
+
+    simple_df.to_csv(
+        out_dir / f"{outcome}_simple_effects.csv",
+        index=False,
+    )
+
+    resids = model.resid
+
     _, p_shapiro = stats.shapiro(resids)
-    resid_df = pd.DataFrame({
-        'residual': resids,
-    })
-    resid_df.to_csv(out_dir / f'{outcome}_residuals.csv', index=False)
+
+    pd.DataFrame({
+        "residual": resids,
+    }).to_csv(
+        out_dir / f"{outcome}_residuals.csv",
+        index=False,
+    )
+
     pd.DataFrame([{
-        'shapiro_p': p_shapiro,
-        'resid_mean': resids.mean(),
-        'resid_std': resids.std(),
-        'resid_skew': pd.Series(resids).skew(),
-        'resid_kurt': pd.Series(resids).kurt(),
-    }]).to_csv(out_dir / f'{outcome}_residual_stats.csv', index=False)
+        "shapiro_p": p_shapiro,
+        "resid_mean": resids.mean(),
+        "resid_std": resids.std(),
+        "resid_skew": pd.Series(resids).skew(),
+        "resid_kurt": pd.Series(resids).kurt(),
+    }]).to_csv(
+        out_dir / f"{outcome}_residual_stats.csv",
+        index=False,
+    )
 
     fig, axes = plt.subplots(1, 2, figsize=(10, 4))
+
     axes[0].hist(resids, bins=30)
-    axes[0].set_title(f'{outcome} residuals histogram')
+    axes[0].set_title(f"{outcome} residuals")
+
     stats.probplot(resids, plot=axes[1])
-    axes[1].set_title(f'{outcome} Q-Q plot')
+    axes[1].set_title("Q-Q Plot")
+
     plt.tight_layout()
-    plt.savefig(out_dir / f'{outcome}_residual_diagnostics.png', dpi=150)
+    plt.savefig(
+        out_dir / f"{outcome}_residual_diagnostics.png",
+        dpi=150,
+    )
     plt.close()
 
-    df['residuals'] = resids
-    residual_wide = df.pivot(index=cluster_1, columns=cluster_2, values='residuals')
+    tmp = df.copy()
+    tmp["residuals"] = resids
+
+    residual_wide = tmp.pivot(
+        index=cluster_1,
+        columns=cluster_2,
+        values="residuals",
+    )
 
     plot_correlation_heatmap(
-        pd.DataFrame(residual_wide.values, columns=residual_wide.columns),
+        pd.DataFrame(
+            residual_wide.values,
+            columns=residual_wide.columns,
+        ),
         residual_wide.index.tolist(),
-        out_dir / f'{outcome}_residual_correlation_heatmap_cluster_1.png',
-        f'{outcome.upper()} Correlation'
+        out_dir / f"{outcome}_residual_correlation_heatmap_cluster1.png",
+        f"{outcome.upper()} correlation",
     )
 
     plot_correlation_heatmap(
-        pd.DataFrame(residual_wide.values.T, columns=residual_wide.index),
+        pd.DataFrame(
+            residual_wide.values.T,
+            columns=residual_wide.index,
+        ),
         residual_wide.columns.tolist(),
-        out_dir / f'{outcome}_residual_correlation_heatmap_cluster_2.png',
-        f'{outcome.upper()} Correlation'
+        out_dir / f"{outcome}_residual_correlation_heatmap_cluster2.png",
+        f"{outcome.upper()} correlation",
     )
 
-    return model_2way
+    return model
 
 def valid_times(ts, offset, pred_horizon):
     last_valid_min = '00' if pred_horizon == 30 else '40'
