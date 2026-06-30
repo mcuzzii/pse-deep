@@ -1308,5 +1308,5 @@ class Eval:
                 y_id = torch.arange(len(test_y), device=device)
                 mask = (y_id % 64 < 0.5) & (y_id < len(test_y) - 32)
 
-                print(test_y.shape)
+                print(sv.shape)
                 print(mask.to(float).sum())
