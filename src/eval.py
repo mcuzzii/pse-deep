@@ -890,7 +890,7 @@ class Eval:
         mcc_summary_df.to_csv(out_dir / 'per_stock_mcc_all_models.csv', index=False)
         drift_summary_df.to_csv(out_dir / 'per_stock_drift_all_models.csv', index=False)
 
-        formula = f"({' + '.join(baseline_names)})**2"
+        formula = f"({' + '.join(baseline_names)})"
 
         analyze(mcc_summary_df, 'mcc', 'stock_id', 'setting', baseline_names, formula, out_dir)
         analyze(drift_summary_df, 'drift', 'stock_id', 'setting', baseline_names, formula, out_dir)
