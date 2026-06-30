@@ -1295,7 +1295,7 @@ class Eval:
                 weights_only=False
             )
 
-            sv = out['test_shap_values'].to(torch.float32)
+            sv = out['test_shap_values'].astype(torch.float32)
             if 'mlp' in dir.name:                                               # sv: M, g, 1
                 test_y = torch.load(
                     self.experiments_path / 'data' / f'{dir.name}m_test.pt',
@@ -1313,5 +1313,6 @@ class Eval:
                 reshuffled_sv[mask] = sv.squeeze(-1)
                 reshuffled_sv = reshuffled_sv.reshape(30, reshuffled_sv.shape[0] // 30, -1)
                 sv = reshuffled_sv.permute(1, 2, 0)
-                print(sv)
                 print(sv.shape)
+            
+            
