@@ -109,14 +109,14 @@ def compute_drift(loss):
 
     return mean_squared_loss_deviations, drift_from_width, msd_mean, widths_mean, combined_drift_score_mean
 
-def analyze(df, outcome, group_id, group_labels, settings, factors, formula_two_way, formula_main, out_dir,
+def analyze(df, outcome, cluster, cluster_labels, wide_columns, factors, formula_two_way, formula_main, out_dir,
             cov_struct=None):
     if cov_struct is None:
         cov_struct = sm.cov_struct.Exchangeable()
 
     # --- Fit models ---
-    model_2way = smf.gee(f"{outcome} ~ {formula_two_way}", groups=df[group_id], data=df, cov_struct=cov_struct).fit()
-    model_main = smf.gee(f"{outcome} ~ {formula_main}", groups=df[group_id], data=df, cov_struct=cov_struct).fit()
+    model_2way = smf.gee(f"{outcome} ~ {formula_two_way}", groups=df[cluster], data=df, cov_struct=cov_struct).fit()
+    model_main = smf.gee(f"{outcome} ~ {formula_main}", groups=df[cluster], data=df, cov_struct=cov_struct).fit()
 
     # --- Coefficients ---
     coef_df = pd.DataFrame({
@@ -197,11 +197,11 @@ def analyze(df, outcome, group_id, group_labels, settings, factors, formula_two_
     plt.close()
 
     df['residuals'] = resids
-    residual_wide = df.pivot(index=settings, columns=group_id, values='residuals')
+    residual_wide = df.pivot(index=cluster, columns=wide_columns, values='residuals')
 
     plot_correlation_heatmap(
-        pd.DataFrame(residual_wide.values.T, columns=residual_wide.index),
-        group_labels,
+        pd.DataFrame(residual_wide.values, columns=residual_wide.index),
+        cluster_labels,
         out_dir / f'{outcome}_residual_correlation_heatmap.png',
         f'{outcome.upper()} Correlation'
     )
@@ -322,8 +322,8 @@ def plot_correlation_heatmap(df, lab, out_path, title):
 
     sns.heatmap(
         corr,
-        xticklabels=labels,
-        yticklabels=labels,
+        xticklabels=labels if len(labels) <= 30 else False,
+        yticklabels=labels if len(labels) <= 30 else False,
         cmap=viridis_cmap,
         vmin=0, vmax=1,
         center=0.5,
@@ -500,7 +500,7 @@ class Eval:
         model_scores[overall_scores.columns] = overall_scores
         model_scores.to_csv(self.results_path / 'model_scores.csv')
 
-    def random_intercept_mixed_effects(self):
+    def main_and_interaction_effects(self):
 
         mcc_df = pd.DataFrame()
         drift_df = pd.DataFrame()
@@ -537,6 +537,20 @@ class Eval:
             drift_df[dir.name] = pd.Series(drift_reordered.cpu().numpy())
         
         stock_ids = next(iter(self.stock_map.values()))['stocks']
+
+        plot_correlation_heatmap(
+            pd.DataFrame(mcc_df.values.T, index=mcc_df.columns, columns=mcc_df.index),
+            mcc_df.columns.tolist(),
+            self.results_path / 'mixed_effects' / 'mcc_correlation_bet_models.png',
+            'MCC Correlation between Models'
+        )
+
+        plot_correlation_heatmap(
+            pd.DataFrame(drift_df.values.T, index=drift_df.columns, columns=drift_df.index),
+            drift_df.columns.tolist(),
+            self.results_path / 'mixed_effects' / 'drift_correlation_bet_models.png',
+            'DRIFT Correlation between Models'
+        )
         
         mcc_df['stock_id'] = stock_ids
         drift_df['stock_id'] = stock_ids
@@ -829,7 +843,7 @@ class Eval:
 
         return score_reordered.cpu().numpy()
 
-    def wilcoxon_baseline_comparison(self):
+    def main_baseline_comparison(self):
 
         out_dir = (self.results_path / 'baseline_comparison')
         out_dir.mkdir(exist_ok=True)
