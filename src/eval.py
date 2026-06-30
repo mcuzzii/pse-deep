@@ -1231,6 +1231,7 @@ class Eval:
             final_returns_per_model['deep_learning'] = final_returns_per_model.pop(best_model_name)
 
             run_wilcoxon_table(final_returns_per_model, 'cum_profit', self.results_path / 'baseline_comparison')
+            descriptive_stats(final_returns_per_model, 'cum_profit', self.results_path / 'baseline_comparison')
     
     def baseline_models_trading_sim(self):
 
