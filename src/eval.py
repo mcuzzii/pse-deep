@@ -1295,7 +1295,7 @@ class Eval:
                 weights_only=False
             )
 
-            sv = out['test_shap_values'].astype(torch.float32)
+            sv = out['test_shap_values'].to(torch.float32)
             if 'mlp' in dir.name:                                               # sv: M, g, 1
                 test_y = torch.load(
                     self.experiments_path / 'data' / f'{dir.name}m_test.pt',
