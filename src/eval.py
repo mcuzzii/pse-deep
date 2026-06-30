@@ -870,14 +870,27 @@ class Eval:
         for name in baseline_names:
             all_mcc[name] = self._ml_best_scores(name, 'mcc', self.results_path / 'mixed_effects')
             all_drift[name] = self._ml_best_scores(name, 'drift', self.results_path / 'mixed_effects')
+        
+        mcc_summary_df = pd.DataFrame(all_mcc)
+        drift_summary_df = pd.DataFrame(all_drift)
 
-        mcc_summary_df   = pd.DataFrame(all_mcc,   index=[f'stock_{i}' for i in range(S)])
-        drift_summary_df = pd.DataFrame(all_drift, index=[f'stock_{i}' for i in range(S)])
-        mcc_summary_df.to_csv(out_dir / 'per_stock_mcc_all_models.csv')
-        drift_summary_df.to_csv(out_dir / 'per_stock_drift_all_models.csv')
+        mcc_summary_df['stock_id'] = self.stock_map[dl_mcc_per_stock]['stocks']
+        drift_summary_df['stock_id'] = self.stock_map[dl_drift_per_stock]['stocks']
 
-        mcc_wilcoxon_df   = run_wilcoxon_table(all_mcc,   'mcc',   out_dir, higher_is_better=True)
-        drift_wilcoxon_df = run_wilcoxon_table(all_drift, 'drift', out_dir, higher_is_better=False)
+        mcc_summary_df = mcc_summary_df.melt(id_vars='stock_id', var_name='setting', value_name='mcc')
+        drift_summary_df = drift_summary_df.melt(id_vars='stock_id', var_name='setting', value_name='drift')
+
+        for baseline in baseline_names:
+            mcc_summary_df[baseline] = (mcc_summary_df['setting'] == baseline).astype(int)
+            drift_summary_df[baseline] = (drift_summary_df['setting'] == baseline).astype(int)
+
+        mcc_summary_df.to_csv(out_dir / 'per_stock_mcc_all_models.csv', index=False)
+        drift_summary_df.to_csv(out_dir / 'per_stock_drift_all_models.csv', index=False)
+
+        formula = f"({' + '.join(baseline_names)})**2"
+
+        analyze(mcc_summary_df, 'mcc', 'stock_id', 'setting', baseline_names, formula, out_dir)
+        analyze(drift_summary_df, 'drift', 'stock_id', 'setting', baseline_names, formula, out_dir)
 
         descriptive_stats(all_mcc,   'mcc', out_dir)
         descriptive_stats(all_drift, 'drift', out_dir)
