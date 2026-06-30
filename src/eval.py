@@ -552,14 +552,14 @@ class Eval:
         drift_df['stock_id'] = stock_ids
 
         plot_correlation_heatmap(
-            mcc_df,
+            mcc_df[[c for c in mcc_df.columns if c != 'stock_id']],
             [s.upper() for s in mcc_df['stock_id'].tolist()],
             self.results_path / 'mixed_effects' / 'stock_mcc_correlation_bet_models.png',
             'MCC Correlation between Stocks'
         )
 
         plot_correlation_heatmap(
-            drift_df,
+            drift_df[[c for c in mcc_df.columns if c != 'stock_id']],
             [s.upper() for s in drift_df['stock_id'].tolist()],
             self.results_path / 'mixed_effects' / 'stock_drift_correlation_bet_models.png',
             'Drift Correlation between Stocks'
