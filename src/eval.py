@@ -548,22 +548,22 @@ class Eval:
         
         stock_ids = next(iter(self.stock_map.values()))['stocks']
 
+        mcc_df['stock_id'] = stock_ids
+        drift_df['stock_id'] = stock_ids
+
         plot_correlation_heatmap(
-            pd.DataFrame(mcc_df.values.T, index=mcc_df.columns, columns=mcc_df.index),
-            [s.upper() for s in mcc_df.columns.tolist()],
+            mcc_df,
+            [s.upper() for s in mcc_df['stock_id'].tolist()],
             self.results_path / 'mixed_effects' / 'stock_mcc_correlation_bet_models.png',
-            'MCC Correlation between Models'
+            'MCC Correlation between Stocks'
         )
 
         plot_correlation_heatmap(
-            pd.DataFrame(drift_df.values.T, index=drift_df.columns, columns=drift_df.index),
-            [s.upper() for s in drift_df.columns.tolist()],
+            drift_df,
+            [s.upper() for s in drift_df['stock_id'].tolist()],
             self.results_path / 'mixed_effects' / 'stock_drift_correlation_bet_models.png',
-            'DRIFT Correlation between Models'
+            'Drift Correlation between Stocks'
         )
-        
-        mcc_df['stock_id'] = stock_ids
-        drift_df['stock_id'] = stock_ids
 
         mcc_df = mcc_df.melt(id_vars=['stock_id'], var_name='setting', value_name='mcc')
         drift_df = drift_df.melt(id_vars=['stock_id'], var_name='setting', value_name='drift')
