@@ -108,51 +108,47 @@ def compute_drift(loss):
 
     return mean_squared_loss_deviations, drift_from_width, msd_mean, widths_mean, combined_drift_score_mean
 
-def analyze(df, outcome, group_id, group_labels, settings, factors, formula_two_way, formula_main, out_dir):
+def analyze(df, outcome, group_id, group_labels, settings, factors, formula_two_way, formula_main, out_dir,
+            cov_struct=None):
+    if cov_struct is None:
+        cov_struct = sm.cov_struct.Exchangeable()
+
     # --- Fit models ---
-    model_2way = smf.mixedlm(f"{outcome} ~ {formula_two_way}", data=df, groups=df[group_id]).fit(reml=False)
-    model_main = smf.mixedlm(f"{outcome} ~ {formula_main}", data=df, groups=df[group_id]).fit(reml=False)
-    model_reml = smf.mixedlm(f"{outcome} ~ {formula_two_way}", data=df, groups=df[group_id]).fit()
+    model_2way = smf.gee(f"{outcome} ~ {formula_two_way}", groups=df[group_id], data=df, cov_struct=cov_struct).fit()
+    model_main = smf.gee(f"{outcome} ~ {formula_main}", groups=df[group_id], data=df, cov_struct=cov_struct).fit()
 
     # --- Coefficients ---
     coef_df = pd.DataFrame({
-        'coef': model_reml.fe_params,
-        'std_err': model_reml.bse_fe,
-        'z': model_reml.tvalues,
-        'p_value': model_reml.pvalues,
-        'ci_lower': model_reml.conf_int()[0],
-        'ci_upper': model_reml.conf_int()[1],
-        'abs_coef': model_reml.fe_params.abs()
+        'coef': model_2way.params,
+        'std_err': model_2way.bse,
+        'z': model_2way.tvalues,
+        'p_value': model_2way.pvalues,
+        'ci_lower': model_2way.conf_int()[0],
+        'ci_upper': model_2way.conf_int()[1],
+        'abs_coef': model_2way.params.abs()
     }).sort_values('abs_coef', ascending=False)
     coef_df.to_csv(out_dir / f'{outcome}_coefficients.csv')
 
     # --- Model comparison ---
-    lr_stat = 2 * (model_2way.llf - model_main.llf)
-    df_diff = len(model_2way.params) - len(model_main.params)
-    p_lrt = stats.chi2.sf(lr_stat, df_diff)
-    group_var = model_reml.cov_re.iloc[0, 0]
-    resid_var = model_reml.scale
-    icc = group_var / (group_var + resid_var)
+    # GEE doesn't have a likelihood, so LRT/AIC/BIC/ICC aren't directly available.
+    # Use QIC (Quasi-likelihood under Independence model Criterion) instead, GEE's analog to AIC.
+    qic_2way, qicu_2way = model_2way.qic()
+    qic_main, qicu_main = model_main.qic()
     model_comparison_df = pd.DataFrame([{
-        'lr_stat': lr_stat,
-        'df_diff': df_diff,
-        'p_lrt': p_lrt,
-        'aic_two_way': model_2way.aic,
-        'aic_main': model_main.aic,
-        'bic_two_way': model_2way.bic,
-        'bic_main': model_main.bic,
-        'icc': icc,
-        'group_var': group_var,
-        'resid_var': resid_var,
+        'qic_two_way': qic_2way,
+        'qicu_two_way': qicu_2way,
+        'qic_main': qic_main,
+        'qicu_main': qicu_main,
+        'working_corr_structure': cov_struct.__class__.__name__,
+        'estimated_correlation_param': getattr(model_2way.cov_struct, 'dep_params', None),
     }])
     model_comparison_df.to_csv(out_dir / f'{outcome}_model_comparison.csv', index=False)
 
     # --- Marginal means ---
     configs = list(itertools.product([0, 1], repeat=4))
     config_df = pd.DataFrame(configs, columns=factors)
-    config_df[group_id] = 0
-    config_df[f'{outcome}_pred'] = model_reml.predict(config_df)
-    config_df = config_df.drop(columns=[group_id]).sort_values(f'{outcome}_pred', ascending=False)
+    config_df[f'{outcome}_pred'] = model_2way.predict(config_df)
+    config_df = config_df.sort_values(f'{outcome}_pred', ascending=False)
     config_df.to_csv(out_dir / f'{outcome}_marginal_means.csv', index=False)
 
     # --- Simple effects ---
@@ -161,10 +157,10 @@ def analyze(df, outcome, group_id, group_labels, settings, factors, formula_two_
         others = [f for f in factors if f != focal]
         for vals in itertools.product([0, 1], repeat=len(others)):
             cond = dict(zip(others, vals))
-            row0 = {**cond, focal: 0, group_id: 0}
-            row1 = {**cond, focal: 1, group_id: 0}
-            pred0 = model_reml.predict(pd.DataFrame([row0]))[0]
-            pred1 = model_reml.predict(pd.DataFrame([row1]))[0]
+            row0 = {**cond, focal: 0}
+            row1 = {**cond, focal: 1}
+            pred0 = model_2way.predict(pd.DataFrame([row0]))[0]
+            pred1 = model_2way.predict(pd.DataFrame([row1]))[0]
             simple_effects_rows.append({
                 'focal_factor': focal,
                 **cond,
@@ -176,18 +172,18 @@ def analyze(df, outcome, group_id, group_labels, settings, factors, formula_two_
     simple_effects_df.to_csv(out_dir / f'{outcome}_simple_effects.csv', index=False)
 
     # --- Residual diagnostics ---
-    resids = model_reml.resid
+    resids = model_2way.resid
     _, p_shapiro = stats.shapiro(resids)
     resid_df = pd.DataFrame({
-        'residual': resids.values,
+        'residual': resids,
     })
     resid_df.to_csv(out_dir / f'{outcome}_residuals.csv', index=False)
     pd.DataFrame([{
         'shapiro_p': p_shapiro,
         'resid_mean': resids.mean(),
         'resid_std': resids.std(),
-        'resid_skew': resids.skew(),
-        'resid_kurt': resids.kurt(),
+        'resid_skew': pd.Series(resids).skew(),
+        'resid_kurt': pd.Series(resids).kurt(),
     }]).to_csv(out_dir / f'{outcome}_residual_stats.csv', index=False)
 
     fig, axes = plt.subplots(1, 2, figsize=(10, 4))
@@ -202,13 +198,13 @@ def analyze(df, outcome, group_id, group_labels, settings, factors, formula_two_
     df['residuals'] = resids
     residual_wide = df.pivot(index=settings, columns=group_id, values='residuals')
     plot_mcc_correlation_heatmap(
-        pd.DataFrame(residual_wide.values, columns=residual_wide.columns),  # match expected input shape
+        pd.DataFrame(residual_wide.values, columns=residual_wide.columns),
         group_labels,
         out_dir / f'{outcome}_residual_correlation_heatmap.png',
         f'{outcome.upper()} Correlation'
     )
 
-    return model_reml
+    return model_2way
 
 def valid_times(ts, offset, pred_horizon):
     last_valid_min = '00' if pred_horizon == 30 else '40'
