@@ -1535,7 +1535,7 @@ class Eval:
 
                 mask = (y_id % 88.0) < 2
 
-                expanded_sv = torch.full_like(y_id, float('nan'))
+                expanded_sv = torch.full(y_id.shape[0], float('nan'))
                 expanded_sv = expanded_sv.unsqueeze(-1).unsqueeze(-1)
                 expanded_sv = expanded_sv.expand(expanded_sv.shape[0], sv.shape[1], sv.shape[2])
                 expanded_sv[mask] = sv
