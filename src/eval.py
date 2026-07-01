@@ -1536,7 +1536,7 @@ class Eval:
                 y_id = torch.arange(test_y.shape[2], device=device)
                 mask = (y_id % 88.0) < 2
 
-                ts = ts[mask]
+                ts = ts[mask.cpu().numpy()]
                 print(ts.time)
 
             else:                                                               # sv: M, g, 1
