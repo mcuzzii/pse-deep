@@ -39,6 +39,7 @@ import matplotlib.colors as mcolors
 import seaborn as sns
 import itertools
 from statsmodels.stats.multitest import multipletests
+from patsy import build_design_matrices
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -214,12 +215,45 @@ def analyze(
             pred0 = marginal_prediction(row0)
             pred1 = marginal_prediction(row1)
 
+            rows0 = df.loc[
+                np.logical_and.reduce(
+                    [df[c] == v for c, v in row0.items()]
+                )
+            ]
+
+            rows1 = df.loc[
+                np.logical_and.reduce(
+                    [df[c] == v for c, v in row1.items()]
+                )
+            ]
+
+            design_info = model.model.data.design_info
+
+            exog0 = build_design_matrices(
+                [design_info],
+                rows0,
+            )[0]
+
+            exog1 = build_design_matrices(
+                [design_info],
+                rows1,
+            )[0]
+
+            L = exog1.mean(axis=0) - exog0.mean(axis=0)
+
+            test = model.t_test(L)
+
             simple_effects.append({
                 "focal_factor": focal,
                 **cond,
                 "pred_at_0": pred0,
                 "pred_at_1": pred1,
-                "effect": pred1 - pred0,
+                "effect": float(test.effect),
+                "std_err": float(test.sd),
+                "t": float(test.tvalue),
+                "p_value": float(test.pvalue),
+                "ci_lower": float(test.conf_int()[0][0]),
+                "ci_upper": float(test.conf_int()[0][1]),
             })
 
     simple_df = pd.DataFrame(simple_effects)
