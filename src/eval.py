@@ -150,7 +150,7 @@ def analyze(
         "abs_coef": model.params.abs(),
     }).sort_values("abs_coef", ascending=False)
 
-    fixed_effects = re.findall(r'C\([^.)]+)', formula)
+    fixed_effects = re.findall(r'C\(([^,)]+)', formula)
 
     coef_mask = np.ones(len(coef_df), dtype=bool)
     for fe in fixed_effects:
