@@ -1498,7 +1498,20 @@ class Eval:
     
     def interpret_shap_values(self):
 
+        ts_30 = joblib.load('data/processed/ac_30m.joblib').filtered_date_times
+        ts_10 = joblib.load('data/processed/ac_10m.joblib').filtered_date_times
+
         for dir in self.experiments_path.iterdir():
+
+            pred_30 = '30' in dir.name
+            news = 'news' in dir.name
+            transformer = 'transformer' in dir.name
+
+            ts = ts_30 if pred_30 else ts_10
+            if news and not transformer:
+                news_df = joblib.load(f'data/processed/news_{pred_horizon}m.joblib')
+                ts = ts.intersection(news_df.df.dropna().index)
+
             if dir.name in ('data', 'results'):
                 continue
 
@@ -1509,15 +1522,25 @@ class Eval:
             )
 
             sv = out['test_shap_values'].to(torch.float32)
-            if 'mlp' in dir.name:                                               # sv: M, g, 1
-                test_y = torch.load(
-                    self.experiments_path / 'data' / f'{dir.name}m_test.pt',
-                    map_location=device,
-                    weights_only=False
-                )['y']                                                          # N,
+            test_y = torch.load(
+                self.experiments_path / 'data' / f'{dir.name}m_test.pt',
+                map_location=device,
+                weights_only=False
+            )['y']                                                              # N
+            y_id = torch.arange(len(test_y), device=device)
 
-                y_id = torch.arange(len(test_y), device=device)
-                mask = ((y_id % 64.0) / 64.0 < 0.5)
+            if transformer:                                                     # sv: M, g, 30
+                mask = (y_id % 88.0) < 2
+
+                expanded_sv = torch.full_like(test_y, float('nan'))
+                expanded_sv = expanded_sv.unsqueeze(-1).unsqueeze(-1)
+                expanded_sv = expanded_sv.expand(expanded_sv.shape[0], sv.shape[1], sv.shape[2])
+                expanded_sv[mask] = sv
+                sv = expanded_sv
+                print(sv)
+
+            else:                                                               # sv: M, g, 1
+                mask = (y_id % 64.0) < 32
                 if mask[-1]:
                     mask = mask & (y_id < len(test_y) - 32)
 
