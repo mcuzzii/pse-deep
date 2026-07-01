@@ -1556,7 +1556,7 @@ class Eval:
                 if mask[-1]:
                     mask = mask & (y_id < len(test_y) - 32)
 
-                reshuffled_sv = torch.full((test_y.shape[0], sv.shape[1]), float('nan'))
+                reshuffled_sv = torch.full((test_y.shape[0], sv.shape[1]), float('nan'), device=device)
                 reshuffled_sv[mask] = sv.squeeze(-1)
                 reshuffled_sv = reshuffled_sv.reshape(30, reshuffled_sv.shape[0] // 30, -1)
                 sv = reshuffled_sv.permute(1, 2, 0)
