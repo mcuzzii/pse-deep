@@ -1529,7 +1529,7 @@ class Eval:
                     self.experiments_path / 'data' / f'stock_transformer_{pred_horizon}m_test.pt',
                     map_location=device,
                     weights_only=False
-                )['y']
+                )['target']
 
                 y_id = torch.arange(len(test_y), device=device)
 
@@ -1547,7 +1547,7 @@ class Eval:
                     self.experiments_path / 'data' / f'{dir.name}m_test.pt',
                     map_location=device,
                     weights_only=False
-                )['target']                                                     # N
+                )['y']                                                     # N
 
                 y_id = torch.arange(len(test_y), device=device)
 
