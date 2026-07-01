@@ -1526,8 +1526,12 @@ class Eval:
 
             if transformer:                                                     # sv: M, g, 30
                 test_y = torch.load(
-                    self.experiments_path / 'data' / f'stock_transformer_{pred_horizon}m_test.pt'
-                )
+                    self.experiments_path / 'data' / f'stock_transformer_{pred_horizon}m_test.pt',
+                    map_location=device,
+                    weights_only=False
+                )['y']
+
+                y_id = torch.arange(len(test_y), device=device)
 
                 mask = (y_id % 88.0) < 2
 
