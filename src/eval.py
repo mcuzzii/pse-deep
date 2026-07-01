@@ -1531,7 +1531,7 @@ class Eval:
                     self.experiments_path / 'data' / f'stock_transformer_{pred_horizon}m_test.pt',
                     map_location=device,
                     weights_only=False
-                )
+                )['target']
 
                 y_id = torch.arange(test_y.shape[2], device=device)
                 mask = (y_id % 88.0) < 2
