@@ -1523,14 +1523,12 @@ class Eval:
             )
 
             sv = out['test_shap_values'].to(torch.float32)
-            test_y = torch.load(
-                self.experiments_path / 'data' / f'{dir.name}m_test.pt',
-                map_location=device,
-                weights_only=False
-            )['y']                                                              # N
-            y_id = torch.arange(len(test_y), device=device)
 
             if transformer:                                                     # sv: M, g, 30
+                test_y = torch.load(
+                    self.experiments_path / 'data' / f'stock_transformer_{pred_horizon}m_test.pt'
+                )
+
                 mask = (y_id % 88.0) < 2
 
                 expanded_sv = torch.full_like(test_y, float('nan'))
@@ -1541,6 +1539,14 @@ class Eval:
                 print(sv)
 
             else:                                                               # sv: M, g, 1
+                test_y = torch.load(
+                    self.experiments_path / 'data' / f'{dir.name}m_test.pt',
+                    map_location=device,
+                    weights_only=False
+                )['y']                                                              # N
+
+                y_id = torch.arange(len(test_y), device=device)
+
                 mask = (y_id % 64.0) < 32
                 if mask[-1]:
                     mask = mask & (y_id < len(test_y) - 32)
