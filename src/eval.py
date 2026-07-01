@@ -1564,7 +1564,7 @@ class Eval:
 
             stock_labs = self.stock_map[dir.name]['stocks']
             stock_map = self.stock_map[dir.name]['stock_map']
-            
+
             stock_reorder = torch.argmax(stock_map, dim=-1)
 
             sv_reordered = torch.zeros_like(sv)
@@ -1602,5 +1602,5 @@ class Eval:
         df_dir = out_dir / 'model_inputs'
         df_dir.mkdir(parents=True, exist_ok=True)
 
-        for key, df in shap_dfs:
+        for key, df in shap_dfs.items():
             df.to_csv(df_dir / f'{key}.csv', index=False)
