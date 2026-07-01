@@ -1547,7 +1547,7 @@ class Eval:
                     self.experiments_path / 'data' / f'{dir.name}m_test.pt',
                     map_location=device,
                     weights_only=False
-                )['y']                                                              # N
+                )['target']                                                     # N
 
                 y_id = torch.arange(len(test_y), device=device)
 
