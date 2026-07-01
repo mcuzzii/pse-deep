@@ -177,7 +177,7 @@ def analyze(
         pred = model.predict(rows)
         return pred.mean()
 
-    configs = df[factors].drop_duplicates.to_dict(orient='index')
+    configs = df[factors].drop_duplicates().to_dict(orient='index')
 
     marginal_rows = []
 
