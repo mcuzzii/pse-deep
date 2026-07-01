@@ -205,13 +205,13 @@ def main():
     #evaluator.compute_experiment_data()
     #evaluator.get_closing_prices()
     #evaluator.trading_simulations()
-    evaluator.main_and_interaction_effects()
+    #evaluator.main_and_interaction_effects()
     #evaluator.train_baseline_models()
-    evaluator.main_baseline_comparison()
-    evaluator.interpret_trading_sim()
+    #evaluator.main_baseline_comparison()
+    #evaluator.interpret_trading_sim()
     #evaluator.baseline_models_trading_sim()
-    evaluator.interpret_baseline_models_trading_sim()
-    #evaluator.interpret_shap_values()
+    #evaluator.interpret_baseline_models_trading_sim()
+    evaluator.interpret_shap_values()
 
 if __name__ == '__main__':
     main()
