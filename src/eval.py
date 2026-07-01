@@ -1563,7 +1563,7 @@ class Eval:
 
                 model_prefix = 'mlp'
             
-            elapsed_time = get_elapsed_time(ts)
+            elapsed_time = get_elapsed_time(ts, min(ts_30.min(), ts_10.min()))
             time_of_day = ts.floor('5min').time
 
             stock_labs = self.stock_map[dir.name]['stocks']
