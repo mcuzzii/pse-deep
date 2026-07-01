@@ -1531,9 +1531,6 @@ class Eval:
                     weights_only=False
                 )['target']
 
-                print(" ====== SV =====")
-                print(sv)
-
                 y_id = torch.arange(test_y.shape[2], device=device)
 
                 mask = (y_id % 88.0) < 2
@@ -1541,7 +1538,7 @@ class Eval:
                 expanded_sv = torch.full((test_y.shape[2],), float('nan'))
                 expanded_sv = expanded_sv.unsqueeze(-1).unsqueeze(-1)
                 expanded_sv = expanded_sv.expand(expanded_sv.shape[0], sv.shape[1], sv.shape[2])
-                expanded_sv[mask] = sv
+                expanded_sv[mask, :, :] = sv
                 sv = expanded_sv
                 print(sv)
 
