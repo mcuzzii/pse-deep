@@ -177,12 +177,14 @@ def analyze(
         pred = model.predict(rows)
         return pred.mean()
 
-    configs = df[factors].drop_duplicates().to_dict(orient='index')
+    configs = df[factors].drop_duplicates.to_dict(orient='index')
 
     marginal_rows = []
+
     for val in configs.values():
+
         marginal_rows.append({
-            **row,
+            **val,
             f"{outcome}_pred": marginal_prediction(val),
         })
 
