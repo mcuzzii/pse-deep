@@ -202,6 +202,9 @@ def compute_text_stats(text_df, features, cutoffs, trading_minute):
 def get_elapsed_time(timestamps, reference=None):
     if reference is None:
         reference = pd.Timestamp('2025-03-12 00:00:00')
+    elif isinstance(reference, str):
+        reference = pd.Timestamp(reference)
+    
     num_seconds = (pd.Timestamp('2026-04-17 00:00:00') - reference).total_seconds()
     return (timestamps - reference).total_seconds() / num_seconds
 

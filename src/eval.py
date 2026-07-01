@@ -1446,7 +1446,7 @@ class Eval:
             out_dir = self.results_path / 'trading_sim' / 'baseline_comparison'
             out_dir.mkdir(exist_ok=True)
 
-            analyze(tsim_df, 'cum_profit', 'k_offset_pair_id', 'setting', factors, formula_two_way, out_dir)
+            analyze(tsim_df, 'cum_profit', 'k_offset_pair_id', 'setting', factors, formula_two_way, out_dir, False)
 
             print(f"All results saved to {out_dir}")
             descriptive_stats(final_returns_per_model, 'cum_profit', out_dir)
@@ -1581,6 +1581,7 @@ class Eval:
                 idx = grps.index(key)
                 df = pd.DataFrame(sv[:, idx, :], columns=stock_labs)
 
+                df['timestamp'] = ts
                 df['elapsed_time'] = elapsed_time
                 df['time_of_day'] = time_of_day
                 df['explainer_call'] = ts.astype(str) + f' - {dir.name}'
@@ -1608,3 +1609,8 @@ class Eval:
 
         for key, df in shap_dfs.items():
             df.to_csv(df_dir / f'{key}.csv', index=False)
+
+            factors = ['news', 'social', 'pred_30']
+            formula = f'C(stock) + (elapsed_time + C(time_of_day) + {' + '.join(factors)})'
+            res_dir = out_dir / key
+            analyze(df, 'shap', 'stock', 'explainer_call', factors, formula, res_dir, 'tfm' in key)
