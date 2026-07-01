@@ -25,6 +25,7 @@ import statsmodels.api as sm
 import os
 import time
 import joblib
+import re
 from sklearn.linear_model import LogisticRegression
 from sklearn.svm import LinearSVC
 from sklearn.ensemble import RandomForestClassifier
@@ -116,7 +117,7 @@ def analyze(
     cluster_2,
     factors,
     formula,
-    out_dir,
+    out_dir=None,
     two_clusters=True,
 ):
 
@@ -149,48 +150,31 @@ def analyze(
         "abs_coef": model.params.abs(),
     }).sort_values("abs_coef", ascending=False)
 
+    fixed_effects = re.findall(r'C\([^.)]+)', formula)
+
+    coef_mask = np.ones(len(coef_df), dtype=bool)
+    for fe in fixed_effects:
+        coef_mask &= ~coef_df.index.str.contains(fe)
+
+    coef_df = coef_df.loc[coef_mask]
     coef_df.to_csv(out_dir / f"{outcome}_coefficients.csv")
-
-    categorical_vars = []
-
-    if "C(stock_id)" in formula:
-        categorical_vars.append("stock_id")
-
-    if "C(setting)" in formula:
-        categorical_vars.append("setting")
 
     def marginal_prediction(base_row):
         """
         Returns prediction averaged over any categorical fixed effects.
         """
 
-        if not categorical_vars:
-            return model.predict(pd.DataFrame([base_row])).iloc[0]
+        mask = np.ones(len(df), dtype=bool)
 
-        rows = []
+        for col, val in base_row.items():
+            mask &= df[col] == val
+        
+        rows = df.loc[mask]
 
-        if categorical_vars == ["stock_id"]:
-            for stock in df["stock_id"].unique():
-                r = base_row.copy()
-                r["stock_id"] = stock
-                rows.append(r)
+        if rows.empty:
+            return np.nan
 
-        elif categorical_vars == ["setting"]:
-            for setting in df["setting"].unique():
-                r = base_row.copy()
-                r["setting"] = setting
-                rows.append(r)
-
-        elif set(categorical_vars) == {"stock_id", "setting"}:
-            for stock in df["stock_id"].unique():
-                for setting in df["setting"].unique():
-                    r = base_row.copy()
-                    r["stock_id"] = stock
-                    r["setting"] = setting
-                    rows.append(r)
-
-        pred = model.predict(pd.DataFrame(rows))
-
+        pred = model.predict(rows)
         return pred.mean()
 
     configs = list(itertools.product([0, 1], repeat=len(factors)))
