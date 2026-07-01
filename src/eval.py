@@ -1538,9 +1538,10 @@ class Eval:
                 expanded_sv = torch.full((test_y.shape[2],), float('nan'))
                 expanded_sv = expanded_sv.unsqueeze(-1).unsqueeze(-1)
                 expanded_sv = expanded_sv.expand(expanded_sv.shape[0], sv.shape[1], sv.shape[2])
-                expanded_sv[mask, :, :] = sv
-                sv = expanded_sv
+                expanded_sv[mask] = sv
                 print(sv)
+                print(expanded_sv)
+                sv = expanded_sv
 
             else:                                                               # sv: M, g, 1
                 test_y = torch.load(
