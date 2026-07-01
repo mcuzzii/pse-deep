@@ -1541,6 +1541,8 @@ class Eval:
 
                 ts = ts[mask.cpu().numpy()]
 
+                model_prefix = 'tfm'
+
             else:                                                               # sv: M, g, 1
                 test_y = torch.load(
                     self.experiments_path / 'data' / f'{dir.name}m_test.pt',
@@ -1558,6 +1560,8 @@ class Eval:
                 reshuffled_sv[mask] = sv.squeeze(-1)
                 reshuffled_sv = reshuffled_sv.reshape(30, reshuffled_sv.shape[0] // 30, -1)
                 sv = reshuffled_sv.permute(1, 2, 0)
+
+                model_prefix = 'mlp'
             
             elapsed_time = get_elapsed_time(ts)
             time_of_day = ts.floor('5min').time
@@ -1579,7 +1583,7 @@ class Eval:
 
                 df['elapsed_time'] = elapsed_time
                 df['time_of_day'] = time_of_day
-                df['explainer_call'] = f'{ts.astype(str)} - {dir.name}'
+                df['explainer_call'] = ts.astype(str) + f' - {dir.name}'
 
                 df = df.melt(
                     id_vars=['elapsed_time', 'time_of_day', 'explainer_call'],
@@ -1593,7 +1597,7 @@ class Eval:
 
                 df = df.dropna()
 
-                shap_name = f'tfm_{key}'
+                shap_name = f'{model_prefix}_{key}'
                 shap_dfs[shap_name] = pd.concat([shap_dfs[shap_name], df]) if shap_name in shap_dfs else df
 
         out_dir = self.results_path / 'shap_analysis'
