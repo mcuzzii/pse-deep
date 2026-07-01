@@ -1531,12 +1531,11 @@ class Eval:
                     weights_only=False
                 )['target']
 
-                y_id = torch.arange(test_y.shape[1], device=device)
+                y_id = torch.arange(test_y.shape[0], device=device)
 
                 mask = (y_id % 88.0) < 2
 
-                expanded_sv = torch.full((test_y.shape[1],), float('nan'))
-                print(expanded_sv.shape)
+                expanded_sv = torch.full((test_y.shape[0],), float('nan'))
                 expanded_sv = expanded_sv.unsqueeze(-1).unsqueeze(-1)
                 expanded_sv = expanded_sv.expand(expanded_sv.shape[0], sv.shape[1], sv.shape[2])
                 expanded_sv[mask] = sv
