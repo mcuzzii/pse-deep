@@ -653,7 +653,7 @@ class Eval:
             df['pred_30'] = df['setting'].str.contains('30').astype(int)
 
         factors = ['transformer', 'news', 'social', 'pred_30']
-        formula_two_way = "C(stock_id) + (transformer + news + social + pred_30)**2"
+        formula_two_way = f"C(stock_id) + ({' + '.join(factors)})**2"
 
         analyze(mcc_df, 'mcc', 'stock_id', 'setting', factors, formula_two_way, out_dir)
         analyze(drift_df, 'drift', 'stock_id', 'setting', factors, formula_two_way, out_dir)
@@ -1338,15 +1338,13 @@ class Eval:
             tsim_df['news'] = tsim_df['setting'].str.contains('news').astype(int)
             tsim_df['social'] = tsim_df['setting'].str.contains('social').astype(int)
             tsim_df['pred_30'] = tsim_df['setting'].str.contains('30').astype(int)
-            tsim_df.drop(columns=['setting'], inplace=True)
 
             factors = ['transformer', 'news', 'social', 'pred_30']
-            formula_two_way = "(transformer + news + social + pred_30)**2"
-            formula_main = "transformer + news + social + pred_30"
+            formula_two_way = f"C(k_offset_pair_id) + ({' + '.join(factors)})**2"
             out_dir = self.results_path / 'trading_sim' / 'mixed_effects'
             out_dir.mkdir(exist_ok=True)
 
-            analyze(tsim_df, 'cum_profit', 'k_offset_pair_id', factors, formula_two_way, formula_main, out_dir)
+            analyze(tsim_df, 'cum_profit', 'k_offset_pair_id', 'setting', factors, formula_two_way, out_dir)
 
             print(f"All results saved to {out_dir}")
 
@@ -1400,10 +1398,24 @@ class Eval:
             fig.savefig(self.results_path / 'trading_sim' / 'baseline.png', dpi=300, bbox_inches='tight')
             plt.close(fig)
 
-            final_returns_per_model['deep_learning'] = final_returns_per_model.pop(best_model_name)
+            tsim_df = pd.DataFrame(final_returns_per_model)
+            tsim_df['k_offset_pair_id'] = range(len(tsim_df))
+            tsim_df = tsim_df.melt(id_vars='k_offset_pair_id', var_name='setting', value_name='cum_profit')
 
-            run_wilcoxon_table(final_returns_per_model, 'cum_profit', self.results_path / 'baseline_comparison')
-            descriptive_stats(final_returns_per_model, 'cum_profit', self.results_path / 'baseline_comparison')
+            tsim_df['logistic_regression'] = (tsim_df['setting'] == 'logistic_regression').astype(int)
+            tsim_df['linear_svc'] = (tsim_df['setting'] == 'linear_svc').astype(int)
+            tsim_df['random_forest'] = (tsim_df['setting'] == 'random_forest').astype(int)
+            tsim_df['xgboost'] = (tsim_df['setting'] == 'xgboost').astype(int)
+
+            factors = ['logistic_regression', 'linear_svc', 'random_forest', 'xgboost']
+            formula_two_way = f"C(k_offset_pair_id) + {' + '.join(factors)}"
+            out_dir = self.results_path / 'trading_sim' / 'baseline_comparison'
+            out_dir.mkdir(exist_ok=True)
+
+            analyze(tsim_df, 'cum_profit', 'k_offset_pair_id', 'setting', factors, formula_two_way, out_dir)
+
+            print(f"All results saved to {out_dir}")
+            descriptive_stats(final_returns_per_model, 'cum_profit', out_dir)
     
     def baseline_models_trading_sim(self):
 
