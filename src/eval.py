@@ -17,7 +17,7 @@ from sklearn.metrics import (
 
 sys.path.append(str(Path.cwd() / 'src'))
 
-from processing import DataSource, get_stocks
+from processing import DataSource, get_stocks, get_elapsed_time
 from experiments import mcc_curve
 from utils import setup_plot_style, COLORS
 import statsmodels.formula.api as smf
@@ -1501,10 +1501,13 @@ class Eval:
         ts_30 = joblib.load('data/processed/ac_30m.joblib').filtered_date_times
         ts_10 = joblib.load('data/processed/ac_10m.joblib').filtered_date_times
 
+        shap_dfs = dict()
+
         for dir in self.experiments_path.iterdir():
 
             pred_30 = '30' in dir.name
             news = 'news' in dir.name
+            social = 'social' in dir.name
             transformer = 'transformer' in dir.name
             pred_horizon = 30 if pred_30 else 10
 
@@ -1536,8 +1539,7 @@ class Eval:
                 y_id = torch.arange(test_y.shape[2], device=device)
                 mask = (y_id % 88.0) < 2
 
-                ts = ts[mask.cpu().numpy()].sort_values()
-                print(len(sorted(ts.time)))
+                ts = ts[mask.cpu().numpy()]
 
             else:                                                               # sv: M, g, 1
                 test_y = torch.load(
@@ -1557,4 +1559,46 @@ class Eval:
                 reshuffled_sv = reshuffled_sv.reshape(30, reshuffled_sv.shape[0] // 30, -1)
                 sv = reshuffled_sv.permute(1, 2, 0)
             
-            print(sv.shape)
+            elapsed_time = get_elapsed_time(ts)
+            time_of_day = ts.floor('5min').time
+
+            stock_labs = self.stock_map[dir.name]['stocks']
+            stock_reorder = torch.argmax(stock_labs, dim=-1)
+
+            sv_reordered = torch.zeros_like(sv)
+            sv_reordered[:, :, stock_reorder] = sv
+            sv = sv_reordered
+
+            grps = out['shap_group_names']
+
+            for key in grps:
+                idx = grps.index(key)
+                df = pd.DataFrame(sv[:, idx, :], columns=stock_labs)
+
+                df['elapsed_time'] = elapsed_time
+                df['time_of_day'] = time_of_day
+                df['explainer_call'] = f'{ts.astype(str)} - {dir.name}'
+
+                df = df.melt(
+                    id_vars=['elapsed_time', 'time_of_day', 'explainer_call'],
+                    var_name='stock',
+                    value_name='shap'
+                )
+
+                df['pred_30'] = pred_30
+                df['news'] = news
+                df['social'] = social
+
+                df = df.dropna()
+
+                shap_name = f'tfm_{key}'
+                shap_dfs[shap_name] = pd.concat([shap_dfs[shap_name], df]) if shap_name in shap_dfs else df
+
+        out_dir = self.results_path / 'shap_analysis'
+        out_dir.mkdir(parents=True, exist_ok=True)
+
+        df_dir = out_dir / 'model_inputs'
+        df_dir.mkdir(parents=True, exist_ok=True)
+        
+        for key, df in shap_dfs:
+            df.to_csv(df_dir / f'{key}.csv', index=False)
