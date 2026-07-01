@@ -1537,7 +1537,7 @@ class Eval:
                 mask = (y_id % 88.0) < 2
 
                 ts = ts[mask.cpu().numpy()].sort_values()
-                print(sorted(ts.time))
+                print(len(sorted(ts.time)))
 
             else:                                                               # sv: M, g, 1
                 test_y = torch.load(
