@@ -1531,6 +1531,9 @@ class Eval:
                     weights_only=False
                 )['target']
 
+                print(" ====== SV =====")
+                print(sv)
+
                 y_id = torch.arange(test_y.shape[2], device=device)
 
                 mask = (y_id % 88.0) < 2
