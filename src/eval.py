@@ -1506,6 +1506,7 @@ class Eval:
             pred_30 = '30' in dir.name
             news = 'news' in dir.name
             transformer = 'transformer' in dir.name
+            pred_horizon = 30 if pred_30 else 10
 
             ts = ts_30 if pred_30 else ts_10
             if news and not transformer:
