@@ -1509,6 +1509,8 @@ class Eval:
             pred_horizon = 30 if pred_30 else 10
 
             ts = ts_30 if pred_30 else ts_10
+            ts = ts[int(len(ts) * 0.9) + 1:]
+
             if news and not transformer:
                 news_df = joblib.load(f'data/processed/news_{pred_horizon}m.joblib')
                 ts = ts.intersection(news_df.df.dropna().index)
@@ -1529,17 +1531,13 @@ class Eval:
                     self.experiments_path / 'data' / f'stock_transformer_{pred_horizon}m_test.pt',
                     map_location=device,
                     weights_only=False
-                )['target']
+                )
 
                 y_id = torch.arange(test_y.shape[2], device=device)
-
                 mask = (y_id % 88.0) < 2
 
-                expanded_sv = torch.full((test_y.shape[2], sv.shape[1], sv.shape[2]), float('nan'))
-                expanded_sv[mask] = sv
-                print(sv)
-                print(expanded_sv[mask])
-                sv = expanded_sv
+                ts = ts[mask]
+                print(ts.time)
 
             else:                                                               # sv: M, g, 1
                 test_y = torch.load(
