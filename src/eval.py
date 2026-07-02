@@ -1736,7 +1736,7 @@ class Eval:
 
             sums = dict()
             for batch in batches_dir.iterdir():
-                tensors = torch.load(batch, device=device, weights_only=False)
+                tensors = torch.load(batch, map_location=device, weights_only=False)
                 print(
                     f'Model: {dir.name}; shapes: {[tensor.shape for tensor in tensors]}'
                 )
