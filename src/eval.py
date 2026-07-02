@@ -1596,11 +1596,11 @@ class Eval:
                 df['timestamp'] = ts
                 df['elapsed_time'] = elapsed_time
                 df['time_of_day'] = time_of_day
-                df['explainer_call'] = ts.astype(str) + f' - {dir.name}'
+                df['explainer_timestamp'] = ts.astype(str) + f' - {dir.name}'
                 df['model'] = dir.name
 
                 df = df.melt(
-                    id_vars=['timestamp', 'elapsed_time', 'time_of_day', 'explainer_call', 'model'],
+                    id_vars=['timestamp', 'elapsed_time', 'time_of_day', 'explainer_timestamp', 'model'],
                     var_name='stock',
                     value_name='shap'
                 )
@@ -1642,4 +1642,4 @@ class Eval:
             res_dir = out_dir / key
             res_dir.mkdir(parents=True, exist_ok=True)
 
-            analyze(df, 'shap', 'stock', 'explainer_call', factors, formula, res_dir)
+            analyze(df, 'shap', 'stock', 'explainer_timestamp', factors, formula, res_dir)
