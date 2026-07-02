@@ -1822,7 +1822,7 @@ class Eval:
             pred_horizon = 30 if pred_30 else 10
 
             ts = ts_30 if pred_30 else ts_10
-            ts = sorted(ts[int(len(ts) * 0.9) + 1:])
+            ts = ts[int(len(ts) * 0.9) + 1:]
 
             if news:
                 news_data = torch.load(
