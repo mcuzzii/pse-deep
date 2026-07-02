@@ -1634,7 +1634,7 @@ class Eval:
                 model_prefix = 'mlp'
             
             elapsed_time = get_elapsed_time(ts, min(ts_30.min(), ts_10.min()))
-            time_of_day = ts.floor('10min').time.astype(str)
+            time_of_day = ts.floor('30min' if transformer else '5min').time.astype(str)
 
             stock_labs = self.stock_map[dir.name]['stocks']
             stock_map = self.stock_map[dir.name]['stock_map']
