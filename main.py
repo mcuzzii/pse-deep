@@ -211,7 +211,7 @@ def main():
     #evaluator.interpret_trading_sim()
     #evaluator.baseline_models_trading_sim()
     #evaluator.interpret_baseline_models_trading_sim()
-    evaluator.interpret_shap_values()
+    #evaluator.interpret_shap_values()
     #evaluator.get_embeddings()
     evaluator.interpret_attention_scores()
 
