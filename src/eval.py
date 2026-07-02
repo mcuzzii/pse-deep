@@ -1888,7 +1888,7 @@ class Eval:
                     mask = (cutoff_scaled < text_ts) & (text_ts <= ts_scaled)
                     sample = text_embeds[mask]        # Tn, En
 
-                    selected = torch.einsum("stkn,ne->stke", snapshot['sin'], sample)      # S, Ts, K, En
+                    selected = torch.einsum("stkn,ne->stke", snapshot[ind], sample)      # S, Ts, K, En
 
                     selected_norm = F.normalize(selected, dim=-1)      # S, Ts, K, En
                     sample_norm   = F.normalize(sample, dim=-1)        # Tn, En
@@ -1909,8 +1909,8 @@ class Eval:
 
                     snapshot[ind] = Counter(dict(zip(text, scores.tolist())))
 
-                    for ind in ('tst', 'sft', 'nft', 'ist'):
-                        snapshot[ind] = snapshot[ind].sum(dim=0)
+                for ind in ('tst', 'sft', 'nft', 'ist'):
+                    snapshot[ind] = snapshot[ind].sum(dim=0)
                 
                 if ts[i].time() <= pd.Timestamp('10:00').time():
                     update_dict(summary_tensors[dir.name], 'market_open', snapshot)
