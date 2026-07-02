@@ -263,6 +263,14 @@ def analyze(
 
     resids = model.resid
 
+    if 'model' in df.columns:
+        diagnose_model_dependence(
+            df,
+            resids,
+            model_col="model",
+            out_dir=out_dir,
+        )
+
     _, p_shapiro = stats.shapiro(resids)
 
     pd.DataFrame({
@@ -300,8 +308,6 @@ def analyze(
 
     tmp = df.copy()
     tmp["residuals"] = resids
-
-    print(tmp)
 
     residual_wide = tmp.pivot_table(
         index=cluster_1,
@@ -360,36 +366,88 @@ def get_best_dataset(score, mixed_effects_path, mlp_only=True):
 
     return f'stock_{news_pre}{social_pre}{transformer}{pred_hr}'
 
-def run_wilcoxon_table(score_dict, metric_name, out_dir, higher_is_better=True):
-    rows = []
-    dl_scores = score_dict['deep_learning']
-    baseline_names = [k for k in score_dict.keys() if k != 'deep_learning']
-    for name in baseline_names:
-        baseline_scores = score_dict[name]
-        diff = dl_scores - baseline_scores
-        if np.all(diff == 0):
-            stat, p = np.nan, np.nan
-        else:
-            stat, p = wilcoxon(dl_scores, baseline_scores, alternative='greater' if higher_is_better else 'less')
-        mean_dl   = dl_scores.mean()
-        mean_base = baseline_scores.mean()
-        rows.append({
-            'baseline':        name,
-            f'mean_dl_{metric_name}':       mean_dl,
-            f'mean_baseline_{metric_name}': mean_base,
-            f'mean_diff_{metric_name}':     mean_dl - mean_base,
-            'wilcoxon_stat':   stat,
-            'p_value':         p,
-            'significant_p05': p < 0.05 if not np.isnan(p) else False,
-            'significant_p01': p < 0.01 if not np.isnan(p) else False,
-        })
-    df = pd.DataFrame(rows)
-    _, p_corrected, _, _ = multipletests(df['p_value'], alpha=0.05, method='fdr_bh')
-    df['p_corrected'] = pd.Series(p_corrected, index=df.index)
-    df['significant_p05_corrected'] = np.where(df['p_corrected'].notna(), df['p_corrected']  < 0.05, False)
-    df['significant_p01_corrected'] = np.where(df['p_corrected'].notna(), df['p_corrected']  < 0.01, False)
-    df.to_csv(out_dir / f'wilcoxon_{metric_name}.csv', index=False)
-    return df
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+
+
+import statsmodels.formula.api as smf
+import pandas as pd
+
+
+def diagnose_model_dependence(
+    df,
+    residuals,
+    model_col="model",
+    out_dir=None,
+):
+    """
+    Quantifies how much residual variance is attributable to model.
+
+    Parameters
+    ----------
+    df : DataFrame
+    residuals : array-like
+        OLS residuals
+    """
+
+    tmp = df.copy()
+    tmp["residual"] = residuals
+
+    # Total residual variance
+    total_var = tmp["residual"].var(ddof=1)
+
+    # Model means
+    model_means = (
+        tmp
+        .groupby(model_col)["residual"]
+        .transform("mean")
+    )
+
+    between_var = model_means.var(ddof=1)
+
+    within_var = (
+        tmp["residual"] - model_means
+    ).var(ddof=1)
+
+    pseudo_icc = between_var / total_var
+
+    print("\nResidual variance decomposition")
+    print("--------------------------------")
+    print(f"Total variance      : {total_var:.6f}")
+    print(f"Between-model       : {between_var:.6f}")
+    print(f"Within-model        : {within_var:.6f}")
+    print(f"Pseudo ICC          : {pseudo_icc:.4f}")
+
+    # ANOVA F-test
+    anova = smf.ols(
+        "residual ~ C(model)",
+        data=tmp,
+    ).fit()
+
+    table = sm.stats.anova_lm(anova, typ=2)
+
+    print("\nResidual ANOVA")
+    print(table)
+
+    if out_dir is not None:
+
+        pd.DataFrame([{
+            "total_variance": total_var,
+            "between_model_variance": between_var,
+            "within_model_variance": within_var,
+            "pseudo_icc": pseudo_icc,
+            "anova_F": table.loc["C(model)", "F"],
+            "anova_p": table.loc["C(model)", "PR(>F)"],
+        }]).to_csv(
+            out_dir / "model_dependence_diagnostic.csv",
+            index=False,
+        )
+
+    return {
+        "pseudo_icc": pseudo_icc,
+        "anova": table,
+    }
 
 def descriptive_stats(score_dict, metric_name, out_dir):
     rows = []
