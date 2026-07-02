@@ -1,5 +1,6 @@
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 from pathlib import Path
 import pandas as pd
 from river.drift import ADWIN
@@ -18,6 +19,7 @@ from sklearn.metrics import (
 sys.path.append(str(Path.cwd() / 'src'))
 
 from processing import DataSource, get_stocks, get_elapsed_time, get_text_window
+from collections import Counter
 from experiments import Experiment, mcc_curve
 from utils import setup_plot_style, COLORS
 import statsmodels.formula.api as smf
@@ -529,6 +531,13 @@ def plot_correlation_heatmap(df, labels, out_path, title):
     plt.close()
 
     return corr
+
+def update_dict(d, key, v):
+    if not (old_v := d.get(key, None)):
+        d[key] = v
+    else:
+        for k in old_v:
+            d[key][k] += v
 
 class Eval:
     def __init__(self):
@@ -1641,7 +1650,7 @@ class Eval:
                     ts.time <= pd.Timestamp('12:00').time(),
                     'pre_recess',
                     np.where(
-                        ts.time <= pd.Timestamp('1:45').time(),
+                        ts.time <= pd.Timestamp('13:45').time(),
                         'pm_open',
                         'pre_close'
                     )
@@ -1786,7 +1795,6 @@ class Eval:
                     'out': out,
                     'timestamps': timestamps
                 }, out_dir / f'{dir.name}_{mode}.pt')
-            
     
     def interpret_attention_scores(self):
 
@@ -1816,14 +1824,31 @@ class Eval:
             ts = ts_30 if pred_30 else ts_10
             ts = sorted(ts[int(len(ts) * 0.9) + 1:])
 
-            summary_tensors[dir.name] = {
-                'market_open': dict(),
-                'am_session': dict(),
-                'pm_session': dict(),
-                'market_clcose': dict()
-            }
+            if news:
+                news_data = torch.load(
+                    self.results_path / 'attn_analysis' / 'embeds' / f'{dir.name}_news.pt',
+                    map_location=device,
+                    weights_only=False
+                )
+                news_embeds = news_data['out']
+                news_ts = news_data['timestamps']
+            
+            if social:
+                social_data = torch.load(
+                    self.results_path / 'attn_analysis' / 'embeds' / f'{dir.name}_social.pt',
+                    map_location=device,
+                    weights_only=False
+                )
+                social_embeds = social_data['out']
+                social_ts = social_data['timestamps']
+
+            summary_tensors[dir.name] = dict()
+
+            counter = 0
             
             for batch in tqdm(batches_dir.iterdir()):
+                counter += 1
+                if counter == 6: break
                 tensors = torch.load(batch, map_location=device, weights_only=False)
 
                 i = int(batch.name[6:-3]) * 2 + 1
@@ -1839,9 +1864,64 @@ class Eval:
                 
                 snapshot = {k: v for k, v in zip(keys, tensors)}
 
-                if 'sin' in snapshot:
-                    snapshot['sin']
+                if social or news:
                     cutoff, _ = get_text_window(ts[i], ts, pred_horizon)
-                    cutoff_scaled = get_elapsed_time(cutoff)
-                    ts_scaled = get_elapsed_time(ts)
 
+                    cutoff_scaled = get_elapsed_time(cutoff)
+                    ts_scaled = get_elapsed_time(ts[i])
+                
+                for ind in ('sin', 'nin'):
+                    if ind not in snapshot:
+                        continue
+
+                    if ind == 'sin':
+                        text_ts = social_ts
+                        text_embeds = social_embeds
+                        text_df = social_df
+                        attn = 'sft'
+                    else:
+                        text_ts = news_ts
+                        text_embeds = news_embeds
+                        text_df = news_df
+                        attn = 'nft'
+
+                    mask = (cutoff_scaled < text_ts) & (text_ts <= ts_scaled)
+                    sample = text_embeds[mask]        # Tn, En
+
+                    selected = torch.einsum("stkn,ne->stke", snapshot['sin'], sample)      # S, Ts, K, En
+
+                    selected_norm = F.normalize(selected, dim=-1)      # S, Ts, K, En
+                    sample_norm   = F.normalize(sample, dim=-1)        # Tn, En
+
+                    sim = torch.einsum("stke,ne->stkn", selected_norm, sample_norm)  # S, Ts, K, Tn
+
+                    closest_idx = sim.argmax(dim=-1)   # S, Ts, K
+
+                    Tn = sample.shape[0]
+
+                    scores = torch.zeros(Tn, device=selected.device, dtype=snapshot[attn].dtype)
+                    scores = scores.scatter_add_(0, closest_idx.reshape(-1), snapshot[attn].reshape(-1))
+
+                    text = text_df.df.loc[
+                        (cutoff < text_df.df.index) & (text_df.df.index <= ts[i]),
+                        text_df.text_col
+                    ]
+
+                    snapshot[ind] = Counter(dict(zip(text, scores.tolist())))
+
+                    for ind in ('tst', 'sft', 'nft', 'ist'):
+                        snapshot[ind] = snapshot[ind].sum(dim=0)
+                
+                if ts[i].time() <= pd.Timestamp('10:00').time():
+                    update_dict(summary_tensors[dir.name], 'market_open', snapshot)
+                elif ts[i].time() <= pd.Timestamp('12:00').time():
+                    update_dict(summary_tensors[dir.name], 'am_session', snapshot)
+                elif ts[i].time() <= pd.Timestamp('14:15').time():
+                    update_dict(summary_tensors[dir.name], 'pm_session', snapshot)
+                else:
+                    update_dict(summary_tensors[dir.name], 'market_close', snapshot)
+                
+                update_dict(summary_tensors[dir.name], str(ts[i].date()), snapshot)
+                update_dict(summary_tensors[dir.name], 'overall', snapshot)
+            
+        torch.save(summary_tensors, self.results_path / 'attn_analysis' / 'summary_tensors.pt')
