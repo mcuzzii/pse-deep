@@ -1779,10 +1779,10 @@ class Eval:
 
                 print(out.shape)
 
-                out_dir = self.results_path / 'attn_analysis' / 'news_embeds'
+                out_dir = self.results_path / 'attn_analysis' / 'embeds'
                 out_dir.mkdir(parents=True, exist_ok=True)
 
-                torch.save(out, out_dir / f'{dir.name}.pt')
+                torch.save(out, out_dir / f'{dir.name}_{mode}.pt')
             
     
     def interpret_attention_scores(self):
