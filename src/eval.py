@@ -1732,9 +1732,12 @@ class Eval:
             pred_30 = '30' in dir.name
 
             ts = ts_30 if pred_30 else ts_10
+            ts = ts[int(len(ts) * 0.9) + 1:]
 
             sums = dict()
             for batch in batches_dir.iterdir():
-                batch = torch.load(batch.name, device=device, weights_only=False)
+                tensors = torch.load(batch.name, device=device, weights_only=False)
+                print(
+                    f'Model: {dir.name}; shapes: {[tensor.shape for tensor in tensors]}'
+                )
                 
-            
