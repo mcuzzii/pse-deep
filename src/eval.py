@@ -1579,7 +1579,7 @@ class Eval:
 
             for key in grps:
                 idx = grps.index(key)
-                df = pd.DataFrame(sv[:, idx, :], columns=stock_labs)
+                df = pd.DataFrame(sv[:, idx, :].cpu().numpy(), columns=stock_labs)
 
                 df['timestamp'] = ts
                 df['elapsed_time'] = elapsed_time
