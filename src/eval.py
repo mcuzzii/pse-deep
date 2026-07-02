@@ -151,10 +151,8 @@ def analyze(
         "abs_coef": model.params.abs(),
     }).sort_values("abs_coef", ascending=False)
 
-    fixed_effects = re.findall(r'C\(([^,)]+)', formula)
-
     coef_mask = np.ones(len(coef_df), dtype=bool)
-    for fe in fixed_effects:
+    for fe in [cluster_1, cluster_2]:
         coef_mask &= ~coef_df.index.str.contains(fe)
 
     coef_df = coef_df.loc[coef_mask]
@@ -430,6 +428,10 @@ def get_price_tensor(ts, pred_horizon, offset):
 
 def plot_correlation_heatmap(df, labels, out_path, title):
     setup_plot_style()
+
+    if len(labels) > 1000:
+        df = df.sample(1000)
+        labels = df.index.tolist()
 
     corr = np.abs(np.corrcoef(df.values))
 
@@ -1564,7 +1566,7 @@ class Eval:
                 model_prefix = 'mlp'
             
             elapsed_time = get_elapsed_time(ts, min(ts_30.min(), ts_10.min()))
-            time_of_day = ts.floor('5min').time
+            time_of_day = ts.floor('32min').time.astype(str)
 
             stock_labs = self.stock_map[dir.name]['stocks']
             stock_map = self.stock_map[dir.name]['stock_map']
@@ -1587,7 +1589,7 @@ class Eval:
                 df['explainer_call'] = ts.astype(str) + f' - {dir.name}'
 
                 df = df.melt(
-                    id_vars=['elapsed_time', 'time_of_day', 'explainer_call'],
+                    id_vars=['timestamp', 'elapsed_time', 'time_of_day', 'explainer_call'],
                     var_name='stock',
                     value_name='shap'
                 )
@@ -1600,6 +1602,7 @@ class Eval:
 
                 shap_name = f'{model_prefix}_{key}'
                 shap_dfs[shap_name] = pd.concat([shap_dfs[shap_name], df]) if shap_name in shap_dfs else df
+                shap_dfs[shap_name] = shap_dfs[shap_name].reset_index(drop=True)
 
         out_dir = self.results_path / 'shap_analysis'
         out_dir.mkdir(parents=True, exist_ok=True)
@@ -1611,6 +1614,17 @@ class Eval:
             df.to_csv(df_dir / f'{key}.csv', index=False)
 
             factors = ['news', 'social', 'pred_30']
-            formula = f'C(stock) + (elapsed_time + C(time_of_day) + {' + '.join(factors)})'
+            factor_terms = " + ".join(factors)
+            formula = (
+                f"C(stock) + "
+                f"elapsed_time + "
+                f"{factor_terms} + "
+                f"elapsed_time:({factor_terms}) + "
+                f"({factor_terms})**2"
+            )
+
             res_dir = out_dir / key
+            res_dir.mkdir(parents=True, exist_ok=True)
+
+            print(formula)
             analyze(df, 'shap', 'stock', 'explainer_call', factors, formula, res_dir, 'tfm' in key)

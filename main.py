@@ -210,7 +210,7 @@ def main():
     #evaluator.main_baseline_comparison()
     #evaluator.interpret_trading_sim()
     #evaluator.baseline_models_trading_sim()
-    evaluator.interpret_baseline_models_trading_sim()
+    #evaluator.interpret_baseline_models_trading_sim()
     evaluator.interpret_shap_values()
 
 if __name__ == '__main__':
