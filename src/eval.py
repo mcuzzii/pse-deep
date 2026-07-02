@@ -1634,7 +1634,19 @@ class Eval:
                 model_prefix = 'mlp'
             
             elapsed_time = get_elapsed_time(ts, min(ts_30.min(), ts_10.min()))
-            time_of_day = ts.floor('30min' if transformer else '5min').time.astype(str)
+            time_of_day = np.where(
+                ts.time <= pd.Timestamp('10:30').time(),
+                'market_open',
+                np.where(
+                    ts.time <= pd.Timestamp('12:00').time(),
+                    'pre_recess',
+                    np.where(
+                        ts.time <= pd.Timestamp('1:45').time(),
+                        'pm_open',
+                        'pre_close'
+                    )
+                )
+            )
 
             stock_labs = self.stock_map[dir.name]['stocks']
             stock_map = self.stock_map[dir.name]['stock_map']
@@ -1683,6 +1695,10 @@ class Eval:
 
         for key, df in shap_dfs.items():
             df = df[df.nunique()[df.nunique() > 1].index]
+
+            groups = df.groupby(['time_of_day', 'model', 'stock'])['shap'].count()
+            groups.to_csv(df_dir / f'{key}_groups.csv')
+
             df.to_csv(df_dir / f'{key}.csv', index=False)
 
             factors = [c for c in df.columns if c in ('news', 'social', 'pred_30')]
@@ -1690,10 +1706,10 @@ class Eval:
             formula = (
                 f"C(stock) + "
                 f"elapsed_time + "
-                f"time_of_day + "
+                f"C(time_of_day) + "
                 f"{factor_terms} + "
                 f"elapsed_time:({factor_terms}) + "
-                f"time_of_day:({factor_terms}) + "
+                f"C(time_of_day):({factor_terms}) + "
                 f"({factor_terms})**2"
             )
 
@@ -1701,3 +1717,24 @@ class Eval:
             res_dir.mkdir(parents=True, exist_ok=True)
 
             analyze(df, 'shap', 'stock', 'explainer_timestamp', factors, formula, res_dir)
+    
+    def interpret_attention_scores(self):
+
+        ts_30 = joblib.load('data/processed/ac_30m.joblib').filtered_date_times
+        ts_10 = joblib.load('data/processed/ac_10m.joblib').filtered_date_times
+
+        for dir in self.experiments_path.iterdir():
+            if dir.name in ('data', 'results') or 'mlp' in dir.name:
+                continue
+
+            batches_dir = dir / 'weights'
+
+            pred_30 = '30' in dir.name
+
+            ts = ts_30 if pred_30 else ts_10
+
+            sums = dict()
+            for batch in batches_dir.iterdir():
+                batch = torch.load(batch.name, device=device, weights_only=False)
+                
+            
