@@ -1735,7 +1735,7 @@ class Eval:
             pred_horizon_prefix = 30 if pred_30 else 10
 
             experiment = Experiment(
-                experiment_name=f"stock_{news_prefix}{social_prefix}{model_prefix}{pred_horizon_prefix}",
+                experiment_name=dir.name,
                 transformer=transformer,
                 pred_30=pred_30,
                 news=news,
@@ -1758,7 +1758,7 @@ class Eval:
                 sigma=5e-2,
             )
 
-            best_path = self.experiments_path / f'{experiment.experiment_name}.pt'
+            best_path = self.experiments_path / dir.name / f'{dir.name}.pt'
             best_weights = torch.load(best_path, map_location=device, weights_only=False)['model']
 
             model = experiment.model.to(device)
@@ -1767,7 +1767,7 @@ class Eval:
 
             news_embed = model.news_embed
 
-            news_path = 'experiments/data/news_transformer_{pred_horizon_prefix}m_test.pt'
+            news_path = f'experiments/data/news_transformer_{pred_horizon_prefix}m_test.pt'
             news_tensor = torch.load(news_path, map_location=device)
 
             timestamps = news_tensor['timestamps'].unsqueeze(0)
