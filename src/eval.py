@@ -18,7 +18,7 @@ from sklearn.metrics import (
 sys.path.append(str(Path.cwd() / 'src'))
 
 from processing import DataSource, get_stocks, get_elapsed_time
-from experiments import mcc_curve
+from experiments import Experiment, mcc_curve
 from utils import setup_plot_style, COLORS
 import statsmodels.formula.api as smf
 import statsmodels.api as sm
@@ -1718,10 +1718,77 @@ class Eval:
 
             analyze(df, 'shap', 'stock', 'explainer_timestamp', factors, formula, res_dir)
     
+    def get_news_embeddings(self):
+
+        for dir in self.experiments_path.iterdir():
+            if dir.name in ('data', 'results') or 'mlp' in dir.name or 'news' not in dir.name:
+                continue
+
+            news = 'news' in dir.name
+            social = 'social' in dir.name
+            transformer = True
+            pred_30 = '30' in dir.name
+
+            news_prefix = 'news_' if news else ''
+            social_prefix = 'social_' if social else ''
+            model_prefix = 'transformer_' if transformer else 'mlp_'
+            pred_horizon_prefix = 30 if pred_30 else 10
+
+            experiment = Experiment(
+                experiment_name=f"stock_{news_prefix}{social_prefix}{model_prefix}{pred_horizon_prefix}",
+                transformer=transformer,
+                pred_30=pred_30,
+                news=news,
+                social=social,
+                stock_lookback=60
+            )
+            experiment.build_model(
+                input_dim=100 if transformer else 110,
+                news_input_dim=15,
+                social_input_dim=6 if transformer else 15,
+                text_input_dim=1024,
+                social_embedding_dim=16,
+                hidden_dim=384,
+                embedding_dim=128,
+                num_layers=1 if transformer else 5,
+                temporal_embedding_dim=16,
+                dropout=0.1,
+                K=5,
+                num_samples=500,
+                sigma=5e-2,
+            )
+
+            best_path = self.experiments_path / f'{experiment.experiment_name}.pt'
+            best_weights = torch.load(best_path, map_location=device, weights_only=False)['model']
+
+            model = experiment.model.to(device)
+            model.load_state_dict(best_weights)
+            model.eval()
+
+            news_embed = model.news_embed
+
+            news_path = 'experiments/data/news_transformer_{pred_horizon_prefix}m_test.pt'
+            news_tensor = torch.load(news_path, map_location=device)
+
+            timestamps = news_tensor['timestamps'].unsqueeze(0)
+            embeddings = news_tensor['embeddings'].unsqueeze(0)
+
+            out = news_embed(embeddings, timestamps).squeeze(0)
+
+            print(out.shape)
+
+            out_dir = self.results_path / 'attn_analysis' / 'news_embeds'
+            out_dir.mkdir(parents=True, exist_ok=True)
+
+            torch.save(out, out_dir / f'{dir.name}.pt')
+            
+    
     def interpret_attention_scores(self):
 
         ts_30 = joblib.load('data/processed/ac_30m.joblib').filtered_date_times
         ts_10 = joblib.load('data/processed/ac_10m.joblib').filtered_date_times
+
+        summary_tensors = dict()
 
         for dir in self.experiments_path.iterdir():
             if dir.name in ('data', 'results') or 'mlp' in dir.name:
@@ -1730,14 +1797,34 @@ class Eval:
             batches_dir = dir / 'weights'
 
             pred_30 = '30' in dir.name
+            news = 'news' in dir.name
+            social = 'social' in dir.name
 
             ts = ts_30 if pred_30 else ts_10
-            ts = ts[int(len(ts) * 0.9) + 1:]
+            ts = sorted(ts[int(len(ts) * 0.9) + 1:])
 
-            sums = dict()
-            for batch in batches_dir.iterdir():
+            summary_tensors[dir.name] = {
+                'market_open': dict(),
+                'am_session': dict(),
+                'pm_session': dict(),
+                'market_clcose': dict()
+            }
+            
+            for batch in tqdm(batches_dir.iterdir()):
                 tensors = torch.load(batch, map_location=device, weights_only=False)
-                print(
-                    f'Model: {dir.name}; shapes: {[tensor.shape for tensor in tensors]}'
-                )
+
+                i = int(batch.name[6:-3]) * 2 + 1
+
+                if news and social:
+                    keys = ('tst', 'sft', 'nft', 'ist', 'sin', 'nin')
+                elif social:
+                    keys = ('tst', 'sft', 'sin', 'ist')
+                elif news:
+                    keys = ('tst', 'nft', 'nin' ,'ist')
+                else:
+                    keys = ('tst', 'ist')
+                
+                snapshot = {k: v for k, v in zip(keys, tensors)}
+
+
                 
