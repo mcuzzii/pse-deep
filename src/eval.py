@@ -1793,7 +1793,7 @@ class Eval:
 
                 torch.save({
                     'out': out,
-                    'timestamps': timestamps
+                    'timestamps': timestamps.squeeze(0)
                 }, out_dir / f'{dir.name}_{mode}.pt')
     
     def interpret_attention_scores(self):
