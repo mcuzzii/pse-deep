@@ -301,6 +301,8 @@ def analyze(
     tmp = df.copy()
     tmp["residuals"] = resids
 
+    print(tmp)
+
     residual_wide = tmp.pivot(
         index=cluster_1,
         columns=cluster_2,
@@ -433,7 +435,7 @@ def plot_correlation_heatmap(df, labels, out_path, title):
         df = df.sample(1000)
         labels = df.index.tolist()
 
-    corr = np.abs(np.corrcoef(df.values))
+    corr = np.abs(df.T.corr().to_numpy())
 
     # build a viridis-like colormap from your brand colors
     viridis_cmap = mcolors.LinearSegmentedColormap.from_list(
@@ -1500,8 +1502,11 @@ class Eval:
     
     def interpret_shap_values(self):
 
-        ts_30 = joblib.load('data/processed/ac_30m.joblib').filtered_date_times
-        ts_10 = joblib.load('data/processed/ac_10m.joblib').filtered_date_times
+        ref_30 = joblib.load('data/processed/ac_30m.joblib').filtered_date_times
+        ref_10 = joblib.load('data/processed/ac_10m.joblib').filtered_date_times
+
+        ref_30 = ref_30[int(len(ref_30) * 0.9) + 1:]
+        ref_10 = ref_10[int(len(ref_10) * 0.9) + 1:]
 
         shap_dfs = dict()
 
@@ -1513,12 +1518,16 @@ class Eval:
             transformer = 'transformer' in dir.name
             pred_horizon = 30 if pred_30 else 10
 
-            ts = ts_30 if pred_30 else ts_10
-            ts = ts[int(len(ts) * 0.9) + 1:]
-
             if news and not transformer:
-                news_df = joblib.load(f'data/processed/news_{pred_horizon}m.joblib')
-                ts = ts.intersection(news_df.df.dropna().index)
+                news_30 = joblib.load(f'data/processed/news_30m.joblib')
+                news_10 = joblib.load(f'data/processed/news_10m.joblib')
+                ts_30 = ref_30.intersection(news_30.df.dropna().index)
+                ts_10 = ref_10.intersection(news_10.df.dropna().index)
+            else:
+                ts_30 = ref_30.copy()
+                ts_10 = ref_10.copy()
+            
+            ts = ts_30 if pred_30 else ts_10
 
             if dir.name in ('data', 'results'):
                 continue
@@ -1566,7 +1575,7 @@ class Eval:
                 model_prefix = 'mlp'
             
             elapsed_time = get_elapsed_time(ts, min(ts_30.min(), ts_10.min()))
-            time_of_day = ts.floor('32min').time.astype(str)
+            time_of_day = ts.floor('10min').time.astype(str)
 
             stock_labs = self.stock_map[dir.name]['stocks']
             stock_map = self.stock_map[dir.name]['stock_map']
@@ -1587,9 +1596,10 @@ class Eval:
                 df['elapsed_time'] = elapsed_time
                 df['time_of_day'] = time_of_day
                 df['explainer_call'] = ts.astype(str) + f' - {dir.name}'
+                df['model'] = dir.name
 
                 df = df.melt(
-                    id_vars=['timestamp', 'elapsed_time', 'time_of_day', 'explainer_call'],
+                    id_vars=['timestamp', 'elapsed_time', 'time_of_day', 'explainer_call', 'model'],
                     var_name='stock',
                     value_name='shap'
                 )
@@ -1611,20 +1621,22 @@ class Eval:
         df_dir.mkdir(parents=True, exist_ok=True)
 
         for key, df in shap_dfs.items():
+            df = df[df.nunique()[df.nunique() > 1].index]
             df.to_csv(df_dir / f'{key}.csv', index=False)
 
-            factors = ['news', 'social', 'pred_30']
+            factors = [c for c in df.columns if c in ('news', 'social', 'pred_30')]
             factor_terms = " + ".join(factors)
             formula = (
                 f"C(stock) + "
                 f"elapsed_time + "
+                f"time_of_day + "
                 f"{factor_terms} + "
                 f"elapsed_time:({factor_terms}) + "
+                f"time_of_day:({factor_terms}) + "
                 f"({factor_terms})**2"
             )
 
             res_dir = out_dir / key
             res_dir.mkdir(parents=True, exist_ok=True)
 
-            print(formula)
-            analyze(df, 'shap', 'stock', 'explainer_call', factors, formula, res_dir, 'tfm' in key)
+            analyze(df, 'shap', 'stock', 'explainer_call' if 'tfm' in key else 'model', factors, formula, res_dir)
