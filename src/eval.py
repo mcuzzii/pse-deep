@@ -17,7 +17,7 @@ from sklearn.metrics import (
 
 sys.path.append(str(Path.cwd() / 'src'))
 
-from processing import DataSource, get_stocks, get_elapsed_time
+from processing import DataSource, get_stocks, get_elapsed_time, get_text_window
 from experiments import Experiment, mcc_curve
 from utils import setup_plot_style, COLORS
 import statsmodels.formula.api as smf
@@ -1782,13 +1782,23 @@ class Eval:
                 out_dir = self.results_path / 'attn_analysis' / 'embeds'
                 out_dir.mkdir(parents=True, exist_ok=True)
 
-                torch.save(out, out_dir / f'{dir.name}_{mode}.pt')
+                torch.save({
+                    'out': out,
+                    'timestamps': timestamps
+                }, out_dir / f'{dir.name}_{mode}.pt')
             
     
     def interpret_attention_scores(self):
 
+        print("Loading reference datasets..")
+
         ts_30 = joblib.load('data/processed/ac_30m.joblib').filtered_date_times
         ts_10 = joblib.load('data/processed/ac_10m.joblib').filtered_date_times
+
+        print("Loading text datasets..")
+
+        news_df = joblib.load('data/processed/news.joblib')
+        social_df = joblib.load('data/processed/social_media.joblib')
 
         summary_tensors = dict()
 
@@ -1801,6 +1811,7 @@ class Eval:
             pred_30 = '30' in dir.name
             news = 'news' in dir.name
             social = 'social' in dir.name
+            pred_horizon = 30 if pred_30 else 10
 
             ts = ts_30 if pred_30 else ts_10
             ts = sorted(ts[int(len(ts) * 0.9) + 1:])
@@ -1828,5 +1839,9 @@ class Eval:
                 
                 snapshot = {k: v for k, v in zip(keys, tensors)}
 
+                if 'sin' in snapshot:
+                    snapshot['sin']
+                    cutoff, _ = get_text_window(ts[i], ts, pred_horizon)
+                    cutoff_scaled = get_elapsed_time(cutoff)
+                    ts_scaled = get_elapsed_time(ts)
 
-                
