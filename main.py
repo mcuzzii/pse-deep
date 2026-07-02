@@ -212,7 +212,8 @@ def main():
     #evaluator.baseline_models_trading_sim()
     #evaluator.interpret_baseline_models_trading_sim()
     #evaluator.interpret_shap_values()
-    evaluator.interpret_attention_scores()
+    evaluator.get_news_embeddings()
+    #evaluator.interpret_attention_scores()
 
 if __name__ == '__main__':
     main()
