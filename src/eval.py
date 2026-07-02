@@ -1718,7 +1718,7 @@ class Eval:
 
             analyze(df, 'shap', 'stock', 'explainer_timestamp', factors, formula, res_dir)
     
-    def get_news_embeddings(self):
+    def get_embeddings(self):
 
         for mode in ('news', 'social'):
             for dir in self.experiments_path.iterdir():
