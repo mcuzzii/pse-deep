@@ -303,10 +303,11 @@ def analyze(
 
     print(tmp)
 
-    residual_wide = tmp.pivot(
+    residual_wide = tmp.pivot_table(
         index=cluster_1,
         columns=cluster_2,
         values="residuals",
+        aggfunc='mean'
     )
 
     plot_correlation_heatmap(
@@ -1604,6 +1605,8 @@ class Eval:
                     value_name='shap'
                 )
 
+                df['stock_timestamp'] = df['timestamp'].astype(str) + f' - ' + df['stock']
+
                 df['pred_30'] = pred_30
                 df['news'] = news
                 df['social'] = social
@@ -1639,4 +1642,4 @@ class Eval:
             res_dir = out_dir / key
             res_dir.mkdir(parents=True, exist_ok=True)
 
-            analyze(df, 'shap', 'stock', 'explainer_call' if 'tfm' in key else 'model', factors, formula, res_dir)
+            analyze(df, 'shap', 'stock', 'explainer_call', factors, formula, res_dir)
