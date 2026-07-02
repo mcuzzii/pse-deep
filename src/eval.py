@@ -1770,10 +1770,10 @@ class Eval:
                 timestamps = data_tensor['timestamps'].unsqueeze(0)
                 embeddings = data_tensor['embeddings'].unsqueeze(0)
                 
-                if social:
+                if mode == 'social':
                     impact = data_tensor['impact'].unsqueeze(0)
                 
-                args = (embeddings, timestamps) if news else (embeddings, impact, timestamps)
+                args = (embeddings, timestamps) if mode == 'news' else (embeddings, impact, timestamps)
 
                 out = embed_model(*args).squeeze(0)
 
