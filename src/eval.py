@@ -1720,67 +1720,69 @@ class Eval:
     
     def get_news_embeddings(self):
 
-        for dir in self.experiments_path.iterdir():
-            if dir.name in ('data', 'results') or 'mlp' in dir.name or 'news' not in dir.name:
-                continue
+        for mode in ('news', 'social'):
+            for dir in self.experiments_path.iterdir():
+                if dir.name in ('data', 'results') or 'mlp' in dir.name or mode not in dir.name:
+                    continue
 
-            news = 'news' in dir.name
-            social = 'social' in dir.name
-            transformer = True
-            pred_30 = '30' in dir.name
+                news = 'news' in dir.name
+                social = 'social' in dir.name
+                transformer = True
+                pred_30 = '30' in dir.name
+                pred_horizon_prefix = 30 if pred_30 else 10
 
-            news_prefix = 'news_' if news else ''
-            social_prefix = 'social_' if social else ''
-            model_prefix = 'transformer_' if transformer else 'mlp_'
-            pred_horizon_prefix = 30 if pred_30 else 10
+                experiment = Experiment(
+                    experiment_name=dir.name,
+                    transformer=transformer,
+                    pred_30=pred_30,
+                    news=news,
+                    social=social,
+                    stock_lookback=60
+                )
+                experiment.build_model(
+                    input_dim=100 if transformer else 110,
+                    news_input_dim=15,
+                    social_input_dim=6 if transformer else 15,
+                    text_input_dim=1024,
+                    social_embedding_dim=16,
+                    hidden_dim=384,
+                    embedding_dim=128,
+                    num_layers=1 if transformer else 5,
+                    temporal_embedding_dim=16,
+                    dropout=0.1,
+                    K=5,
+                    num_samples=500,
+                    sigma=5e-2,
+                )
 
-            experiment = Experiment(
-                experiment_name=dir.name,
-                transformer=transformer,
-                pred_30=pred_30,
-                news=news,
-                social=social,
-                stock_lookback=60
-            )
-            experiment.build_model(
-                input_dim=100 if transformer else 110,
-                news_input_dim=15,
-                social_input_dim=6 if transformer else 15,
-                text_input_dim=1024,
-                social_embedding_dim=16,
-                hidden_dim=384,
-                embedding_dim=128,
-                num_layers=1 if transformer else 5,
-                temporal_embedding_dim=16,
-                dropout=0.1,
-                K=5,
-                num_samples=500,
-                sigma=5e-2,
-            )
+                best_path = self.experiments_path / dir.name / f'{dir.name}.pt'
+                best_weights = torch.load(best_path, map_location=device, weights_only=False)['model']
 
-            best_path = self.experiments_path / dir.name / f'{dir.name}.pt'
-            best_weights = torch.load(best_path, map_location=device, weights_only=False)['model']
+                model = experiment.model.to(device)
+                model.load_state_dict(best_weights)
+                model.eval()
 
-            model = experiment.model.to(device)
-            model.load_state_dict(best_weights)
-            model.eval()
+                embed_model = model.news_embed if mode == 'news' else model.social_embed
 
-            news_embed = model.news_embed
+                data_path = f'experiments/data/{mode}_transformer_{pred_horizon_prefix}m_test.pt'
+                data_tensor = torch.load(data_path, map_location=device)
 
-            news_path = f'experiments/data/news_transformer_{pred_horizon_prefix}m_test.pt'
-            news_tensor = torch.load(news_path, map_location=device)
+                timestamps = data_tensor['timestamps'].unsqueeze(0)
+                embeddings = data_tensor['embeddings'].unsqueeze(0)
+                
+                if social:
+                    impact = data_tensor['impact'].unsqueeze(0)
+                
+                args = (embeddings, timestamps) if news else (embeddings, impact, timestamps)
 
-            timestamps = news_tensor['timestamps'].unsqueeze(0)
-            embeddings = news_tensor['embeddings'].unsqueeze(0)
+                out = embed_model(*args).squeeze(0)
 
-            out = news_embed(embeddings, timestamps).squeeze(0)
+                print(out.shape)
 
-            print(out.shape)
+                out_dir = self.results_path / 'attn_analysis' / 'news_embeds'
+                out_dir.mkdir(parents=True, exist_ok=True)
 
-            out_dir = self.results_path / 'attn_analysis' / 'news_embeds'
-            out_dir.mkdir(parents=True, exist_ok=True)
-
-            torch.save(out, out_dir / f'{dir.name}.pt')
+                torch.save(out, out_dir / f'{dir.name}.pt')
             
     
     def interpret_attention_scores(self):
