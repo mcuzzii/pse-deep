@@ -1866,7 +1866,7 @@ class Eval:
 
                 if social or news:
                     cutoff, window = get_text_window(ts[i], ts, pred_horizon)
-                    print(f'window: {window.astype(float).sum()}')
+                    print(f'window: {window.shape[0]}')
 
                     cutoff_scaled = get_elapsed_time(cutoff)
                     ts_scaled = get_elapsed_time(ts[i])
