@@ -1919,6 +1919,9 @@ class Eval:
                     if ind not in snapshot:
                         continue
                     snapshot[ind] = snapshot[ind].sum(dim=0)
+                    if ind == 'ist':
+                        reorder = torch.argmax(self.stock_map[dir.name]['stock_map'], dim=-1)
+                        snapshot[ind] = snapshot[ind][reorder][:, reorder]
                 
                 if ts[i].time() <= pd.Timestamp('10:00').time():
                     update_dict(summary_tensors[dir.name], 'market_open', snapshot)
@@ -1952,26 +1955,51 @@ class Eval:
                     if isinstance(item, Counter):
                         pass
                     else:
+                        if w == 'ist':
+                            xtick = [s.upper() for s in self.stock_map[dir.name]['stocks']]
+                            ytick = xtick
+                            xlab = 'Stocks (Q)'
+                            ylab = 'Stocks (KV)'
+                            figsize = (7, 6)
+                        if w == 'tst':
+                            xtick = range(1, 61)
+                            ytick = xtick
+                            xlab = 'Minutes Ago (Q)'
+                            ylab = 'Minutes Ago (KV)'
+                            figsize = (7, 6)
+                        if w in ('nft', 'sft'):
+                            item = item.T
+                            xtick = range(1, 61)
+                            ytick = [f'Top {i}' for i in range(1, 6)]
+                            xlab = 'Minutes Ago (Q)'
+                            ylab = f'Selected {'News' if w == 'nft' else 'X Posts'} (KV)'
+                            figsize = (7, 2)
+
                         viridis_cmap = mcolors.LinearSegmentedColormap.from_list(
                             'custom_viridis',
                             [COLORS['purple'], COLORS['indigo'], COLORS['teal'],
                             COLORS['seafoam'], COLORS['green'], COLORS['yellow']]
                         )
 
-                        fig, ax = plt.subplots(figsize=(8, 5))
+                        fig, ax = plt.subplots(figsize=figsize)
 
                         sns.heatmap(
                             item.numpy(),
-                            xticklabels=False,
-                            yticklabels=False,
+                            xticklabels=xtick,
+                            yticklabels=ytick,
                             cmap=viridis_cmap,
                             linewidths=0,
                             cbar_kws={'label': 'Attention Scores', 'shrink': 0.8},
                             ax=ax
                         )
 
-                        ax.set_title("Attention Heatmap", fontsize=16, pad=16)
+                        cbar = ax.collections[0].colorbar
+                        cbar.set_ticks([])
+
+                        ax.set_title("Attention Scores", fontsize=16, pad=16)
                         ax.tick_params(axis='both', labelsize=8)
+                        ax.set_xlabel(xlab)
+                        ax.set_ylabel(ylab)
                         plt.setp(ax.get_xticklabels(), rotation=90)
                         plt.setp(ax.get_yticklabels(), rotation=0)
 
