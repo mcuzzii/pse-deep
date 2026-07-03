@@ -1888,7 +1888,7 @@ class Eval:
 
                     mask = (cutoff_scaled < text_ts) & (text_ts <= ts_scaled)
                     sample = text_embeds[mask]        # Tn, En
-                    print(f'mask: {mask.astype(float).sum()}')
+                    print(f'mask: {mask.to(float).sum()}')
 
                     selected = torch.einsum("stkn,ne->stke", snapshot[ind], sample)      # S, Ts, K, En
 
