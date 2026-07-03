@@ -1867,8 +1867,8 @@ class Eval:
                 if social or news:
         
                     last_timestamp = np.float32(get_elapsed_time(ts[i]))
-                    time_vec_input = get_elapsed_time(ts).astype(np.float32)
-                    idx = (pd.Series(time_vec_input) - last_timestamp).abs().idxmin()
+                    time_vec_input = pd.Series(get_elapsed_time(ts), index=ts).astype(np.float32)
+                    idx = (time_vec_input - last_timestamp).abs().idxmin()
         
                     cutoff, _ = get_text_window(idx, time_vec_input.index, pred_horizon)
 
