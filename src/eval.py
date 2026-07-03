@@ -1865,7 +1865,8 @@ class Eval:
                 snapshot = {k: v for k, v in zip(keys, tensors)}
 
                 if social or news:
-                    cutoff, _ = get_text_window(ts[i], ts, pred_horizon)
+                    cutoff, window = get_text_window(ts[i], ts, pred_horizon)
+                    print(f'window: {window.astype(float).sum()}')
 
                     cutoff_scaled = get_elapsed_time(cutoff)
                     ts_scaled = get_elapsed_time(ts[i])
@@ -1887,6 +1888,7 @@ class Eval:
 
                     mask = (cutoff_scaled < text_ts) & (text_ts <= ts_scaled)
                     sample = text_embeds[mask]        # Tn, En
+                    print(f'mask: {mask.astype(float).sum()}')
 
                     selected = torch.einsum("stkn,ne->stke", snapshot[ind], sample)      # S, Ts, K, En
 
