@@ -1875,12 +1875,12 @@ class Eval:
                         continue
 
                     if ind == 'sin':
-                        text_ts = social_ts.to(np.float64)
+                        text_ts = social_ts.to(torch.float64)
                         text_embeds = social_embeds
                         text_df = social_df
                         attn = 'sft'
                     else:
-                        text_ts = news_ts.to(np.float64)
+                        text_ts = news_ts.to(torch.float64)
                         text_embeds = news_embeds
                         text_df = news_df
                         attn = 'nft'
