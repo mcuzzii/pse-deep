@@ -1865,7 +1865,7 @@ class Eval:
                 snapshot = {k: v for k, v in zip(keys, tensors)}
 
                 if social or news:
-                    cutoff, _ = get_text_window(ts[i], ts, pred_horizon)
+                    cutoff, _ = get_text_window(ts[i], ts_30 if pred_30 else ts_10, pred_horizon)
 
                     cutoff_scaled = get_elapsed_time(cutoff)
                     ts_scaled = get_elapsed_time(ts[i])
