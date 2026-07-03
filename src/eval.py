@@ -1822,7 +1822,7 @@ class Eval:
             pred_horizon = 30 if pred_30 else 10
 
             ts = ts_30 if pred_30 else ts_10
-            ts = ts[int(len(ts) * 0.9) + 1:]
+            ts = ts[int(len(ts) * 0.9) + 1:].astype(np.float64)
 
             if news:
                 news_data = torch.load(
@@ -1867,8 +1867,8 @@ class Eval:
                 if social or news:
                     cutoff, _ = get_text_window(ts[i], ts, pred_horizon)
 
-                    cutoff_scaled = np.float32(get_elapsed_time(cutoff))
-                    ts_scaled = np.float32(get_elapsed_time(ts[i]))
+                    cutoff_scaled = get_elapsed_time(cutoff)
+                    ts_scaled = get_elapsed_time(ts[i])
                 
                 for ind in ('sin', 'nin'):
                     if ind not in snapshot:
