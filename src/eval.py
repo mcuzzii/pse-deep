@@ -1800,8 +1800,11 @@ class Eval:
 
         print("Loading reference datasets..")
 
-        ts_30 = joblib.load('data/processed/ac_30m.joblib').filtered_date_times
-        ts_10 = joblib.load('data/processed/ac_10m.joblib').filtered_date_times
+        ref_30 = joblib.load('data/processed/ac_30m.joblib')
+        ref_10 = joblib.load('data/processed/ac_10m.joblib')
+
+        ts_30 = ref_30.filtered_date_times
+        ts_10 = ref_10.filtered_date_times
 
         print("Loading text datasets..")
 
@@ -1823,6 +1826,8 @@ class Eval:
 
             ts = ts_30 if pred_30 else ts_10
             ts = ts[int(len(ts) * 0.9) + 1:]
+
+            ref = ref_30 if pred_30 else ref_10
 
             if news:
                 news_data = torch.load(
@@ -1866,8 +1871,8 @@ class Eval:
 
                 if social or news:
         
-                    last_timestamp = np.float32(get_elapsed_time(ts[i]))
-                    time_vec_input = pd.Series(get_elapsed_time(ts), index=ts).astype(np.float32)
+                    last_timestamp = ref.df.loc[ts[i], ref.time_vec_input]
+                    time_vec_input = ref.df[ref.time_vec_input]
                     idx = (time_vec_input - last_timestamp).abs().idxmin()
         
                     cutoff, _ = get_text_window(idx, time_vec_input.index, pred_horizon)
