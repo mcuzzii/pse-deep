@@ -1933,4 +1933,51 @@ class Eval:
                 update_dict(summary_tensors[dir.name], 'overall', snapshot)
             
         torch.save(summary_tensors, self.results_path / 'attn_analysis' / 'summary_tensors.pt')
-    
+
+    def plot_attention_scores(self):
+
+        attn_summary = torch.load(
+            self.results_path / 'attn_analysis' / 'summary_tensors.pt',
+            map_location=torch.device('cpu'),
+            weights_only=False
+        )
+        
+        for dir in self.experiments_path.iterdir():
+            if dir.name in ('results', 'data') or 'mlp' in dir.name:
+                continue
+            
+            for cat in attn_summary[dir.name]:
+                for w in attn_summary[dir.name][cat]:
+                    item = attn_summary[dir.name][cat][w]
+                    if isinstance(item, Counter):
+                        pass
+                    else:
+                        viridis_cmap = mcolors.LinearSegmentedColormap.from_list(
+                            'custom_viridis',
+                            [COLORS['purple'], COLORS['indigo'], COLORS['teal'],
+                            COLORS['seafoam'], COLORS['green'], COLORS['yellow']]
+                        )
+
+                        fig, ax = plt.subplots(figsize=(8, 5))
+
+                        sns.heatmap(
+                            item.numpy(),
+                            xticklabels=False,
+                            yticklabels=False,
+                            cmap=viridis_cmap,
+                            linewidths=0,
+                            cbar_kws={'label': 'Attention Scores', 'shrink': 0.8},
+                            ax=ax
+                        )
+
+                        ax.set_title("Attention Heatmap", fontsize=16, pad=16)
+                        ax.tick_params(axis='both', labelsize=8)
+                        plt.setp(ax.get_xticklabels(), rotation=90)
+                        plt.setp(ax.get_yticklabels(), rotation=0)
+
+                        plt.tight_layout()
+                        plt.savefig(
+                            self.results_path / 'attn_analysis' / f'{dir.name}_{cat}_{w}',
+                            dpi=300, bbox_inches='tight'
+                        )
+                        plt.close()
