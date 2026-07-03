@@ -1846,6 +1846,12 @@ class Eval:
                 )
                 social_embeds = social_data['out']
                 social_ts = social_data['timestamps']
+            
+            stock_data = torch.load(
+                f'stock_transformer_{pred_horizon}m_test.pt',
+                map_location=device,
+                weights_only=False
+            )
 
             summary_tensors[dir.name] = dict()
 
@@ -1856,7 +1862,8 @@ class Eval:
                 if counter == 30: break
                 tensors = torch.load(batch, map_location=device, weights_only=False)
 
-                i = int(batch.name[6:-3]) * 2 + 1
+                b = int(batch.name[6:-3])
+                i = b * 2 + 1
 
                 if news and social:
                     keys = ('tst', 'sft', 'nft', 'ist', 'sin', 'nin')
@@ -1870,8 +1877,10 @@ class Eval:
                 snapshot = {k: v for k, v in zip(keys, tensors)}
 
                 if social or news:
-        
-                    last_timestamp = ref.df.loc[ts[i], ref.time_vec_input]
+
+                    t = stock_data['timestamps'][:, b * 2:b * 2 + 60]
+                    last_timestamp = float(t[0, -1])
+                    
                     time_vec_input = ref.df[ref.time_vec_input]
                     idx = (time_vec_input - last_timestamp).abs().idxmin()
         
