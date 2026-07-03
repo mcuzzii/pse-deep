@@ -1889,8 +1889,6 @@ class Eval:
 
                     print(f'Boundary: {cutoff}')
                     print(f'ts: {ts[i]}')
-                    at_boundary = text_ts[text_ts == cutoff_scaled]  # or == get_elapsed_time(cutoff)
-                    print(f'diff: {len(at_boundary)}, ', at_boundary)
                 
                 ignore_batch = False
 
@@ -1911,6 +1909,9 @@ class Eval:
 
                     mask = (cutoff_scaled < text_ts) & (text_ts <= last_timestamp)
                     sample = text_embeds[mask]        # Tn, En
+
+                    at_boundary = text_ts[text_ts == cutoff_scaled]  # or == get_elapsed_time(cutoff)
+                    print(f'diff: {len(at_boundary)}, ', at_boundary)
 
                     try:
 
