@@ -1885,6 +1885,8 @@ class Eval:
                     idx = (time_vec_input - last_timestamp).abs().idxmin()
         
                     cutoff, _ = get_text_window(idx, time_vec_input.index, pred_horizon)
+                    print(f'Boundary: {cutoff}')
+                    print(f'ts: {ts[i]}')
 
                     cutoff_scaled = get_elapsed_time(cutoff)
                 
