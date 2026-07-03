@@ -1907,11 +1907,8 @@ class Eval:
                         text_df = news_df
                         attn = 'nft'
 
-                    mask = (cutoff_scaled < text_ts) & (text_ts <= last_timestamp)
+                    mask = (cutoff_scaled <= text_ts) & (text_ts <= last_timestamp)
                     sample = text_embeds[mask]        # Tn, En
-
-                    at_boundary = text_ts[text_ts == cutoff_scaled]  # or == get_elapsed_time(cutoff)
-                    print(f'diff: {len(at_boundary)}, ', at_boundary)
 
                     try:
 
