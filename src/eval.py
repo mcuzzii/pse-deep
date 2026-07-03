@@ -1878,7 +1878,7 @@ class Eval:
 
                 if social or news:
 
-                    t = stock_data['timestamps'][:, b * 2:b * 2 + 60]
+                    t = stock_data['timestamps'][:, i:i + 60]
                     last_timestamp = float(t[0, -1])
 
                     time_vec_input = ref.df[ref.time_vec_input]
