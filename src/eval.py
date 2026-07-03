@@ -1918,6 +1918,8 @@ class Eval:
                     snapshot[ind] = Counter(dict(zip(text, scores.tolist())))
 
                 for ind in ('tst', 'sft', 'nft', 'ist'):
+                    if ind not in snapshot:
+                        continue
                     snapshot[ind] = snapshot[ind].sum(dim=0)
                 
                 if ts[i].time() <= pd.Timestamp('10:00').time():
