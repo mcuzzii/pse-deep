@@ -1888,6 +1888,8 @@ class Eval:
                     mask = (cutoff_scaled < text_ts) & (text_ts <= ts_scaled)
                     sample = text_embeds[mask]        # Tn, En
 
+                    snapshot[ind] = snapshot[ind][..., :mask.sum()]
+
                     selected = torch.einsum("stkn,ne->stke", snapshot[ind], sample)      # S, Ts, K, En
 
                     selected_norm = F.normalize(selected, dim=-1)      # S, Ts, K, En
@@ -1899,8 +1901,12 @@ class Eval:
 
                     Tn = sample.shape[0]
 
-                    scores = torch.zeros(Tn, device=selected.device, dtype=snapshot[attn].dtype)
-                    scores = scores.scatter_add_(0, closest_idx.reshape(-1), snapshot[attn].reshape(-1))
+                    scores = torch.zeros(Tn, device=device)
+                    scores = scores.scatter_add_(
+                        0,
+                        closest_idx.reshape(-1),
+                        torch.ones_like(closest_idx.reshape(-1), device=device, dtype=scores.dtypes)
+                    )
 
                     text = text_df.df.loc[
                         (cutoff < text_df.df.index) & (text_df.df.index <= ts[i]),
