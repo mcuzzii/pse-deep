@@ -537,7 +537,7 @@ def update_dict(d, key, v):
         d[key] = v
     else:
         for k in old_v:
-            d[key][k] += v
+            d[key][k] += v[k]
 
 class Eval:
     def __init__(self):
