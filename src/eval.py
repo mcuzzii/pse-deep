@@ -1865,51 +1865,61 @@ class Eval:
                 snapshot = {k: v for k, v in zip(keys, tensors)}
 
                 if social or news:
-                    cutoff, _ = get_text_window(ts[i], ts_30 if pred_30 else ts_10, pred_horizon)
+                    cutoff, _ = get_text_window(ts[i], ts, pred_horizon)
 
                     cutoff_scaled = get_elapsed_time(cutoff)
                     ts_scaled = get_elapsed_time(ts[i])
                 
+                ignore_batch = False
+
                 for ind in ('sin', 'nin'):
                     if ind not in snapshot:
                         continue
 
                     if ind == 'sin':
-                        text_ts = social_ts.to(torch.float64)
+                        text_ts = social_ts
                         text_embeds = social_embeds
                         text_df = social_df
                         attn = 'sft'
                     else:
-                        text_ts = news_ts.to(torch.float64)
+                        text_ts = news_ts
                         text_embeds = news_embeds
                         text_df = news_df
                         attn = 'nft'
 
                     mask = (cutoff_scaled < text_ts) & (text_ts <= ts_scaled)
                     sample = text_embeds[mask]        # Tn, En
-                    print(f'snapshot: {snapshot[ind].shape}')
-                    print(f'mask: {mask.to(float).sum()}')
 
-                    selected = torch.einsum("stkn,ne->stke", snapshot[ind], sample)      # S, Ts, K, En
+                    try:
 
-                    selected_norm = F.normalize(selected, dim=-1)      # S, Ts, K, En
-                    sample_norm   = F.normalize(sample, dim=-1)        # Tn, En
+                        selected = torch.einsum("stkn,ne->stke", snapshot[ind], sample)      # S, Ts, K, En
 
-                    sim = torch.einsum("stke,ne->stkn", selected_norm, sample_norm)  # S, Ts, K, Tn
+                        selected_norm = F.normalize(selected, dim=-1)      # S, Ts, K, En
+                        sample_norm   = F.normalize(sample, dim=-1)        # Tn, En
 
-                    closest_idx = sim.argmax(dim=-1)   # S, Ts, K
+                        sim = torch.einsum("stke,ne->stkn", selected_norm, sample_norm)  # S, Ts, K, Tn
 
-                    Tn = sample.shape[0]
+                        closest_idx = sim.argmax(dim=-1)   # S, Ts, K
 
-                    scores = torch.zeros(Tn, device=selected.device, dtype=snapshot[attn].dtype)
-                    scores = scores.scatter_add_(0, closest_idx.reshape(-1), snapshot[attn].reshape(-1))
+                        Tn = sample.shape[0]
 
-                    text = text_df.df.loc[
-                        (cutoff < text_df.df.index) & (text_df.df.index <= ts[i]),
-                        text_df.text_col
-                    ]
+                        scores = torch.zeros(Tn, device=selected.device, dtype=snapshot[attn].dtype)
+                        scores = scores.scatter_add_(0, closest_idx.reshape(-1), snapshot[attn].reshape(-1))
 
-                    snapshot[ind] = Counter(dict(zip(text, scores.tolist())))
+                        text = text_df.df.loc[
+                            (cutoff < text_df.df.index) & (text_df.df.index <= ts[i]),
+                            text_df.text_col
+                        ]
+
+                        snapshot[ind] = Counter(dict(zip(text, scores.tolist())))
+                    
+                    except Exception as e:
+                        print(f"Exception raised: {e}")
+                        ignore_batch = True
+                        break
+                    
+                if ignore_batch:
+                    continue
 
                 for ind in ('tst', 'sft', 'nft', 'ist'):
                     if ind not in snapshot:
