@@ -1885,8 +1885,6 @@ class Eval:
                     sample = text_embeds[mask]        # Tn, En
 
                     snapshot[ind] = snapshot[ind][..., :mask.sum()]
-                    print(f'sample: {sample.shape}')
-                    print(f'ind: {snapshot[ind].shape}')
 
                     selected = torch.einsum("stkn,ne->stke", snapshot[ind], sample)      # S, Ts, K, En
 
@@ -1894,6 +1892,10 @@ class Eval:
                     sample_norm   = F.normalize(sample, dim=-1)        # Tn, En
 
                     sim = torch.einsum("stke,ne->stkn", selected_norm, sample_norm)  # S, Ts, K, Tn
+
+                    if mask.sum().item() == 0:
+                        snapshot[ind] = Counter()
+                        continue
 
                     closest_idx = sim.argmax(dim=-1)   # S, Ts, K
 
@@ -1931,3 +1933,4 @@ class Eval:
                 update_dict(summary_tensors[dir.name], 'overall', snapshot)
             
         torch.save(summary_tensors, self.results_path / 'attn_analysis' / 'summary_tensors.pt')
+    
