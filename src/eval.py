@@ -1843,12 +1843,8 @@ class Eval:
                 social_ts = social_data['timestamps']
 
             summary_tensors[dir.name] = dict()
-
-            counter = 0
             
             for batch in tqdm(batches_dir.iterdir()):
-                counter += 1
-                if counter == 6: break
                 tensors = torch.load(batch, map_location=device, weights_only=False)
 
                 i = int(batch.name[6:-3]) * 2 + 1
