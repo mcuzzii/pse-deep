@@ -1905,7 +1905,7 @@ class Eval:
                     scores = scores.scatter_add_(
                         0,
                         closest_idx.reshape(-1),
-                        torch.ones_like(closest_idx.reshape(-1), device=device, dtype=scores.dtypes)
+                        torch.ones_like(closest_idx.reshape(-1), device=device, dtype=scores.dtype)
                     )
 
                     text = text_df.df.loc[
