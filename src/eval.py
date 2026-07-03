@@ -1848,7 +1848,7 @@ class Eval:
             
             for batch in tqdm(batches_dir.iterdir()):
                 counter += 1
-                if counter == 6: break
+                if counter == 30: break
                 tensors = torch.load(batch, map_location=device, weights_only=False)
 
                 i = int(batch.name[6:-3]) * 2 + 1
