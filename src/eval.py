@@ -1822,7 +1822,7 @@ class Eval:
             pred_horizon = 30 if pred_30 else 10
 
             ts = ts_30 if pred_30 else ts_10
-            ts = ts[int(len(ts) * 0.9) + 1:].astype(np.float64)
+            ts = ts[int(len(ts) * 0.9) + 1:]
 
             if news:
                 news_data = torch.load(
@@ -1875,12 +1875,12 @@ class Eval:
                         continue
 
                     if ind == 'sin':
-                        text_ts = social_ts
+                        text_ts = social_ts.astype(np.float64)
                         text_embeds = social_embeds
                         text_df = social_df
                         attn = 'sft'
                     else:
-                        text_ts = news_ts
+                        text_ts = news_ts.astype(np.float64)
                         text_embeds = news_embeds
                         text_df = news_df
                         attn = 'nft'
