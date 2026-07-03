@@ -1848,7 +1848,7 @@ class Eval:
                 social_ts = social_data['timestamps']
             
             stock_data = torch.load(
-                f'stock_transformer_{pred_horizon}m_test.pt',
+                f'experiments/data/stock_transformer_{pred_horizon}m_test.pt',
                 map_location=device,
                 weights_only=False
             )
@@ -1880,7 +1880,7 @@ class Eval:
 
                     t = stock_data['timestamps'][:, b * 2:b * 2 + 60]
                     last_timestamp = float(t[0, -1])
-                    
+
                     time_vec_input = ref.df[ref.time_vec_input]
                     idx = (time_vec_input - last_timestamp).abs().idxmin()
         
