@@ -1856,19 +1856,19 @@ class Eval:
                 if news and social:
                     keys = ('tst', 'sft', 'nft', 'ist', 'sin', 'nin')
                 elif social:
-                    keys = ('tst', 'sft', 'sin', 'ist')
+                    keys = ('tst', 'sft', 'ist', 'sin')
                 elif news:
-                    keys = ('tst', 'nft', 'nin' ,'ist')
+                    keys = ('tst', 'nft', 'ist' ,'nin')
                 else:
                     keys = ('tst', 'ist')
                 
                 snapshot = {k: v for k, v in zip(keys, tensors)}
 
                 if social or news:
-                    cutoff, window = get_text_window(ts[i], ts, pred_horizon)
+                    cutoff, _ = get_text_window(ts[i], ts, pred_horizon)
 
-                    cutoff_scaled = get_elapsed_time(cutoff)
-                    ts_scaled = get_elapsed_time(ts[i])
+                    cutoff_scaled = np.float32(get_elapsed_time(cutoff))
+                    ts_scaled = np.float32(get_elapsed_time(ts[i]))
                 
                 for ind in ('sin', 'nin'):
                     if ind not in snapshot:
@@ -1912,6 +1912,9 @@ class Eval:
                     snapshot[ind] = Counter(dict(zip(text, scores.tolist())))
 
                 for ind in ('tst', 'sft', 'nft', 'ist'):
+                    if ind not in snapshot:
+                        continue
+
                     snapshot[ind] = snapshot[ind].sum(dim=0)
                 
                 if ts[i].time() <= pd.Timestamp('10:00').time():
