@@ -38,6 +38,7 @@ from scipy import stats
 import matplotlib.pyplot as plt
 import matplotlib.ticker as ticker
 import matplotlib.colors as mcolors
+import textwrap
 import seaborn as sns
 import itertools
 from statsmodels.stats.multitest import multipletests
@@ -538,6 +539,53 @@ def update_dict(d, key, v):
     else:
         for k in old_v:
             d[key][k] += v[k]
+
+def plot_text_scores(text_scores: dict, out_dir, top_n: int = 20, figsize=None, max_chars: int = 80):
+    if not text_scores:
+        print("Skipping plot: no text scores to display.")
+        return None, None
+
+    sorted_items = sorted(text_scores.items(), key=lambda x: x[1], reverse=True)[:top_n]
+    sorted_items = sorted_items[::-1]
+    
+    def truncate(t):
+        t = t.replace('\n', ' ').strip()
+        t = re.sub(r'([\\${}_^])', r'\\\1', t)  # escape mathtext-special chars
+        return t if len(t) <= max_chars else t[:max_chars - 1].rstrip() + '…'`
+
+    texts = [truncate(t) for t, _ in sorted_items]
+    scores = [s for _, s in sorted_items]
+
+    viridis_cmap = mcolors.LinearSegmentedColormap.from_list(
+        'custom_viridis',
+        [COLORS['purple'], COLORS['indigo'], COLORS['teal'],
+         COLORS['seafoam'], COLORS['green'], COLORS['yellow']]
+    )
+    norm = mcolors.Normalize(vmin=min(scores), vmax=max(scores))
+    bar_colors = [viridis_cmap(norm(s)) for s in scores]
+
+    if figsize is None:
+        figsize = (10, max(4, 0.35 * len(texts)))
+
+    fig, ax = plt.subplots(figsize=figsize)
+    ax.barh(range(len(texts)), scores, color=bar_colors)
+
+    ax.set_yticks(range(len(texts)))
+    ax.set_yticklabels(texts, fontsize=8)
+    ax.set_xlabel('Selection Frequency')
+    ax.set_title(f'Top {len(texts)} Texts by Selection Frequency', fontsize=14, pad=12)
+
+    ax.spines['top'].set_visible(False)
+    ax.spines['right'].set_visible(False)
+    ax.spines['bottom'].set_visible(False)   # optional: axis line itself is now unused too
+
+    plt.tight_layout()
+    plt.savefig(
+        out_dir,
+        dpi=300, bbox_inches='tight'
+    )
+    plt.close()
+    return fig, ax
 
 class Eval:
     def __init__(self):
@@ -1953,7 +2001,8 @@ class Eval:
                 for w in attn_summary[dir.name][cat]:
                     item = attn_summary[dir.name][cat][w]
                     if isinstance(item, Counter):
-                        pass
+                        out_dir = self.results_path / 'attn_analysis' / f'{dir.name}_{cat}_{w}'
+                        plot_text_scores(item, out_dir)
                     else:
                         item = item.T
                         if w == 'ist':

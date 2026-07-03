@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from torch.utils.data import Dataset
 from pathlib import Path
 import pandas as pd
 from river.drift import ADWIN
@@ -43,6 +44,8 @@ import itertools
 from statsmodels.stats.multitest import multipletests
 from patsy import build_design_matrices
 
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
 news = False
 social = False
 transformer = True
@@ -80,7 +83,26 @@ experiment.build_model(
     sigma=5e-2,
 )
 
-best_path = self.experiments_path / exp_name / f'{exp_name}.pt'
+class StockTransformerDataset(Dataset):
+    def __init__(self, path, stock_lookback):
+        self.stock_data = torch.load(path)
+        self.stock_lookback = stock_lookback
+    
+    def __len__(self):
+        return self.stock_data['features'].shape[1] - self.stock_lookback + 1
+    
+    def __getitem__(self, idx):
+        x = self.stock_data['features'][:, idx:idx + self.stock_lookback, :]
+        y = self.stock_data['target'][:, :, idx]
+        t = self.stock_data['timestamps'][:, idx:idx + self.stock_lookback]
+
+        # print(f'Shapes: X: {x.shape}; y: {y.shape}; ts: {t.shape}')
+
+        return t, x, y
+
+experiments_path = Path('experiments')
+
+best_path = experiments_path / exp_name / f'{exp_name}.pt'
 best_weights = torch.load(best_path, map_location=device, weights_only=False)['model']
 
 model = experiment.model.to(device)
@@ -91,3 +113,15 @@ fin_embed = model.fin_embed
 tst = model.time_series_transformer
 layer = tst.transformer[0]
 attn_blk = layer.attn_blk
+
+dataset = StockTransformerDataset(Path('experiments/data/stock_transformer_10m_test.pt'), 60)
+
+t, x, target = dataset[0]
+t = t.unsqueeze(0).to(device)
+x = x.unsqueeze(0).to(device)
+
+attn_out, attn_weights = attn_blk(
+    fin_embed(x, t)
+)
+print(attn_weights)
+print(x[:, 0, :, 31])
