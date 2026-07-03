@@ -1856,9 +1856,9 @@ class Eval:
                 if news and social:
                     keys = ('tst', 'sft', 'nft', 'ist', 'sin', 'nin')
                 elif social:
-                    keys = ('tst', 'sft', 'sin', 'ist')
+                    keys = ('tst', 'sft', 'ist', 'sin')
                 elif news:
-                    keys = ('tst', 'nft', 'nin' ,'ist')
+                    keys = ('tst', 'nft', 'ist', 'nin')
                 else:
                     keys = ('tst', 'ist')
                 
