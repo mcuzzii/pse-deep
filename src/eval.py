@@ -1889,6 +1889,8 @@ class Eval:
                     sample = text_embeds[mask]        # Tn, En
 
                     snapshot[ind] = snapshot[ind][..., :mask.sum()]
+                    print(f'sample: {sample.shape}')
+                    print(f'ind: {snapshot[ind].shape}')
 
                     selected = torch.einsum("stkn,ne->stke", snapshot[ind], sample)      # S, Ts, K, En
 
