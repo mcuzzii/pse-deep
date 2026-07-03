@@ -1883,12 +1883,14 @@ class Eval:
 
                     time_vec_input = ref.df[ref.time_vec_input]
                     idx = (time_vec_input - last_timestamp).abs().idxmin()
-        
+    
                     cutoff, _ = get_text_window(idx, time_vec_input.index, pred_horizon)
+                    cutoff_scaled = get_elapsed_time(cutoff)
+
                     print(f'Boundary: {cutoff}')
                     print(f'ts: {ts[i]}')
-
-                    cutoff_scaled = get_elapsed_time(cutoff)
+                    at_boundary = text_ts[text_ts == cutoff_scaled]  # or == get_elapsed_time(cutoff)
+                    print(f'diff: {len(at_boundary)}, ', at_boundary)
                 
                 ignore_batch = False
 
