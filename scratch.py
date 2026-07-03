@@ -1,66 +1,93 @@
 import torch
+import torch.nn as nn
+import torch.nn.functional as F
+from pathlib import Path
 import pandas as pd
-import matplotlib.pyplot as plt
+from river.drift import ADWIN
+import numpy as np
+from tqdm import tqdm
 import sys
 from pathlib import Path
-import joblib
-import numpy as np
+from sklearn.metrics import (
+    matthews_corrcoef,
+    accuracy_score,
+    precision_score,
+    recall_score,
+    f1_score
+)
 
 sys.path.append(str(Path.cwd() / 'src'))
 
-from processing import get_stocks, DataSource
+from processing import DataSource, get_stocks, get_elapsed_time, get_text_window
+from collections import Counter
+from experiments import Experiment, mcc_curve
+from utils import setup_plot_style, COLORS
+import statsmodels.formula.api as smf
+import statsmodels.api as sm
+import os
+import time
+import joblib
+import re
+from sklearn.linear_model import LogisticRegression
+from sklearn.svm import LinearSVC
+from sklearn.ensemble import RandomForestClassifier
+from xgboost import XGBClassifier
+from scipy.special import expit
+from scipy.stats import wilcoxon
+from scipy import stats
+import matplotlib.pyplot as plt
+import matplotlib.ticker as ticker
+import matplotlib.colors as mcolors
+import seaborn as sns
+import itertools
+from statsmodels.stats.multitest import multipletests
+from patsy import build_design_matrices
 
-data = torch.load('experiments/data/stock_transformer_30m_test.pt', map_location=torch.device('cpu'), weights_only=True)['features']
+news = False
+social = False
+transformer = True
+pred_30 = False
+pred_horizon_prefix = 30 if pred_30 else 10
 
-_ref_30 = joblib.load('data/processed/ac_30m.joblib').filtered_date_times
-_ref_10 = joblib.load('data/processed/ac_10m.joblib').filtered_date_times
+news_prefix = 'news_' if news else ''
+social_prefix = 'social_' if social else ''
+model_prefix = 'transformer_' if transformer else 'mlp_'
+pred_horizon_prefix = 30 if pred_30 else 10
 
-ts_30 = _ref_30[int(len(_ref_30) * 0.9) + 1:]
-ts_10 = _ref_10[int(len(_ref_10) * 0.9) + 1:]
+exp_name = f"stock_{news_prefix}{social_prefix}{model_prefix}{pred_horizon_prefix}"
 
-data = np.roll(data[:, -len(ts_30):, :].numpy(), -30, 1)
-print(data.shape)
+experiment = Experiment(
+    experiment_name=exp_name,
+    transformer=transformer,
+    pred_30=pred_30,
+    news=news,
+    social=social,
+    stock_lookback=60
+)
+experiment.build_model(
+    input_dim=100 if transformer else 110,
+    news_input_dim=15,
+    social_input_dim=6 if transformer else 15,
+    text_input_dim=1024,
+    social_embedding_dim=16,
+    hidden_dim=384,
+    embedding_dim=128,
+    num_layers=1 if transformer else 5,
+    temporal_embedding_dim=16,
+    dropout=0.1,
+    K=5,
+    num_samples=500,
+    sigma=5e-2,
+)
 
-for offset in range(30):
+best_path = self.experiments_path / exp_name / f'{exp_name}.pt'
+best_weights = torch.load(best_path, map_location=device, weights_only=False)['model']
 
-    reference = pd.read_csv(f'experiments/results/trading_sim/close_prices/30_{offset}.csv', index_col=0)
-    reference.index = pd.to_datetime(reference.index)
+model = experiment.model.to(device)
+model.load_state_dict(best_weights)
+model.eval()
 
-    fig, (ax1, ax2) = plt.subplots(1, 2)
-    fig.suptitle('Closing Prices')
-    ax1.plot(
-        data[
-            1,
-            (
-                ts_30.minute.isin(range(0 + offset, 60 + offset, 30)) &
-                (
-                    (ts_30.time <= pd.Timestamp('11:00').time()) |
-                    (
-                        (ts_30.time >= pd.Timestamp('13:00').time()) &
-                        (ts_30.time <= pd.Timestamp('14:00').time())
-                    )
-                )
-            ),
-            41
-        ], label="Standardized Closing Prices")
-    ax2.plot(
-        reference.loc[
-            (reference.index.time <= pd.Timestamp('11:00').time()) |
-            (
-                (reference.index.time >= pd.Timestamp('13:00').time()) &
-                (reference.index.time <= pd.Timestamp('14:00').time())
-            ),
-            'emi'
-        ].to_numpy(), label="Actual Closing Prices"
-    )
-
-    ax1.grid(False)
-    ax2.grid(False)
-    fig.tight_layout()
-
-    save_path = f'experiments/results/trading_sim/emi_{offset}.png'
-
-    fig.savefig(save_path, dpi=300)
-
-# 0: acen
-# 1: emi
+fin_embed = model.fin_embed
+tst = model.time_series_transformer
+layer = tst.transformer[0]
+attn_blk = layer.attn_blk

@@ -1955,6 +1955,7 @@ class Eval:
                     if isinstance(item, Counter):
                         pass
                     else:
+                        item = item.T
                         if w == 'ist':
                             xtick = [s.upper() for s in self.stock_map[dir.name]['stocks']]
                             ytick = xtick
@@ -1962,14 +1963,13 @@ class Eval:
                             ylab = 'Stocks (KV)'
                             figsize = (7, 6)
                         if w == 'tst':
-                            xtick = range(1, 61)
+                            xtick = range(60, 0, -1)
                             ytick = xtick
                             xlab = 'Minutes Ago (Q)'
                             ylab = 'Minutes Ago (KV)'
                             figsize = (7, 6)
                         if w in ('nft', 'sft'):
-                            item = item.T
-                            xtick = range(1, 61)
+                            xtick = range(60, 0, -1)
                             ytick = [f'Top {i}' for i in range(1, 6)]
                             xlab = 'Minutes Ago (Q)'
                             ylab = f'Selected {'News' if w == 'nft' else 'X Posts'} (KV)'
