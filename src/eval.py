@@ -1865,10 +1865,14 @@ class Eval:
                 snapshot = {k: v for k, v in zip(keys, tensors)}
 
                 if social or news:
-                    cutoff, _ = get_text_window(ts[i], ts, pred_horizon)
+        
+                    last_timestamp = get_elapsed_time(ts[i])
+                    time_vec_input = get_elapsed_time(ts)
+                    idx = (time_vec_input - last_timestamp).abs().idxmin()
+        
+                    cutoff, _ = get_text_window(idx, time_vec_input.index, pred_horizon)
 
                     cutoff_scaled = get_elapsed_time(cutoff)
-                    ts_scaled = get_elapsed_time(ts[i])
                 
                 ignore_batch = False
 
@@ -1887,7 +1891,7 @@ class Eval:
                         text_df = news_df
                         attn = 'nft'
 
-                    mask = (cutoff_scaled < text_ts) & (text_ts <= ts_scaled)
+                    mask = (cutoff_scaled < text_ts) & (text_ts <= last_timestamp)
                     sample = text_embeds[mask]        # Tn, En
 
                     try:
