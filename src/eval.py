@@ -1800,11 +1800,8 @@ class Eval:
 
         print("Loading reference datasets..")
 
-        ref_30 = joblib.load('data/processed/ac_30m.joblib')
-        ref_10 = joblib.load('data/processed/ac_10m.joblib')
-
-        ts_30 = ref_30.filtered_date_times
-        ts_10 = ref_10.filtered_date_times
+        ts_30 = joblib.load('data/processed/ac_30m.joblib').filtered_date_times
+        ts_10 = joblib.load('data/processed/ac_10m.joblib').filtered_date_times
 
         print("Loading text datasets..")
 
@@ -1827,8 +1824,6 @@ class Eval:
             ts = ts_30 if pred_30 else ts_10
             ts = ts[int(len(ts) * 0.9) + 1:]
 
-            ref = ref_30 if pred_30 else ref_10
-
             if news:
                 news_data = torch.load(
                     self.results_path / 'attn_analysis' / 'embeds' / f'{dir.name}_news.pt',
@@ -1846,12 +1841,6 @@ class Eval:
                 )
                 social_embeds = social_data['out']
                 social_ts = social_data['timestamps']
-            
-            stock_data = torch.load(
-                f'experiments/data/stock_transformer_{pred_horizon}m_test.pt',
-                map_location=device,
-                weights_only=False
-            )
 
             summary_tensors[dir.name] = dict()
 
@@ -1859,39 +1848,28 @@ class Eval:
             
             for batch in tqdm(batches_dir.iterdir()):
                 counter += 1
-                if counter == 30: break
+                if counter == 6: break
                 tensors = torch.load(batch, map_location=device, weights_only=False)
 
-                b = int(batch.name[6:-3])
-                i = b * 2 + 1
+                i = int(batch.name[6:-3]) * 2 + 1
 
                 if news and social:
                     keys = ('tst', 'sft', 'nft', 'ist', 'sin', 'nin')
                 elif social:
-                    keys = ('tst', 'sft', 'ist', 'sin')
+                    keys = ('tst', 'sft', 'sin', 'ist')
                 elif news:
-                    keys = ('tst', 'nft', 'ist' ,'nin')
+                    keys = ('tst', 'nft', 'nin' ,'ist')
                 else:
                     keys = ('tst', 'ist')
                 
                 snapshot = {k: v for k, v in zip(keys, tensors)}
 
                 if social or news:
+                    cutoff, _ = get_text_window(ts[i], ts, pred_horizon)
 
-                    t = stock_data['timestamps'][:, i:i + 60]
-                    last_timestamp = float(t[0, -1])
-
-                    time_vec_input = ref.df[ref.time_vec_input]
-                    idx = (time_vec_input - last_timestamp).abs().idxmin()
-    
-                    cutoff, _ = get_text_window(idx, time_vec_input.index, pred_horizon)
                     cutoff_scaled = get_elapsed_time(cutoff)
-
-                    print(f'Boundary: {cutoff}')
-                    print(f'ts: {ts[i]}')
+                    ts_scaled = get_elapsed_time(ts[i])
                 
-                ignore_batch = False
-
                 for ind in ('sin', 'nin'):
                     if ind not in snapshot:
                         continue
@@ -1907,44 +1885,31 @@ class Eval:
                         text_df = news_df
                         attn = 'nft'
 
-                    mask = (cutoff_scaled <= text_ts) & (text_ts <= last_timestamp)
+                    mask = (cutoff_scaled < text_ts) & (text_ts <= ts_scaled)
                     sample = text_embeds[mask]        # Tn, En
 
-                    try:
+                    selected = torch.einsum("stkn,ne->stke", snapshot[ind], sample)      # S, Ts, K, En
 
-                        selected = torch.einsum("stkn,ne->stke", snapshot[ind], sample)      # S, Ts, K, En
+                    selected_norm = F.normalize(selected, dim=-1)      # S, Ts, K, En
+                    sample_norm   = F.normalize(sample, dim=-1)        # Tn, En
 
-                        selected_norm = F.normalize(selected, dim=-1)      # S, Ts, K, En
-                        sample_norm   = F.normalize(sample, dim=-1)        # Tn, En
+                    sim = torch.einsum("stke,ne->stkn", selected_norm, sample_norm)  # S, Ts, K, Tn
 
-                        sim = torch.einsum("stke,ne->stkn", selected_norm, sample_norm)  # S, Ts, K, Tn
+                    closest_idx = sim.argmax(dim=-1)   # S, Ts, K
 
-                        closest_idx = sim.argmax(dim=-1)   # S, Ts, K
+                    Tn = sample.shape[0]
 
-                        Tn = sample.shape[0]
+                    scores = torch.zeros(Tn, device=selected.device, dtype=snapshot[attn].dtype)
+                    scores = scores.scatter_add_(0, closest_idx.reshape(-1), snapshot[attn].reshape(-1))
 
-                        scores = torch.zeros(Tn, device=selected.device, dtype=snapshot[attn].dtype)
-                        scores = scores.scatter_add_(0, closest_idx.reshape(-1), snapshot[attn].reshape(-1))
+                    text = text_df.df.loc[
+                        (cutoff < text_df.df.index) & (text_df.df.index <= ts[i]),
+                        text_df.text_col
+                    ]
 
-                        text = text_df.df.loc[
-                            (cutoff < text_df.df.index) & (text_df.df.index <= ts[i]),
-                            text_df.text_col
-                        ]
-
-                        snapshot[ind] = Counter(dict(zip(text, scores.tolist())))
-                    
-                    except Exception as e:
-                        print(f"Exception raised: {e}")
-                        ignore_batch = True
-                        break
-                    
-                if ignore_batch:
-                    continue
+                    snapshot[ind] = Counter(dict(zip(text, scores.tolist())))
 
                 for ind in ('tst', 'sft', 'nft', 'ist'):
-                    if ind not in snapshot:
-                        continue
-
                     snapshot[ind] = snapshot[ind].sum(dim=0)
                 
                 if ts[i].time() <= pd.Timestamp('10:00').time():
