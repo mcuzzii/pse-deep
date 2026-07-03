@@ -551,7 +551,7 @@ def plot_text_scores(text_scores: dict, out_dir, top_n: int = 20, figsize=None, 
     def truncate(t):
         t = t.replace('\n', ' ').strip()
         t = re.sub(r'([\\${}_^])', r'\\\1', t)  # escape mathtext-special chars
-        return t if len(t) <= max_chars else t[:max_chars - 1].rstrip() + '…'`
+        return t if len(t) <= max_chars else t[:max_chars - 1].rstrip() + '...'
 
     texts = [truncate(t) for t, _ in sorted_items]
     scores = [s for _, s in sorted_items]
