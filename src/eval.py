@@ -587,6 +587,291 @@ def plot_text_scores(text_scores: dict, out_dir, top_n: int = 20, figsize=None, 
     plt.close()
     return fig, ax
 
+import re
+
+def prettify_term(term: str) -> str:
+    """Convert statsmodels/Patsy term names into readable labels."""
+
+    replacements = {
+        "pred_30[T.True]": "30-min Horizon",
+        "pred_30": "30-min Horizon",
+        "news[T.True]": "News",
+        "news": "News",
+        "social[T.True]": "Social",
+        "social": "Social",
+        "transformer[T.True]": "Transformer",
+        "transformer": "Transformer",
+
+        "random_forest": "Random Forest",
+        "logistic_regression": "Logistic Regression",
+        "xgboost": "XGBoost",
+        "linear_svc": "Linear SVC",
+
+        "elapsed_time": "Elapsed Time",
+
+        "C(time_of_day)[T.pre_lunch]": "Pre-lunch",
+        "C(time_of_day)[T.pm_open]": "PM Open",
+        "C(time_of_day)[T.pre_close]": "Pre-close",
+        "C(time_of_day)[T.pre_recess]": "Pre-recess",
+
+        "Intercept": "Intercept",
+    }
+
+    # Replace longer patterns first
+    for old, new in sorted(replacements.items(), key=lambda x: -len(x[0])):
+        term = term.replace(old, new)
+
+    # Replace interactions
+    term = term.replace(":", " × ")
+
+    # Remove any leftover [T.xxx]
+    term = re.sub(r"\[T\.([^\]]+)\]", r"=\1", term)
+
+    return term
+
+def plot_feature_scores(
+    df: pd.DataFrame,
+    out_dir: Path,
+    score_col: str = "coef",
+    feature_col: str = None,
+    p_col: str = "p_value",
+    significance: float = 0.05,
+    figsize=(9, 6),
+):
+    """
+    Plot feature scores as a sorted bar chart.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        DataFrame containing coefficients and p-values.
+    score_col : str
+        Column to plot (default: abs_coef).
+    feature_col : str
+        Column containing feature names. If None, uses the DataFrame index.
+    p_col : str
+        Column containing p-values.
+    significance : float
+        Significance threshold.
+    figsize : tuple
+        Figure size.
+    """
+
+    setup_plot_style()
+
+    data = df.copy()
+
+    if feature_col is None:
+        data["feature"] = data.index
+        feature_col = "feature"
+
+    # Remove intercept if desired
+    data = data[data[feature_col] != "Intercept"]
+
+    # Sort by score (largest first)
+    data = data.reindex(
+        data[score_col].abs().sort_values(ascending=False).index
+    )
+
+    data[feature_col] = data[feature_col].map(prettify_term)
+
+    colors = [
+        "#FFD54F" if p < significance else "#7E57C2"
+        for p in data[p_col]
+    ]
+
+    fig, ax = plt.subplots(figsize=figsize)
+
+    bars = ax.barh(
+        data[feature_col],
+        data[score_col],
+        color=colors,
+        edgecolor="black",
+        linewidth=0.8,
+    )
+
+    # Largest at the top
+    ax.invert_yaxis()
+
+    xmin = min(0, data[score_col].min())
+    xmax = max(0, data[score_col].max())
+    pad = 0.02 * (xmax - xmin)
+
+    for bar, p in zip(bars, data[p_col]):
+        width = bar.get_width()
+
+        if p < 1e-3:
+            label = f"p={p:.1e}"
+        else:
+            label = f"p={p:.3f}"
+
+        width = bar.get_width()
+
+        if width >= 0:
+            x = width + pad
+            ha = "left"
+        else:
+            x = width - pad
+            ha = "right"
+
+        ax.text(
+            x,
+            bar.get_y() + bar.get_height() / 2,
+            label,
+            va="center",
+            ha=ha,
+            fontsize=10,
+        )
+
+    ax.set_xlabel(score_col.replace("_", " ").title())
+    ax.set_ylabel("")
+    ax.set_title("Feature Scores")
+    ax.spines["top"].set_visible(False)
+    ax.spines["right"].set_visible(False)
+    ax.axvline(0, color="black", linewidth=1)
+    pad = 0.2 * (xmax - xmin)   # or 0.1 if you want more space
+    ax.set_xlim(xmin - pad, xmax + pad)
+
+    plt.tight_layout()
+    plt.savefig(
+        out_dir,
+        dpi=300, bbox_inches='tight'
+    )
+    plt.close()
+
+    return fig, ax
+
+def make_group_label(row, group_cols):
+    labels = []
+
+    if "pred_30" in group_cols and row["pred_30"]:
+        labels.append("30-min")
+
+    if "news" in group_cols and row["news"]:
+        labels.append("News")
+
+    if "social" in group_cols and row["social"]:
+        labels.append("Social")
+
+    if "transformer" in group_cols and row["transformer"]:
+        labels.append("Transformer")
+
+    if not labels:
+        return "Stock only"
+
+    return " + ".join(labels)
+
+def plot_shap_trends(
+    df,
+    key,
+    out_dir,
+    shap_col="shap",
+    time_col="timestamp",
+    group_candidates=("pred_30", "news", "social"),
+):
+    """
+    Creates:
+      1. SHAP vs date/time
+      2. SHAP vs 10-minute time-of-day
+
+    Groups by whichever of pred_30/news/social exist.
+    """
+
+    setup_plot_style()
+
+    df = df.copy()
+    df[time_col] = pd.to_datetime(df[time_col])
+
+    # Determine available grouping columns
+    group_cols = [c for c in group_candidates if c in df.columns]
+
+    # Human-readable group labels
+    if group_cols:
+        df["group"] = df.apply(
+            make_group_label,
+            axis=1,
+            group_cols=group_cols,
+        )
+    else:
+        df["group"] = "All"
+
+    ##############################
+    # Plot 1: chronological trend
+    ##############################
+
+    df["date"] = df[time_col].dt.date
+
+    date_df = (
+        df.groupby(["date", "group"], as_index=False)[shap_col]
+        .mean()
+    )
+
+    date_df["date"] = pd.to_datetime(date_df["date"])
+
+    fig, ax = plt.subplots(figsize=(10, 5))
+
+    for group, grp in date_df.groupby("group"):
+        ax.plot(
+            grp["date"],
+            grp[shap_col],
+            label=group,
+            linewidth=2,
+        )
+
+    ax.set_xlabel("Date")
+    ax.set_ylabel("Mean SHAP")
+    ax.legend(title=", ".join(group_cols))
+    plt.tight_layout()
+    plt.savefig(
+        out_dir / f'{key}_trend.png',
+        dpi=300, bbox_inches='tight'
+    )
+    plt.close()
+
+    ##############################
+    # Plot 2: 10-minute time bins
+    ##############################
+
+    df["time_bin"] = (
+        df[time_col]
+        .dt.floor("10min")
+        .dt.strftime("%H:%M")
+    )
+
+    tod_df = (
+        df.groupby(["time_bin", "group"], as_index=False)[shap_col]
+        .mean()
+    )
+
+    # chronological ordering
+    order = sorted(
+        tod_df["time_bin"].unique(),
+        key=lambda x: pd.to_datetime(x, format="%H:%M"),
+    )
+
+    fig, ax = plt.subplots(figsize=(12, 5))
+
+    for group, grp in tod_df.groupby("group"):
+        grp = grp.set_index("time_bin").reindex(order).reset_index()
+
+        ax.plot(
+            grp["time_bin"],
+            grp[shap_col],
+            label=group,
+            linewidth=2,
+        )
+
+    ax.set_xlabel("Time of Day (10-minute bins)")
+    ax.set_ylabel("Mean SHAP")
+    ax.tick_params(axis="x", rotation=45)
+    ax.legend(title=", ".join(group_cols))
+    plt.tight_layout()
+    plt.savefig(
+        out_dir / f'{key}_time_of_day.png',
+        dpi=300, bbox_inches='tight'
+    )
+    plt.close()
+
 class Eval:
     def __init__(self):
         self.experiments_path = Path('experiments')
@@ -2058,3 +2343,39 @@ class Eval:
                             dpi=300, bbox_inches='tight'
                         )
                         plt.close()
+    
+    def plot_all_tests(self):
+        paths = {
+            'drift': self.results_path / 'mixed_effects' / 'drift_coefficients.csv',
+            'mcc': self.results_path / 'mixed_effects' / 'mcc_coefficients.csv',
+            'baseline_drift': self.results_path / 'baseline_comparison' / 'drift_coefficients.csv',
+            'baseline_mcc': self.results_path / 'baseline_comparison' / 'mcc_coefficients.csv',
+            'cum_profit': self.results_path / 'trading_sim' / 'mixed_effects' / 'cum_profit_coefficients.csv',
+            'baseline_cum_profit': self.results_path / 'trading_sim' / 'baseline_comparison' / 'cum_profit_coefficients.csv',
+            **{
+                k.name: k / 'shap_coefficients.csv'
+                for k in (self.results_path / 'shap_analysis').iterdir()
+                if k.is_dir() and k.name != 'model_inputs'
+            }
+        }
+
+        for key, path in paths.items():
+            plot_feature_scores(
+                pd.read_csv(path, index_col=0),
+                path.parent
+            )
+    
+    def plot_all_shap_trends(self):
+        paths = [
+            self.results_path / 'shap_analysis' / 'model_inputs' / k.name
+            for k in (self.results_path / 'shap_analysis' / 'model_inputs').iterdir()
+            if 'groups' not in k.name
+        ]
+
+        for path in paths:
+            shap_df = pd.read_csv(path)
+            plot_shap_trends(
+                shap_df,
+                path.name,
+                path.parent
+            )
