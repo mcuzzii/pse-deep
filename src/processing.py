@@ -1456,6 +1456,7 @@ class DataSource:
         ignore_history: bool = False
     ):
         self.df.to_csv('src/news/data/raw/news/news.csv')
+        subprocess.run(["uv", "sync"])
         subprocess.run(["uv", "run", "--directory", "src/news", "python", "main.py"])
         self.df = pd.read_csv('src/news/data/processed/news/news_final.csv', index_col=0)
         
