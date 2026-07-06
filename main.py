@@ -31,7 +31,7 @@ def preprocess():
     lseg_news_data.get_translated_examples()
     lseg_news_data.get_headline_sentiment_examples()
 
-    for i in [52320, 47506, 32768]:
+    for i in [4705, 8405, 12495]:
         social_media_data.get_similar_embeddings(index=i, n_results=10)
         lseg_news_data.get_similar_embeddings(index=i, n_results=10)
     
