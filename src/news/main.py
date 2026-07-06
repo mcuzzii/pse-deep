@@ -17,6 +17,15 @@ import time
 import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from collections import defaultdict
+from dotenv import load_dotenv
+import os
+import asyncio
+import aiohttp
+from aiolimiter import AsyncLimiter
+from rapidfuzz import fuzz
+import random
+
+load_dotenv()
 
 custom_headers = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
@@ -317,7 +326,6 @@ def extract_exact_timestamp(url):
 
     return None, None
 
-
 def load_news():
     print("Loading news...")
 
@@ -331,9 +339,20 @@ def load_news():
     else:
         news_df = pd.read_csv(raw_path / 'news.csv', index_col=0)
     
+    news_df['text'] = news_df['text'].str.strip()
+    news_df['text'] = news_df['text'].str.replace(r'\s+', ' ', regex=True)
+    news_df = news_df.loc[news_df['text'] != ""]
+    news_df.drop_duplicates(subset=['text'], keep='first', inplace=True)
+
+    news_df = news_df.loc[
+        (news_df['source'] != "RTRS") &
+        (news_df['source'] != "GLORDP") &
+        (news_df['source'] != "GLFILE")
+    ]
+    
     return news_df, processed_path
 
-def get_news_urls(news_df, processed_path):
+def get_lseg_news_urls(news_df, processed_path):
     news_urls = []
     indices = news_df.index.tolist()
 
@@ -460,10 +479,296 @@ def filter_news(news_df, processed_path):
 
     return news_df
 
+SIMILARITY_THRESHOLD = 0
+MAX_RETRIES = 5
+CONCURRENCY = 20
+REQUESTS_PER_SECOND = 1
+SAVE_EVERY = 100
+
+rate_limiter = AsyncLimiter(REQUESTS_PER_SECOND, 1)
+save_lock = asyncio.Lock()
+processed = 0
+
+async def query_serper(session, headline, api_key, exact=True, news_endpoint=True):
+
+    payload = {
+        "q": f'"{headline}"' if exact else headline
+    }
+
+    headers = {
+        "X-API-KEY": api_key,
+        "Content-Type": "application/json"
+    }
+
+    try:
+
+        async with session.post(
+            f"https://google.serper.dev/{'news' if news_endpoint else 'search'}",
+            json=payload,
+            headers=headers
+        ) as response:
+            
+            if response.status == 400:
+                print(await response.text())
+                return "error", None
+
+            if response.status == 401:
+                return "error", None
+
+            if response.status == 403:
+                return "error", None
+
+            if response.status == 429:
+                return "retry", None
+
+            if response.status >= 500:
+                return "retry", None
+
+            if response.status != 200:
+                print(response.status, headline)
+                print(await response.text())
+                return "no_match", None
+
+            data = await response.json()
+
+    except (
+        aiohttp.ClientError,
+        asyncio.TimeoutError
+    ):
+        return "retry", None
+
+    except Exception:
+        traceback.print_exc()
+        return "retry", None
+    
+    news = data.get("news")
+
+    if not news:
+        news = data.get("organic")
+
+    if not news:
+        return "no_match", None
+
+    best = None
+    best_score = -1
+
+    for article in news:
+
+        score = fuzz.partial_ratio(
+            headline.lower(),
+            article["title"].lower()
+        )
+
+        if score > best_score:
+            best = article
+            best_score = score
+
+    if best is None or best_score < SIMILARITY_THRESHOLD:
+        return "no_match", None
+
+    return "success", {
+        "matched_title": best["title"],
+        "similarity": best_score,
+        "source": best.get("source"),
+        "url": best.get("link")
+    }
+
+def clean_headline(headline):
+    headline = re.sub(r"\(\d+\)$", "", headline)
+    headline = re.sub(r"\bBRIEF\b", "", headline, flags=re.I)
+    return " ".join(headline.split())
+
+async def worker(
+    idx,
+    df,
+    session,
+    semaphore,
+    rate_limiter,
+    api_key,
+    processed_path
+):
+
+    global processed
+
+    headline = df.at[idx, "text"]
+
+    if not isinstance(headline, str):
+        return
+
+    headline = headline.strip()
+    headline = clean_headline(headline)
+
+    if not headline:
+        return
+
+    async with semaphore:
+
+        for attempt in range(MAX_RETRIES):
+
+            async with rate_limiter:
+
+                status, result = await query_serper(
+                    session,
+                    headline,
+                    api_key,
+                    exact=True,
+                    news_endpoint=True
+                )
+
+            if status == "success":
+
+                df.at[idx, "matched_title"] = result["matched_title"]
+                df.at[idx, "similarity"] = result["similarity"]
+                df.at[idx, "source"] = result["source"]
+                df.at[idx, "news_urls"] = result["url"]
+
+                print(f"{idx}: ✓")
+
+                break
+
+            elif status == "no_match":
+
+                print(f"{idx}: no match")
+
+                break
+
+            elif status == "retry":
+
+                wait = 2 ** attempt
+
+                print(
+                    f"{idx}: retry "
+                    f"{attempt + 1}/{MAX_RETRIES} "
+                    f"in {wait}s"
+                )
+
+                await asyncio.sleep(wait)
+            
+            elif status == "error":
+                raise RuntimeError(f"Error encountered for idx {idx}")
+
+        async with save_lock:
+
+            processed += 1
+
+            if processed % SAVE_EVERY == 0:
+
+                print(f"Saving checkpoint ({processed})")
+
+                df.to_csv(
+                    processed_path / "news.csv"
+                )
+
+async def get_news_urls_async(
+    df,
+    processed_path,
+    headline_column="text",
+    concurrency=CONCURRENCY
+):
+
+    global processed
+
+    api_key = os.getenv("SERPER_API_TOKEN")
+
+    if api_key is None:
+        raise RuntimeError(
+            "SERPER_API_TOKEN not found."
+        )
+
+    for col in (
+        "news_urls",
+        "matched_title",
+        "similarity",
+        "source"
+    ):
+
+        if col not in df.columns:
+            df[col] = None
+
+    # Resume logic
+    to_extract = df.index[
+        df["news_urls"].isna()
+    ].tolist()
+
+    print(
+        f"{len(to_extract)} headlines remaining."
+    )
+
+    rng = random.Random(42)
+    
+    rng.shuffle(to_extract)
+
+    semaphore = asyncio.Semaphore(concurrency)
+
+    rate_limiter = AsyncLimiter(
+        REQUESTS_PER_SECOND,
+        1
+    )
+
+    connector = aiohttp.TCPConnector(
+        limit=concurrency
+    )
+
+    timeout = aiohttp.ClientTimeout(
+        total=30
+    )
+
+    try:
+
+        async with aiohttp.ClientSession(
+            connector=connector,
+            timeout=timeout
+        ) as session:
+
+            tasks = [
+
+                worker(
+                    idx,
+                    df,
+                    session,
+                    semaphore,
+                    rate_limiter,
+                    api_key,
+                    processed_path
+                )
+
+                for idx in to_extract
+
+            ]
+
+            results = await asyncio.gather(
+                *tasks,
+                return_exceptions=True
+            )
+
+            for r in results:
+
+                if isinstance(r, Exception):
+
+                    traceback.print_exception(r)
+
+    finally:
+
+        print("Saving final checkpoint...")
+
+        df.to_csv(
+            processed_path / "news.csv"
+        )
+
+    print("Done.")
+
+    return df
+
 if __name__ == '__main__':
     
     news_df, processed_path = load_news()
-    #news_df = get_news_urls(news_df, processed_path)
+    news_df = asyncio.run(
+        get_news_urls_async(
+            news_df,
+            processed_path,
+            concurrency=20
+        )
+    )
     #website_dist = get_news_distribution(news_df, processed_path)
     #news_df = get_news_timestamps(news_df, processed_path)
-    news_df = filter_news(news_df, processed_path)
+    #news_df = filter_news(news_df, processed_path)
