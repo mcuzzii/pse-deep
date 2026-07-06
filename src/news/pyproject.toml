@@ -9,6 +9,7 @@ dependencies = [
     "aiolimiter>=1.2.1",
     "bs4>=0.0.2",
     "dateparser>=1.4.1",
+    "dotenv>=0.9.9",
     "htmldate>=1.10.0",
     "pytz>=2026.2",
     "refinitiv-data>=1.6.2",
