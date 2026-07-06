@@ -1449,6 +1449,15 @@ class DataSource:
 
         self.df.index.name = 'local_time'
         self._add_elapsed_time()
+    
+    @record_history
+    def _recover_timestamps(
+        self,
+        ignore_history: bool = False
+    ):
+        self.df.to_csv('src/news/data/raw/news/news.csv')
+        subprocess.run(["uv", "run", "--directory", "src/news", "python", "main.py"])
+        self.df = pd.read_csv('src/news/data/processed/news/news_final.csv', index_col=0)
         
     # Processing pipeline for all data.
     def create_df(
@@ -1494,9 +1503,7 @@ class DataSource:
             self._load_lseg_news(ignore_history=ignore_history)
             self.text_col = 'text'
             self.date_col = 'date_time'
-            self.df.to_csv('src/news/data/raw/news/news.csv')
-            subprocess.run(["uv", "run", "--directory", "src/news", "python", "main.py"])
-            self.df = pd.read_csv('src/news/data/processed/news/news_final.csv', index_col=0)
+            self._recover_timestamps(ignore_history=ignore_history)
             self._text_preprocess(ignore_history=ignore_history)
         
         elif self._medium in ['stock', 'bond', 'copper', 'oil', 'fx']:

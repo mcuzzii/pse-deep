@@ -6,6 +6,7 @@ from pathlib import Path
 # Add the 'src' directory to the path
 sys.path.append(str(Path.cwd() / 'src'))
 
+import random
 from utils import seed_everything
 
 seed_everything(42)
@@ -31,7 +32,7 @@ def preprocess():
     lseg_news_data.get_translated_examples()
     lseg_news_data.get_headline_sentiment_examples()
 
-    for i in [4705, 8405, 12495]:
+    for i in random.sample(lseg_news_data.df.index.tolist(), 3):
         social_media_data.get_similar_embeddings(index=i, n_results=10)
         lseg_news_data.get_similar_embeddings(index=i, n_results=10)
     
