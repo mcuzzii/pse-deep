@@ -277,9 +277,6 @@ class DataSource:
         self.df[self.text_col] = self.df[self.text_col].str.replace(r'\s+', ' ', regex=True)
         self.df = self.df.loc[self.df[self.text_col] != ""]
 
-        # Deduplicate, keeping only the earliest post.
-        self.df.drop_duplicates(subset=[self.text_col], keep='first', inplace=True)
-
         # Convert user mentions and links to generic tokens and normalize hashtags and cashtags.
         self.df[self.text_col] = self.df[self.text_col].str.replace(USER_PATTERN, '<USER>', regex=True)
         self.df[self.text_col] = self.df[self.text_col].str.replace(URL_PATTERN, '<URL>', regex=True)
@@ -291,6 +288,9 @@ class DataSource:
 
         # Remove rows with NaN text.
         self.df = self.df.loc[self.df[self.text_col].notna()]
+
+        # Deduplicate, keeping only the earliest post.
+        self.df.drop_duplicates(subset=[self.text_col], keep='first', inplace=True)
 
         # Set date_time as index
         self.df = self.df.set_index(self.date_col)

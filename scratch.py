@@ -6,5 +6,6 @@ sys.path.append(str(Path.cwd() / 'src'))
 
 from processing import DataSource
 
-news_df = DataSource('news_copy')
+news_df = DataSource()
+news_df.create_df('news_copy')
 print(news_df.df)
