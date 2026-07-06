@@ -865,10 +865,6 @@ class DataSource:
         self._fill(c, close_attr, kind='forward')
         for col in ('open', 'high', 'low'):
             self._fill(c, col, value=self.df[c[close_attr]])
-        
-        self._fill(c, 'open', kind='backward')
-        for col in (close_attr, 'high', 'low'):
-            self._fill(c, col, value=self.df[c['open']])
     
     def _process_stock(self):
         c = self._col('open', 'high', 'low', 'close', 'net', 'volume', 'perc_chg')
@@ -885,7 +881,6 @@ class DataSource:
         self.df = self.df[[c['bid'], c['ask'], c['no_activity']]]
 
         self._fill(c, 'bid', 'ask', kind='forward')
-        self._fill(c, 'bid', 'ask', kind='backward')
         
         self._bid_ask_indicators(c)
         self._close_indicators(c, close_attr='midprice')
@@ -894,7 +889,6 @@ class DataSource:
         c = self._col('bid', 'ask', 'bidnet', 'open', 'high', 'low', 'refresh_rate')
 
         self._fill(c, 'bid', 'ask', kind='forward')
-        self._fill(c, 'bid', 'ask', kind='backward')
 
         self._bid_ask_indicators(c)
 
@@ -908,7 +902,6 @@ class DataSource:
         c = self._col('bid', 'ask', 'open', 'high', 'low', 'close', 'net', 'volume', 'perc_chg')
 
         self._fill(c, 'bid', 'ask', kind='forward')
-        self._fill(c, 'bid', 'ask', kind='backward')
 
         self._bid_ask_indicators(c)
 
@@ -924,7 +917,6 @@ class DataSource:
         c = self._col('bid', 'ask', 'askyld', 'bidyld', 'bidychg')
 
         self._fill(c, 'bid', 'ask', 'askyld', 'bidyld', kind='forward')
-        self._fill(c, 'bid', 'ask', 'askyld', 'bidyld', kind='backward')
         self._fill(c, 'bidychg', value=0)
     
     def _within_bond_indicators(self, c: dict):
@@ -959,7 +951,7 @@ class DataSource:
             periods = pd.date_range(start = '2025-03-12', end = '2026-04-17', freq = '1min')
             datetime_index = pd.DatetimeIndex(periods).sort_values()
 
-            bond_dfs[fn].df = bond_dfs[fn].df.reindex(datetime_index).ffill().bfill()
+            bond_dfs[fn].df = bond_dfs[fn].df.reindex(datetime_index).ffill()
 
             if bond_master is None:
                 bond_master = bond_dfs[fn].df
@@ -1119,7 +1111,6 @@ class DataSource:
         common_date_times = None
         for stock in self._stocks:
             stock_df = joblib.load(self.processed_path / f'{stock}.joblib')
-            stock_df.df = stock_df.df.loc[stock_df.df.index > '2025-06-02']
             dates = stock_df.df.index
             common_date_times = dates if common_date_times is None else common_date_times.intersection(dates)
         

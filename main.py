@@ -42,7 +42,7 @@ def preprocess():
     stocks = get_unique_instruments('data/raw/stock')
     for stock in stocks:
         stock_data = DataSource()
-        stock_data.create_df(raw_folder_name='stock', file_name=stock, medium='stock')
+        stock_data.create_df(raw_folder_name='stock', file_name=stock, medium='stock', ignore_history=True)
         del stock_data
         gc.collect()
     
@@ -50,37 +50,37 @@ def preprocess():
     bonds = get_unique_instruments('data/raw/bond')
     for bond in bonds:
         bond_data = DataSource()
-        bond_data.create_df(raw_folder_name='bond', file_name=bond, medium='bond')
+        bond_data.create_df(raw_folder_name='bond', file_name=bond, medium='bond', ignore_history=True)
         del bond_data
         gc.collect()
     
     print("Creating copper price data...")
     copper = DataSource()
-    copper.create_df(raw_folder_name='copper', file_name='copper', medium='copper')
+    copper.create_df(raw_folder_name='copper', file_name='copper', medium='copper', ignore_history=True)
     del copper
     gc.collect()
 
     print("Creating oil price data...")
     oil = DataSource()
-    oil.create_df(raw_folder_name='crude', file_name='lcoc1', medium='oil')
+    oil.create_df(raw_folder_name='crude', file_name='lcoc1', medium='oil', ignore_history=True)
     del oil
     gc.collect()
 
     print("Creating USD price data...")
     usd = DataSource()
-    usd.create_df(raw_folder_name='forex', file_name='usd', medium='fx')
+    usd.create_df(raw_folder_name='forex', file_name='usd', medium='fx', ignore_history=True)
     del usd
     gc.collect()
 
     print("Creating XAU price data...")
     xau = DataSource()
-    xau.create_df(raw_folder_name='xau', file_name='xau', medium='fx')
+    xau.create_df(raw_folder_name='xau', file_name='xau', medium='fx', ignore_history=True)
     del xau
     gc.collect()
 
     print("Combining government bonds...")
     bond_master = DataSource()
-    bond_master.create_df(file_name='bond_master', medium='bonds')
+    bond_master.create_df(file_name='bond_master', medium='bonds', ignore_history=True)
     del bond_master
     gc.collect()
 
@@ -90,7 +90,7 @@ def preprocess():
     for stock in stocks:
         print(f"Combining instruments for {stock}...")
         stock_data = DataSource()
-        stock_data.create_df(file_name=stock, medium='combined')
+        stock_data.create_df(file_name=stock, medium='combined', ignore_history=True)
         del stock_data
         gc.collect()
     
@@ -110,43 +110,43 @@ def preprocess():
     print("Finalizing datasets...")
     for stock in stocks:
         stock_data = DataSource()
-        stock_data.create_df(file_name=stock, medium='final', target=30)
+        stock_data.create_df(file_name=stock, medium='final', target=30, ignore_history=True)
         del stock_data
         gc.collect()
     
     for stock in stocks:
         stock_data = DataSource()
-        stock_data.create_df(file_name=stock, medium='final', target=10)
+        stock_data.create_df(file_name=stock, medium='final', target=10, ignore_history=True)
         del stock_data
         gc.collect()
     
     lseg_news_data = DataSource()
-    lseg_news_data.create_df(file_name='news', medium='final_text')
+    lseg_news_data.create_df(file_name='news', medium='final_text', ignore_history=True)
     del lseg_news_data
     gc.collect()
 
     social_media_data = DataSource()
-    social_media_data.create_df(file_name='social_media', medium='final_text')
+    social_media_data.create_df(file_name='social_media', medium='final_text', ignore_history=True)
     del social_media_data
     gc.collect()
 
     social_indicators_30 = DataSource()
-    social_indicators_30.create_df('social_media', medium='social_indicators', target=30)
+    social_indicators_30.create_df('social_media', medium='social_indicators', target=30, ignore_history=True)
     del social_indicators_30
     gc.collect()
 
     social_indicators_10 = DataSource()
-    social_indicators_10.create_df('social_media', medium='social_indicators', target=10)
+    social_indicators_10.create_df('social_media', medium='social_indicators', target=10, ignore_history=True)
     del social_indicators_10
     gc.collect()
 
     news_indicators_30 = DataSource()
-    news_indicators_30.create_df('news', medium='news_sentiment', target=30)
+    news_indicators_30.create_df('news', medium='news_sentiment', target=30, ignore_history=True)
     del news_indicators_30
     gc.collect()
 
     news_indicators_10 = DataSource()
-    news_indicators_10.create_df('news', medium='news_sentiment', target=10)
+    news_indicators_10.create_df('news', medium='news_sentiment', target=10, ignore_history=True)
     del news_indicators_10
     gc.collect()
 
@@ -217,4 +217,4 @@ def main():
     evaluator.plot_attention_scores()
 
 if __name__ == '__main__':
-    main()
+    preprocess()
