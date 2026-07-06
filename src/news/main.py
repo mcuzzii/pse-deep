@@ -24,6 +24,7 @@ import aiohttp
 from aiolimiter import AsyncLimiter
 from rapidfuzz import fuzz
 import random
+import numpy as np
 
 load_dotenv()
 
@@ -326,7 +327,7 @@ def extract_exact_timestamp(url):
 
     return None, None
 
-def load_news():
+def load_news(file_name='news', filter=True, get_raw=False):
     print("Loading news...")
 
     raw_path = Path('data/raw/news')
@@ -334,8 +335,8 @@ def load_news():
     raw_path.mkdir(parents=True, exist_ok=True)
     processed_path.mkdir(parents=True, exist_ok=True)
 
-    if (processed_path / 'news.csv').exists():
-        news_df = pd.read_csv(processed_path / 'news.csv', index_col=0)
+    if (processed_path / f'{file_name}.csv').exists() and not get_raw:
+        news_df = pd.read_csv(processed_path / f'{file_name}.csv', index_col=0)
     else:
         news_df = pd.read_csv(raw_path / 'news.csv', index_col=0)
     
@@ -344,48 +345,53 @@ def load_news():
     news_df = news_df.loc[news_df['text'] != ""]
     news_df.drop_duplicates(subset=['text'], keep='first', inplace=True)
 
-    news_df = news_df.loc[
-        (news_df['source'] != "RTRS") &
-        (news_df['source'] != "GLORDP") &
-        (news_df['source'] != "GLFILE")
-    ]
+    if filter:
+        news_df = news_df.loc[
+            (news_df['source'] != "RTRS") &
+            (news_df['source'] != "GLORDP") &
+            (news_df['source'] != "GLFILE")
+        ]
     
     return news_df, processed_path
 
 def get_lseg_news_urls(news_df, processed_path):
-    news_urls = []
-    indices = news_df.index.tolist()
+    finished = False
+    while not finished:
+        news_urls = []
+        indices = news_df.index.tolist()
 
-    if 'news_urls' not in news_df.columns.tolist() or not news_df['news_urls'].notna().sum():
-        news_df['news_urls'] = None
-        to_extract = indices
-    else:
-        to_extract = indices[indices.index(news_df['news_urls'].last_valid_index()) + 1:]
-    
-    try:
-        rd.open_session()
-        for url in tqdm(news_df.loc[to_extract, 'url']):
-            news_url = extract_news_url(url)
-            news_urls.append(news_url)
-
-        print("Success!")
-
-    except KeyboardInterrupt:
-        print("\nStopped by user.")
-
-    except Exception as e:
-        traceback.print_exc()
-        print(f'Error: {e}')
-    
-    finally:
-        new_indices = to_extract[:len(news_urls)]
-        news_df.loc[new_indices, 'news_urls'] = pd.Series(news_urls, index=new_indices)
-
-        news_df.to_csv(processed_path / 'news.csv')
+        if 'news_urls' not in news_df.columns.tolist() or not news_df['news_urls'].notna().sum():
+            news_df['news_urls'] = None
+            to_extract = indices
+        else:
+            to_extract = indices[indices.index(news_df['news_urls'].last_valid_index()) + 1:]
+        
         try:
-            rd.close_session()
-        except Exception:
-            pass
+            rd.open_session()
+            finished = True
+            for url in tqdm(news_df.loc[to_extract, 'url']):
+                news_url = extract_news_url(url)
+                news_urls.append(news_url)
+
+            print("Success!")
+
+        except KeyboardInterrupt:
+            print("\nStopped by user.")
+
+        except Exception as e:
+            traceback.print_exc()
+            print(f'Error: {e}')
+            finished = False
+        
+        finally:
+            new_indices = to_extract[:len(news_urls)]
+            news_df.loc[new_indices, 'news_urls'] = pd.Series(news_urls, index=new_indices)
+
+            news_df.to_csv(processed_path / 'news_lseg.csv')
+            try:
+                rd.close_session()
+            except Exception:
+                pass
     
     return news_df
 
@@ -456,7 +462,7 @@ def get_news_timestamps(news_df, processed_path):
             filled_indices = [i for i in to_extract if i in results]
             news_df.loc[filled_indices, 'published_at'] = pd.Series({k: v[0] for k, v in results.items()})
             news_df.loc[filled_indices, 'timestamp_from'] = pd.Series({k: v[1] for k, v in results.items()})
-            news_df.to_csv(processed_path / 'news.csv')
+            news_df.to_csv(processed_path / 'news_urls.csv')
         
     return news_df
 
@@ -482,7 +488,7 @@ def filter_news(news_df, processed_path):
 SIMILARITY_THRESHOLD = 0
 MAX_RETRIES = 5
 CONCURRENCY = 20
-REQUESTS_PER_SECOND = 1
+REQUESTS_PER_SECOND = 40
 SAVE_EVERY = 100
 
 rate_limiter = AsyncLimiter(REQUESTS_PER_SECOND, 1)
@@ -759,6 +765,50 @@ async def get_news_urls_async(
 
     return df
 
+def combine_dfs(serper_df, lseg_df):
+    serper_df.loc[lseg_df['news_urls'].notna(), 'news_urls'] = lseg_df.loc[lseg_df['news_urls'].notna(), 'news_urls']
+    serper_df = serper_df.loc[
+        (90 <= serper_df['similarity']) |
+        lseg_df['news_urls'].notna(),
+        [col for col in serper_df.columns if col not in ('matched_title', 'similarity')]
+    ]
+
+    serper_df.to_csv('data/processed/news/news_urls.csv')
+
+def append_dfs(cleaned_df, raw_df):
+    raw_df = raw_df.loc[raw_df['source'] == 'RTRS'].iloc[:, :4]
+    raw_df['source'] = 'Reuters'
+    combined_df = pd.concat([cleaned_df, raw_df])
+
+    combined_df["date_time"] = pd.to_datetime(combined_df["date_time"], format='mixed')
+    combined_df = combined_df.reset_index()
+    combined_df = combined_df.sort_values("index")
+    combined_df["date_ordinal"] = combined_df["date_time"].map(pd.Timestamp.toordinal)
+
+    x = np.arange(len(combined_df))
+    y = combined_df["date_ordinal"].values
+
+    # Fit line: y = slope * x + intercept
+    slope, intercept = np.polyfit(x, y, 1)
+    combined_df["fitted"] = slope * x + intercept
+    combined_df["residual"] = combined_df["date_ordinal"] - combined_df["fitted"]
+
+    # Remove high residuals using IQR
+    Q1 = combined_df["residual"].quantile(0.25)
+    Q3 = combined_df["residual"].quantile(0.75)
+    IQR = Q3 - Q1
+    lower, upper = Q1 - 1.5 * IQR, Q3 + 1.5 * IQR
+
+    is_outlier = (combined_df["residual"] < lower) | (combined_df["residual"] > upper)
+    clean_df = combined_df[~is_outlier].drop(columns=["date_ordinal", "fitted", "residual"])
+    clean_df = clean_df.set_index('index')
+    outliers_df = combined_df[is_outlier]
+
+    print(f"Removed {len(outliers_df)} rows")
+    print(outliers_df[["index", "date_time", "residual", "text"]])
+    
+    clean_df.to_csv('data/processed/news/news_final.csv')
+
 if __name__ == '__main__':
     
     news_df, processed_path = load_news()
@@ -769,6 +819,15 @@ if __name__ == '__main__':
             concurrency=20
         )
     )
-    #website_dist = get_news_distribution(news_df, processed_path)
-    #news_df = get_news_timestamps(news_df, processed_path)
-    #news_df = filter_news(news_df, processed_path)
+    news_df_lseg, _ = load_news('news_lseg')
+    news_df_lseg = get_lseg_news_urls(news_df_lseg, processed_path)
+    combine_dfs(news_df, news_df_lseg)
+    
+    news_urls_df, processed_path = load_news('news_urls')
+    website_dist = get_news_distribution(news_urls_df, processed_path)
+    news_urls_df = get_news_timestamps(news_urls_df, processed_path)
+    news_urls_df = filter_news(news_urls_df, processed_path)
+
+    cleaned_df, _ = load_news('news_cleaned')
+    raw_df, _ = load_news(filter=False, get_raw=True)
+    append_dfs(cleaned_df, raw_df)
