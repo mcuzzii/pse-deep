@@ -761,7 +761,6 @@ class GroupSHAPWrapper(nn.Module):
         down_idx = 1 - up_idx
 
         score = logits[..., up_idx] - logits[..., down_idx]
-        score = score.mean(dim=1)
 
         return score
 
