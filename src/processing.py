@@ -684,8 +684,14 @@ class DataSource:
                 # Extract data
                 partial_df = sheet.iloc[header + 1:, 3:3 + cols.shape[0]].copy()
                 partial_df.columns = cols.tolist()
-                partial_df['local_time'] = pd.to_datetime(partial_df['local_time'])
-                partial_df = partial_df.set_index('local_time')
+
+                if 'local_time' in partial_df.columns:
+                    dt_name = 'local_time'
+                else:
+                    dt_name = 'exchange_date'
+                
+                partial_df[dt_name] = pd.to_datetime(partial_df[dt_name])
+                partial_df = partial_df.set_index(dt_name)
                 
                 # Merge with the master dataframe
                 if self.df is None:
@@ -958,7 +964,6 @@ class DataSource:
             datetime_index = pd.DatetimeIndex(periods).sort_values()
 
             bond_dfs[fn].df = bond_dfs[fn].df.reindex(datetime_index).ffill()
-            bond_dfs[fn].df = bond_dfs[fn].df.drop(columns=[f'{fn}_bidychg'])
 
             if bond_master is None:
                 bond_master = bond_dfs[fn].df
