@@ -200,7 +200,7 @@ def run_experiments():
                     )
                     experiment.plot_loss_curves()
                     experiment.threshold_optimize()
-                    experiment.run_testing(force=True, recompute_only=True)
+                    experiment.run_testing()
 
 def main():
     evaluator = Eval()
