@@ -195,7 +195,7 @@ def run_experiments():
                         accumulation_steps=16 if transformer else 1,
                         lr=1e-4 if transformer else 1e-3,
                         val_every=lambda x: (8 * x) ** 2,
-                        patience=4000,
+                        patience=10,
                         sigma_end=1e-5
                     )
                     experiment.plot_loss_curves()
