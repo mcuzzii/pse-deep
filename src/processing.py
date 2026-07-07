@@ -958,6 +958,7 @@ class DataSource:
             datetime_index = pd.DatetimeIndex(periods).sort_values()
 
             bond_dfs[fn].df = bond_dfs[fn].df.reindex(datetime_index).ffill()
+            bond_dfs[fn].df = bond_dfs[fn].df.drop(columns=[f'{fn}_bidychg'])
 
             if bond_master is None:
                 bond_master = bond_dfs[fn].df
