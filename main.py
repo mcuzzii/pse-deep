@@ -190,12 +190,12 @@ def run_experiments():
                         sigma=5e-2,
                     )
                     experiment.train(
-                        num_epochs=2,
+                        num_epochs=50,
                         batch_size=2 if transformer else 32,
                         accumulation_steps=16 if transformer else 1,
-                        lr=1e-5 if transformer else 1e-5 / 16,
+                        lr=1e-4 if transformer else 1e-3,
                         val_every=lambda x: (8 * x) ** 2,
-                        patience=1000,
+                        patience=4000,
                         sigma_end=1e-5
                     )
                     experiment.plot_loss_curves()
@@ -220,4 +220,4 @@ def main():
     evaluator.plot_attention_scores()
 
 if __name__ == '__main__':
-    preprocess()
+    run_experiments()
