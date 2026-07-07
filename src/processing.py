@@ -678,17 +678,18 @@ class DataSource:
                 header = sheet.index[sheet.isin(["Exchange Date"]).any(axis=1)].tolist()[0]
 
                 # Extract and define columns
-                cols = sheet.iloc[header, 3:].dropna().str.lower().str.replace(' ', '_').str.replace('%', 'perc_')
+                minute_freq = 'Local Time' in sheet.iloc[header].tolist()
+
+                col_start = 3 if minute_freq else 1
+
+                cols = sheet.iloc[header, col_start:].dropna().str.lower().str.replace(' ', '_').str.replace('%', 'perc_')
                 cols.iloc[1:] = instrument_name + '_' + cols.iloc[1:]
 
                 # Extract data
-                partial_df = sheet.iloc[header + 1:, 3:3 + cols.shape[0]].copy()
+                partial_df = sheet.iloc[header + 1:, col_start:col_start + cols.shape[0]].copy()
                 partial_df.columns = cols.tolist()
 
-                if 'local_time' in partial_df.columns:
-                    dt_name = 'local_time'
-                else:
-                    dt_name = 'exchange_date'
+                dt_name = 'local_time' if minute_freq else 'exchange_date'
                 
                 partial_df[dt_name] = pd.to_datetime(partial_df[dt_name])
                 partial_df = partial_df.set_index(dt_name)
