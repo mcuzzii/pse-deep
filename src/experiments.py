@@ -1164,7 +1164,7 @@ class Experiment:
             mlp_group_slices=mlp_group_slices
         )
         background   = torch.zeros(1, num_groups, device=device)
-        explainer    = shap.GradientExplainer(shap_wrapper, background, batch_size=sample_batch[0].shape[0])
+        explainer    = shap.GradientExplainer(shap_wrapper, background, batch_size=sample_batch[0].shape[0] * 1024)
 
         out_dict['shap_group_names'] = list(group_to_indices.keys())
 
