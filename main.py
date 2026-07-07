@@ -33,8 +33,10 @@ def preprocess():
     lseg_news_data.get_headline_sentiment_examples()
 
     for i in random.sample(lseg_news_data.df.index.tolist(), 3):
-        social_media_data.get_similar_embeddings(index=i, n_results=10)
         lseg_news_data.get_similar_embeddings(index=i, n_results=10)
+    
+    for i in random.sample(social_media_data.df.index.tolist(), 3):
+        social_media_data.get_similar_embeddings(index=i, n_results=10)
     
     del social_media_data, lseg_news_data
     gc.collect()
