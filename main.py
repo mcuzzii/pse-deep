@@ -45,7 +45,7 @@ def preprocess():
     stocks = get_unique_instruments('data/raw/stock')
     for stock in stocks:
         stock_data = DataSource()
-        stock_data.create_df(raw_folder_name='stock', file_name=stock, medium='stock')
+        stock_data.create_df(raw_folder_name='stock', file_name=stock, medium='stock', ignore_history=True)
         del stock_data
         gc.collect()
     
