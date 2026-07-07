@@ -417,7 +417,10 @@ class DataSource:
 
         # Calculate similarities based on given reference index
         int_loc = df.index.get_loc(index)
-        target_vector = np.expand_dims(embeddings_matrix[int_loc][0], axis=0)
+        target_vector = embeddings_matrix[int_loc]
+        if target_vector.ndim > 1:
+            target_vector = target_vector[0]
+        target_vector = target_vector.reshape(1, -1)
         similarities = cosine_similarity(target_vector, embeddings_matrix).flatten()
 
         # Add similarity scores to the data frame and sort by similarity
