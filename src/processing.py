@@ -416,8 +416,8 @@ class DataSource:
         embeddings_matrix = np.stack(df['embeddings'].values)
 
         # Calculate similarities based on given reference index
-        int_loc = list(df.index.get_loc(index))[0]
-        target_vector = embeddings_matrix[int_loc]
+        int_loc = df.index.get_loc(index)
+        target_vector = embeddings_matrix[int_loc][0]
         similarities = cosine_similarity(target_vector, embeddings_matrix).flatten()
 
         # Add similarity scores to the data frame and sort by similarity
