@@ -289,6 +289,9 @@ class DataSource:
         # Remove rows with NaN text.
         self.df = self.df.loc[self.df[self.text_col].notna()]
 
+        # Remove "brief".
+        self.df[self.text_col] = self.df[self.text_col].str.replace('brief', '').str.strip()
+
         # Deduplicate, keeping only the earliest post.
         self.df.drop_duplicates(subset=[self.text_col], keep='first', inplace=True)
 
@@ -414,8 +417,13 @@ class DataSource:
 
         # Calculate similarities based on given reference index
         int_loc = df.index.get_loc(index)
+        print(self.df.iloc[int_loc]['text'].tolist()[0])
+        print(self.df.iloc[int_loc]['text'].tolist()[1])
         target_vector = embeddings_matrix[int_loc]
+        print(embeddings_matrix.shape)
+        print(target_vector.shape)
         similarities = cosine_similarity(target_vector, embeddings_matrix).flatten()
+        print(similarities.shape)
 
         # Add similarity scores to the data frame and sort by similarity
         df['similarity_score'] = similarities
