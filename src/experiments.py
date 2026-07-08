@@ -72,6 +72,8 @@ def collate_fn(
                     masks.append(arg_mask)
             
             else:
+                import time
+                time.sleep(5)
                 args[i] = torch.stack(list(arg))
         
         for mask in masks:

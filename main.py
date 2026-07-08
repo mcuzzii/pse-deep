@@ -13,7 +13,7 @@ seed_everything(42)
 
 from processing import DataSource, get_unique_instruments, get_stocks
 from experiments import Experiment
-from eval import Eval
+#from eval import Eval
 from dotenv import load_dotenv
 import gc
 
@@ -177,7 +177,7 @@ def run_experiments():
                     experiment.build_model(
                         input_dim=100 if transformer else 110,
                         news_input_dim=15,
-                        social_input_dim=6 if transformer else 15,
+                        social_input_dim=7 if transformer else 15,
                         text_input_dim=1024,
                         social_embedding_dim=16,
                         hidden_dim=384,
