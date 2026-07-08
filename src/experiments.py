@@ -1254,11 +1254,7 @@ class Experiment:
                                 explainer    = shap.GradientExplainer(
                                     shap_wrapper,
                                     background,
-                                    batch_size=(
-                                        int(sample_batch[0].shape[0] * 12.5)
-                                        if self.transformer
-                                        else sample_batch[0].shape[0] * 512
-                                    )
+                                    batch_size=25 if self.transformer else 100
                                 )
                                 sv = explainer.shap_values(gates, nsamples=100)
 
