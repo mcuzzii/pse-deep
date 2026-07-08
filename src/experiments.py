@@ -1251,7 +1251,15 @@ class Experiment:
                                 shap_wrapper.args = [a.detach() for a in args]
                                 gates = torch.ones(args[0].shape[0], num_groups, device=device)
 
-                                explainer    = shap.GradientExplainer(shap_wrapper, background, batch_size=sample_batch[0].shape[0] * 15)
+                                explainer    = shap.GradientExplainer(
+                                    shap_wrapper,
+                                    background,
+                                    batch_size=(
+                                        int(sample_batch[0].shape[0] * 12.5)
+                                        if self.transformer
+                                        else sample_batch[0].shape[0] * 512
+                                    )
+                                )
                                 sv = explainer.shap_values(gates, nsamples=100)
 
                                 if isinstance(sv, list):
