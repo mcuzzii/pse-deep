@@ -1186,7 +1186,6 @@ class Experiment:
             mlp_group_slices=mlp_group_slices
         )
         background   = torch.zeros(1, num_groups, device=device)
-        explainer    = shap.GradientExplainer(shap_wrapper, background, batch_size=sample_batch[0].shape[0] * 25)
 
         out_dict['shap_group_names'] = list(group_to_indices.keys())
 
@@ -1252,8 +1251,8 @@ class Experiment:
                                 shap_wrapper.args = [a.detach() for a in args]
                                 gates = torch.ones(args[0].shape[0], num_groups, device=device)
 
+                                explainer    = shap.GradientExplainer(shap_wrapper, background, batch_size=sample_batch[0].shape[0] * 25)
                                 sv = explainer.shap_values(gates, nsamples=100)
-                                torch.cuda.empty_cache()
 
                                 if isinstance(sv, list):
                                     assert len(sv) == 1
