@@ -121,31 +121,53 @@ def _run_validation(model, loaders, device, criterion):
 def mcc_curve(targets, probs, th_min=0, th_max=1, thresholds=None, device=device):
     if not isinstance(probs, torch.Tensor):
         probs = torch.tensor(probs, device=device, dtype=torch.float32)
-    if not isinstance(targets, torch.Tensor):
-        targets = torch.tensor(targets, device=device, dtype=torch.int32)
     else:
         probs = probs.to(device)
-        targets = targets.to(device)
+    if not isinstance(targets, torch.Tensor):
+        targets = torch.tensor(targets, device=device, dtype=torch.float32)
+    else:
+        targets = targets.to(device).float()
 
     if thresholds is None:
-        thresholds = torch.linspace(th_min, th_max, 10000).to(device)
+        thresholds = torch.linspace(th_min, th_max, 10000, device=device)
     elif not isinstance(thresholds, torch.Tensor):
         thresholds = torch.tensor(thresholds, device=device, dtype=torch.float32)
+    else:
+        thresholds = thresholds.to(device)
 
-    preds = (probs.unsqueeze(0) >= thresholds.unsqueeze(-1).unsqueeze(-1)).int()        # (1, N, S) >= (T, 1, 1) -> (T, N, S)
-    targets_exp = targets.unsqueeze(0).expand_as(preds)                                 # (N, S) -> (1, N, S) -> (T, N, S)
+    N, S = probs.shape
+    T = thresholds.shape[0]
 
-    tp = ((preds == 1) & (targets_exp == 1)).sum(dim=1).float()                         # (T, N, S) -> (T, S)
-    tn = ((preds == 0) & (targets_exp == 0)).sum(dim=1).float()
-    fp = ((preds == 1) & (targets_exp == 0)).sum(dim=1).float()
-    fn = ((preds == 0) & (targets_exp == 1)).sum(dim=1).float()
+    # sort each column (stock) by probability, ascending
+    sorted_probs, sort_idx = torch.sort(probs, dim=0)              # (N, S)
+    sorted_targets = torch.gather(targets, 0, sort_idx)            # (N, S)
+
+    # suffix counts: how many positives/negatives have prob >= sorted_probs[i]
+    pos_suffix = torch.flip(torch.cumsum(torch.flip(sorted_targets, [0]), 0), [0])       # (N, S)
+    neg_suffix = torch.flip(torch.cumsum(torch.flip(1 - sorted_targets, [0]), 0), [0])   # (N, S)
+
+    # pad with a zero row: "beyond the last sample" = 0 remaining
+    pos_suffix = torch.cat([pos_suffix, torch.zeros(1, S, device=device)], dim=0)  # (N+1, S)
+    neg_suffix = torch.cat([neg_suffix, torch.zeros(1, S, device=device)], dim=0)  # (N+1, S)
+
+    P   = pos_suffix[0]    # total positives per stock, (S,)
+    Neg = neg_suffix[0]    # total negatives per stock, (S,)
+
+    # batched binary search: for every threshold, find cutoff index per stock
+    sorted_probs_t = sorted_probs.t().contiguous()                         # (S, N)
+    thresh_expand  = thresholds.unsqueeze(0).expand(S, T).contiguous()     # (S, T)
+    idx = torch.searchsorted(sorted_probs_t, thresh_expand, right=False)   # (S, T), values in [0, N]
+
+    tp = torch.gather(pos_suffix.t(), 1, idx)   # (S, T)
+    fp = torch.gather(neg_suffix.t(), 1, idx)   # (S, T)
+    fn = P.unsqueeze(1) - tp
+    tn = Neg.unsqueeze(1) - fp
 
     numerator = tp * tn - fp * fn
     denom = torch.sqrt((tp+fp) * (tp+fn) * (tn+fp) * (tn+fn))
+    mcc = torch.where(denom > 0, numerator / denom, torch.zeros_like(numerator))
 
-    mcc = torch.where(denom > 0, numerator / denom, torch.zeros_like(numerator))        # (T, S)
-
-    return mcc, thresholds                                                              # (T, S)
+    return mcc.t(), thresholds   # (T, S) — same shape/order as your original
 
 class StockTransformerDataset(Dataset):
     def __init__(self, path, stock_lookback):
@@ -1164,7 +1186,7 @@ class Experiment:
             mlp_group_slices=mlp_group_slices
         )
         background   = torch.zeros(1, num_groups, device=device)
-        explainer    = shap.GradientExplainer(shap_wrapper, background, batch_size=sample_batch[0].shape[0] * 1024)
+        explainer    = shap.GradientExplainer(shap_wrapper, background, batch_size=sample_batch[0].shape[0] * 256)
 
         out_dict['shap_group_names'] = list(group_to_indices.keys())
 

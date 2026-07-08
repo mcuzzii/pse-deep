@@ -6,14 +6,15 @@ import torch.nn.functional as F
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 class PerturbedTopK(nn.Module):
-    def __init__(self, k: int, num_samples: int = 1000, sigma: float = 0.05):
+    def __init__(self, k: int, num_samples: int = 1000, sigma: float = 0.05, chunk_size: int = 100):
         super().__init__()
         self.num_samples = num_samples
         self.sigma = sigma
         self.k = k
+        self.chunk_size = chunk_size
 
     def forward(self, x):
-        return PerturbedTopKFunction.apply(x, self.k, self.num_samples, self.sigma)
+        return PerturbedTopKFunction.apply(x, self.k, self.num_samples, self.sigma, self.chunk_size)
 
     def set_sigma(self, sigma: float):
         self.sigma = max(sigma, 1e-6)
@@ -22,55 +23,54 @@ class PerturbedTopK(nn.Module):
 class PerturbedTopKFunction(torch.autograd.Function):
 
     @staticmethod
-    def forward(ctx, x, k: int, num_samples: int = 1000, sigma: float = 0.05):
+    def forward(ctx, x, k: int, num_samples: int = 1000, sigma: float = 0.05, chunk_size: int = 100):
         orig_shape = x.shape
         d = orig_shape[-1]
-        x_flat = x.reshape(-1, d)                                                  # (N, d)
+        x_flat = x.reshape(-1, d)
         N = x_flat.size(0)
 
-        noise = torch.normal(mean=0.0, std=1.0, size=(N, num_samples, d), device=x.device, dtype=x.dtype)
-        perturbed_x = x_flat[:, None, :] + noise * sigma                          # (N, S, d)
+        indicators_flat = torch.zeros(N * k, d, device=x.device, dtype=x.dtype)
+        expected_gradient_flat = torch.zeros(N * k, d, device=x.device, dtype=x.dtype)
 
-        topk_results = torch.topk(perturbed_x, k=k, dim=-1, sorted=False)
-        indices = topk_results.indices                                            # (N, S, K)
+        done = 0
+        while done < num_samples:
+            s = min(chunk_size, num_samples - done)
 
-        N_, S_, K_ = indices.shape
-        idx_for_scatter = indices.permute(0, 2, 1).reshape(N_ * K_, S_)           # (N*K, S)
-        src_for_scatter = torch.ones_like(idx_for_scatter, dtype=x.dtype)         # (N*K, S)
-        indicators_flat = torch.zeros(N_ * K_, d, device=x.device, dtype=x.dtype)
-        indicators_flat.scatter_add_(1, idx_for_scatter, src_for_scatter)
-        indicators = (indicators_flat / num_samples).reshape(N_, K_, d)           # (B*S*Ts, K, d)
+            noise = torch.normal(0.0, 1.0, size=(N, s, d), device=x.device, dtype=x.dtype)
+            perturbed_x = x_flat[:, None, :] + noise * sigma          # (N, s, d)
 
-        ctx.k = k
-        ctx.num_samples = num_samples
-        ctx.sigma = sigma
+            indices = torch.topk(perturbed_x, k=k, dim=-1, sorted=False).indices   # (N, s, K)
+            gathered = torch.gather(noise, dim=2, index=indices)                    # (N, s, K) — the only part of noise we need
+
+            idx_for_scatter = indices.permute(0, 2, 1).reshape(N * k, s)            # (N*K, s)
+
+            indicators_flat.scatter_add_(
+                1, idx_for_scatter, torch.ones_like(idx_for_scatter, dtype=x.dtype)
+            )
+            expected_gradient_flat.scatter_add_(
+                1, idx_for_scatter, gathered.permute(0, 2, 1).reshape(N * k, s)
+            )
+
+            done += s
+            del noise, perturbed_x, indices, gathered, idx_for_scatter   # free chunk before next iteration
+
+        indicators = (indicators_flat / num_samples).reshape(N, k, d)
+        expected_gradient = (expected_gradient_flat / num_samples / sigma).reshape(N, k, d)
+
         ctx.orig_shape = orig_shape
-        ctx.save_for_backward(indices, noise)                                     # (N,S,K) int64, (N,S,d) float
+        ctx.save_for_backward(expected_gradient)     # (N, K, d) — independent of num_samples now
 
-        return indicators.reshape(*orig_shape[:-1], k, d)                           # (B, S, Ts, K, d)
+        return indicators.reshape(*orig_shape[:-1], k, d)
 
     @staticmethod
     def backward(ctx, grad_output):
         if grad_output is None:
-            return None, None, None, None
-        indices, noise = ctx.saved_tensors                                        # (N,S,K), (N,S,d)
-        d = noise.size(-1)
-        k = ctx.k
-        N, S, K = indices.shape
-
-        # expected_gradient[n,k_,j] = (1/S) * sum_s [indices[n,s,k_]==j] * noise[n,s,j]
-        gathered = torch.gather(noise, dim=2, index=indices)                      # (N, S, K)
-
-        idx_for_scatter = indices.permute(0, 2, 1).reshape(N * K, S)              # (N*K, S)
-        src_for_scatter = gathered.permute(0, 2, 1).reshape(N * K, S)             # (N*K, S)
-        expected_gradient_flat = torch.zeros(N * K, d, device=noise.device, dtype=noise.dtype)
-        expected_gradient_flat.scatter_add_(1, idx_for_scatter, src_for_scatter)
-        expected_gradient = (expected_gradient_flat / ctx.num_samples / ctx.sigma).reshape(N, K, d)
-
-        grad_output_flat = grad_output.reshape(-1, k, d)                          # (N, K, d)
-        grad_input = torch.einsum("nkd,nkd->nd", grad_output_flat, expected_gradient)  # (N, d)
-
-        return grad_input.reshape(ctx.orig_shape), None, None, None
+            return None, None, None, None, None
+        (expected_gradient,) = ctx.saved_tensors     # (N, K, d)
+        N, K, d = expected_gradient.shape
+        grad_output_flat = grad_output.reshape(-1, K, d)
+        grad_input = torch.einsum("nkd,nkd->nd", grad_output_flat, expected_gradient)
+        return grad_input.reshape(ctx.orig_shape), None, None, None, None
 
 class Time2Vec(nn.Module):
     def __init__(self, embedding_dim):
