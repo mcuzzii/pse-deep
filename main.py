@@ -155,7 +155,7 @@ def preprocess():
 
 def run_experiments():
 
-    for transformer in (True, False):
+    for transformer in (False):
         for social in (False, True):
             for news in (False, True):
                 for pred_30 in (False, True):
