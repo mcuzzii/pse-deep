@@ -4,6 +4,7 @@ import torch.nn as nn
 from torch.utils.data import Dataset
 from torch.utils.data import DataLoader
 from torch.nn.utils.rnn import pad_sequence
+from torch.optim.lr_scheduler import ReduceLROnPlateau
 from tqdm import tqdm
 import sys
 import signal
@@ -812,6 +813,15 @@ class Experiment:
 
         model = self.model.to(device)
         optimizer = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=weight_decay)
+        if not self.transformer:
+            scheduler = ReduceLROnPlateau(
+                optimizer,
+                mode='min',
+                factor=0.5,
+                patience=5,
+                threshold=1e-4,
+                min_lr=1e-6
+            )
         optimizer.zero_grad()
 
         self.loaders = {
@@ -954,6 +964,9 @@ class Experiment:
                     if global_step in self.val_periods:
                         val_loss = _run_validation(model, self.loaders, device, criterion)
                         val_losses.append(val_loss)
+
+                        if not self.transformer:
+                            scheduler.step(val_loss)
 
                         period_idx = self.val_periods.index(global_step)
                         num_steps = (global_step - self.val_periods[period_idx - 1]) if period_idx > 0 else global_step
@@ -1254,7 +1267,7 @@ class Experiment:
                                 explainer    = shap.GradientExplainer(
                                     shap_wrapper,
                                     background,
-                                    batch_size=25 if self.transformer else 100
+                                    batch_size=30 if self.transformer else 64
                                 )
                                 sv = explainer.shap_values(gates, nsamples=100)
 
