@@ -194,7 +194,7 @@ def run_experiments():
                         batch_size=2 if transformer else 32,
                         accumulation_steps=16 if transformer else 1,
                         lr=1e-4,
-                        val_every=lambda x: ((8 * x) ** 2) / (1 if self.transformer else 16),
+                        val_every=lambda x: ((8 * x) ** 2) / (1 if transformer else 16),
                         patience=20,
                         sigma_end=1e-5
                     )
