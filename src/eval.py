@@ -2035,7 +2035,7 @@ class Eval:
                             item = item.T
                             fct = torch.arange(1, 61).unsqueeze(0)
                             item = item * fct
-                            mask = (1 - torch.triu(torch.ones(3, 4))).to(bool).to(item.device)
+                            mask = (1 - torch.triu(torch.ones_like(item))).to(bool).to(item.device)
                             item[mask] = float('nan')
                             step = 3
                             full_labels = range(60, 0, -1)
