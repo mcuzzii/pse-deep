@@ -208,7 +208,7 @@ def main():
     #evaluator.compute_experiment_data()
     #evaluator.get_closing_prices()
     #evaluator.trading_simulations()
-    #evaluator.main_and_interaction_effects()
+    evaluator.main_and_interaction_effects()
     #evaluator.train_baseline_models()
     #evaluator.main_baseline_comparison()
     #evaluator.interpret_trading_sim()

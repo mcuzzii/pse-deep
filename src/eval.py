@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from torch.nn.utils.rnn import pad_sequence
 from pathlib import Path
 import pandas as pd
 from river.drift import ADWIN
@@ -538,7 +539,24 @@ def update_dict(d, key, v):
         d[key] = v
     else:
         for k in old_v:
-            d[key][k] += v[k]
+            try:
+                d[key][k] += v[k]
+            except Exception as _:
+                d[key][k] = pad_sequence(
+                    [
+                        d[key][k].transpose(0, 1),
+                        v[k].transpose(0, 1)
+                    ],
+                    batch_first=True,
+                    padding_side='left'
+                ).transpose(1, 2).sum(dim=0)
+
+def ordinal(n):
+    if 11 <= (n % 100) <= 13:
+        suffix = "th"
+    else:
+        suffix = {1: "st", 2: "nd", 3: "rd"}.get(n % 10, "th")
+    return f"{n}{suffix}"
 
 def plot_text_scores(text_scores: dict, out_dir, top_n: int = 20, figsize=None, max_chars: int = 80):
     if not text_scores:
@@ -1932,7 +1950,9 @@ class Eval:
                     mask = (cutoff_scaled < text_ts) & (text_ts <= ts_scaled)
                     sample = text_embeds[mask]        # Tn, En
 
-                    snapshot[ind] = snapshot[ind][..., :mask.sum()]
+                    snapshot[ind] = snapshot[ind][..., :mask.sum()]                      # S, Ts, K, d
+
+                    snapshot[f'{ind}tr'] = snapshot[ind][:, -1, :, :].sum(dim=0)         # K, d
 
                     selected = torch.einsum("stkn,ne->stke", snapshot[ind], sample)      # S, Ts, K, En
 
@@ -2004,25 +2024,42 @@ class Eval:
                         out_dir = self.results_path / 'attn_analysis' / f'{dir.name}_{cat}_{w}'
                         plot_text_scores(item, out_dir)
                     else:
-                        item = item.T
                         if w == 'ist':
+                            item = item.T
                             xtick = [s.upper() for s in self.stock_map[dir.name]['stocks']]
                             ytick = xtick
                             xlab = 'Stocks (Q)'
                             ylab = 'Stocks (KV)'
                             figsize = (7, 6)
                         if w == 'tst':
-                            xtick = range(60, 0, -1)
+                            item = item.T
+                            step = 3
+                            full_labels = range(60, 0, -1)
+                            xtick = [label if i % step == 0 else '' for i, label in enumerate(full_labels)]
                             ytick = xtick
                             xlab = 'Minutes Ago (Q)'
                             ylab = 'Minutes Ago (KV)'
                             figsize = (7, 6)
                         if w in ('nft', 'sft'):
-                            xtick = range(60, 0, -1)
+                            item = item.T
+                            step = 3
+                            full_labels = range(60, 0, -1)
+                            xtick = [label if i % step == 0 else '' for i, label in enumerate(full_labels)]
                             ytick = [f'Top {i}' for i in range(1, 6)]
                             xlab = 'Minutes Ago (Q)'
                             ylab = f'Selected {'News' if w == 'nft' else 'X Posts'} (KV)'
                             figsize = (7, 2)
+                        if w in ('nintr', 'sintr'):
+                            n_cols = item.shape[1]
+                            step = max(1, n_cols // 20)  # aim for ~20 visible labels regardless of n_cols
+
+                            full_labels = [ordinal(n) for n in range(n_cols, 0, -1)]
+                            xtick = [label if i % step == 0 else '' for i, label in enumerate(full_labels)]
+
+                            ytick = [f'Top {i}' for i in range(1, 6)]
+                            xlab = f'{"Article" if w == "nintr" else "Post"} Recency'
+                            ylab = f'Selected {"News" if w == "nintr" else "X Posts"}'
+                            figsize = (7, 2)  # let width scale with n_cols too
 
                         viridis_cmap = mcolors.LinearSegmentedColormap.from_list(
                             'custom_viridis',
