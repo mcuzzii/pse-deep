@@ -2035,6 +2035,8 @@ class Eval:
                             item = item.T
                             fct = torch.arange(1, 61).unsqueeze(0)
                             item = item * fct
+                            mask = (1 - torch.triu(torch.ones(3, 4))).to(bool).to(item.device)
+                            item = item[mask] = float('nan')
                             step = 3
                             full_labels = range(60, 0, -1)
                             xtick = [label if i % step == 0 else '' for i, label in enumerate(full_labels)]
@@ -2068,6 +2070,7 @@ class Eval:
                             [COLORS['purple'], COLORS['indigo'], COLORS['teal'],
                             COLORS['seafoam'], COLORS['green'], COLORS['yellow']]
                         )
+                        viridis_cmap.set_bad(color=(0, 0, 0, 0))
 
                         fig, ax = plt.subplots(figsize=figsize)
 
@@ -2075,6 +2078,7 @@ class Eval:
                             item.numpy(),
                             xticklabels=xtick,
                             yticklabels=ytick,
+                            mask=torch.isnan(item).numpy(),
                             cmap=viridis_cmap,
                             linewidths=0,
                             cbar_kws={'label': 'Attention Scores', 'shrink': 0.8},
