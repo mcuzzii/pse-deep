@@ -13,7 +13,7 @@ seed_everything(42)
 
 from processing import DataSource, get_unique_instruments, get_stocks
 from experiments import Experiment
-#from eval import Eval
+from eval import Eval
 from dotenv import load_dotenv
 import gc
 
@@ -220,4 +220,4 @@ def main():
     evaluator.plot_attention_scores()
 
 if __name__ == '__main__':
-    run_experiments()
+    main()

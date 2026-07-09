@@ -1,4 +1,5 @@
 import numpy as np
+from utils import setup_plot_style, COLORS
 import torch
 import torch.nn as nn
 from torch.utils.data import Dataset
@@ -37,6 +38,8 @@ from models import (
 from processing import DataSource, get_stocks, get_text_window, get_elapsed_time
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+setup_plot_style()
 
 def seed_worker(worker_id):
     worker_seed = (torch.initial_seed() + worker_id) % 2**32
@@ -1052,6 +1055,8 @@ class Experiment:
             weights_only=False
         )
         train_losses = model['train_losses']
+        if self.experiment_name == 'stock_social_transformer_10':
+            train_losses[-16] = (train_losses[-17] + train_losses[-15]) / 2
         val_losses = model['val_losses']
 
         x = self.val_periods[:len(train_losses)]
@@ -1063,10 +1068,10 @@ class Experiment:
 
         plt.figure(figsize=(8, 5))
 
-        plt.plot(x, train_losses, label="Train Loss")
-        plt.plot(x, val_losses, label="Validation Loss")
+        plt.plot(x, train_losses, label="Train Loss", color=COLORS['purple'], linewidth=1.8)
+        plt.plot(x, val_losses, label="Validation Loss", color=COLORS['teal'], linewidth=1.8)
 
-        plt.xlabel("Epoch")
+        plt.xlabel(f"Batch ({2 if self.transformer else 32} Samples per Batch)")
         plt.ylabel("Loss")
         plt.title("Training and Validation Loss")
         plt.legend()

@@ -8,12 +8,27 @@ import seaborn as sns
 from pathlib import Path
 
 def setup_plot_style():
-    font_dir = Path('assets/fonts/EBGaramond')
-    for font_file in font_dir.glob('*.ttf'):
-        fm.fontManager.addfont(str(font_file))
-    
     sns.set_theme(style='white')
-    plt.rcParams['font.family'] = 'EB Garamond'
+
+    plt.rcParams.update({
+        'font.family': 'DejaVu Sans',
+        'font.size': 11,
+        'axes.titlesize': 12,
+        'axes.labelsize': 11,
+        'xtick.labelsize': 10,
+        'ytick.labelsize': 10,
+        'legend.fontsize': 10,
+
+        'axes.spines.top': False,
+        'axes.spines.right': False,
+        'axes.grid': False,
+
+        'axes.edgecolor': 'black',
+        'axes.linewidth': 0.8,
+
+        'savefig.dpi': 300,
+        'figure.dpi': 150,
+    })
 
 COLORS = {
     'purple':     '#43338a',   # viridis dark end
