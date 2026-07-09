@@ -2033,6 +2033,8 @@ class Eval:
                             figsize = (7, 6)
                         if w == 'tst':
                             item = item.T
+                            fct = torch.arange(1, 61).unsqueeze(0)
+                            item = item * fct
                             step = 3
                             full_labels = range(60, 0, -1)
                             xtick = [label if i % step == 0 else '' for i, label in enumerate(full_labels)]
