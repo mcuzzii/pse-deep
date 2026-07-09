@@ -821,7 +821,7 @@ class Experiment:
                 optimizer,
                 mode='min',
                 factor=0.5,
-                patience=5,
+                patience=4,
                 threshold=1e-4,
                 min_lr=1e-6
             )
