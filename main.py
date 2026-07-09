@@ -155,7 +155,7 @@ def preprocess():
 
 def run_experiments():
 
-    for transformer in (False,):
+    for transformer in (True, False):
         for social in (False, True):
             for news in (False, True):
                 for pred_30 in (False, True):
@@ -204,19 +204,19 @@ def run_experiments():
 
 def main():
     evaluator = Eval()
-    #evaluator.overall_metrics()
-    #evaluator.compute_experiment_data()
-    #evaluator.get_closing_prices()
-    #evaluator.trading_simulations()
+    evaluator.overall_metrics()
+    evaluator.compute_experiment_data()
+    evaluator.get_closing_prices()
+    evaluator.trading_simulations()
     evaluator.main_and_interaction_effects()
-    #evaluator.train_baseline_models()
-    #evaluator.main_baseline_comparison()
-    #evaluator.interpret_trading_sim()
-    #evaluator.baseline_models_trading_sim()
-    #evaluator.interpret_baseline_models_trading_sim()
-    #evaluator.interpret_shap_values()
-    #evaluator.get_embeddings()
-    #evaluator.interpret_attention_scores()
+    evaluator.train_baseline_models()
+    evaluator.main_baseline_comparison()
+    evaluator.interpret_trading_sim()
+    evaluator.baseline_models_trading_sim()
+    evaluator.interpret_baseline_models_trading_sim()
+    evaluator.interpret_shap_values()
+    evaluator.get_embeddings()
+    evaluator.interpret_attention_scores()
     evaluator.plot_attention_scores()
 
 if __name__ == '__main__':

@@ -1679,7 +1679,7 @@ class Eval:
 
                 y_id = torch.arange(len(test_y), device=device)
 
-                mask = (y_id % 64.0) < 32
+                mask = (y_id % 192.0) < 32
                 if mask[-1]:
                     mask = mask & (y_id < len(test_y) - 32)
 
