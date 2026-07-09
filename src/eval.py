@@ -1799,7 +1799,7 @@ class Eval:
                 experiment.build_model(
                     input_dim=100 if transformer else 110,
                     news_input_dim=15,
-                    social_input_dim=6 if transformer else 15,
+                    social_input_dim=(7 if not pred_30 else 5) if transformer else 15,
                     text_input_dim=1024,
                     social_embedding_dim=16,
                     hidden_dim=384,
