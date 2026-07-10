@@ -1940,11 +1940,13 @@ class Eval:
                         text_ts = social_ts
                         text_embeds = social_embeds
                         text_df = social_df
+                        text_col = text_df.text_col
                         attn = 'sft'
                     else:
                         text_ts = news_ts
                         text_embeds = news_embeds
                         text_df = news_df
+                        text_col = 'cleaned_headline'
                         attn = 'nft'
 
                     mask = (cutoff_scaled < text_ts) & (text_ts <= ts_scaled)
@@ -1978,7 +1980,7 @@ class Eval:
 
                     text = text_df.df.loc[
                         (cutoff < text_df.df.index) & (text_df.df.index <= ts[i]),
-                        text_df.text_col
+                        text_col
                     ]
 
                     snapshot[ind] = Counter(dict(zip(text, scores.tolist())))
