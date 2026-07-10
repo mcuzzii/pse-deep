@@ -626,12 +626,12 @@ class Eval:
                 k: v
                 for k, v in torch.load(test_outputs, map_location=torch.device('cpu'), weights_only=False).items()
                 if (
-                    'accuracy' in k or
-                    'mcc' in k or
-                    'precision' in k or
-                    'recall' in k or
-                    'f1' in k or
-                    'avg_loss' in k
+                    '_accuracy' in k or
+                    '_mcc' in k or
+                    '_precision' in k or
+                    '_recall' in k or
+                    '_f1' in k or
+                    '_avg_loss' in k
                 )
             }
 
