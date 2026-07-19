@@ -1145,11 +1145,11 @@ class Eval:
                 out['baseline_combined_drift_scores'] = mean_squared_loss_deviations * drift_from_width
 
                 results[score] = {
-                    'msd_mean' = msd_mean,
-                    'widths_mean' = widths_mean,
-                    'combined_drift_score_mean' = combined_drift_score_mean,
-                    'train_time_s' = 0,
-                    'pred_time_s' = 0
+                    'msd_mean': msd_mean,
+                    'widths_mean': widths_mean,
+                    'combined_drift_score_mean': combined_drift_score_mean,
+                    'train_time_s': 0,
+                    'pred_time_s': 0
                 }
 
             results_df = pd.DataFrame.from_dict(results, orient='index')
