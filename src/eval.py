@@ -637,10 +637,10 @@ class Eval:
 
         overall_scores = dict()
 
-        self.msd_min = float('inf')
-        self.msd_max = float('-inf')
-        self.width_min = float('inf')
-        self.width_max = float('-inf')
+        msd_min = float('inf')
+        msd_max = float('-inf')
+        width_min = float('inf')
+        width_max = float('-inf')
 
         for dir in self.experiments_path.iterdir():
 
@@ -737,11 +737,11 @@ class Eval:
                 out['msd'] = msd
                 out['width_histories'] = width_histories
 
-                self.msd_min = min(self.msd_min, msd.min().item())
-                self.msd_max = max(self.msd_max, msd.max().item())
+                msd_min = min(msd_min, msd.min().item())
+                msd_max = max(msd_max, msd.max().item())
 
-                self.width_min = min(self.width_min, width_histories.min().item())
-                self.width_max = max(self.width_max, width_histories.max().item())
+                width_min = min(width_min, width_histories.min().item())
+                width_max = max(width_max, width_histories.max().item())
 
                 torch.save(out, test_outputs)
         
@@ -750,33 +750,37 @@ class Eval:
             if dir.name in ('data', 'experiments', 'results'):
                 continue
 
-            test_outputs = dir / 'test_outputs.pt'
-            out = torch.load(test_outputs, map_location=device, weights_only=False)
+            if 'combined_drift_scores' not in out:
 
-            msd = out['msd']
-            width_histories = out['width_histories']
+                test_outputs = dir / 'test_outputs.pt'
+                out = torch.load(test_outputs, map_location=device, weights_only=False)
 
-            msd = (msd - self.msd_min) / (self.msd_max - self.msd_min)
-            width_histories = (width_histories - self.width_min) / (self.width_max - self.width_min)
+                msd = out['msd']
+                width_histories = out['width_histories']
 
-            width_histories = 1 - width_histories
+                msd = (msd - msd_min) / (msd_max - msd_min)
+                width_histories = (width_histories - width_min) / (width_max - width_min)
 
-            mean_squared_loss_deviations = msd.mean(dim=0)
-            drift_from_width = width_histories.mean(dim=0)
-            
-            out['mean_squared_loss_deviations'] = mean_squared_loss_deviations
-            out['drift_from_width'] = drift_from_width
-            out['combined_drift_scores'] = mean_squared_loss_deviations * drift_from_width
+                width_histories = 1 - width_histories
 
-            msd_mean = msd.mean().item()
-            widths_mean = width_histories.mean().item()
-            combined_drift_score_mean = msd_mean * widths_mean
+                mean_squared_loss_deviations = msd.mean(dim=0)
+                drift_from_width = width_histories.mean(dim=0)
+                
+                out['mean_squared_loss_deviations'] = mean_squared_loss_deviations
+                out['drift_from_width'] = drift_from_width
+                out['combined_drift_scores'] = mean_squared_loss_deviations * drift_from_width
 
-            overall_scores[dir.name].update({
-                'msd_mean': msd_mean,
-                'widths_mean': widths_mean,
-                'combined_drift_score_mean': combined_drift_score_mean
-            })
+                msd_mean = msd.mean().item()
+                widths_mean = width_histories.mean().item()
+                combined_drift_score_mean = msd_mean * widths_mean
+
+                overall_scores[dir.name].update({
+                    'msd_mean': msd_mean,
+                    'widths_mean': widths_mean,
+                    'combined_drift_score_mean': combined_drift_score_mean
+                })
+
+                torch.save(out, test_outputs)
         
         if not overall_scores:
             return
@@ -1151,6 +1155,8 @@ class Eval:
                     'train_time_s': 0,
                     'pred_time_s': 0
                 }
+
+                torch.save(out, self.experiments_path / score / 'test_outputs.pt')
 
             results_df = pd.DataFrame.from_dict(results, orient='index')
             results_df.to_csv(score_dir / 'baseline_results.csv')
