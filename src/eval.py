@@ -1149,7 +1149,7 @@ class Eval:
                 out['baseline_drift_from_width'] = drift_from_width
                 out['baseline_combined_drift_scores'] = mean_squared_loss_deviations * drift_from_width
 
-                results[score] = {
+                results[best_drift_model] = {
                     'msd_mean': msd_mean,
                     'widths_mean': widths_mean,
                     'combined_drift_score_mean': combined_drift_score_mean,
@@ -1157,7 +1157,7 @@ class Eval:
                     'pred_time_s': 0
                 }
 
-                torch.save(out, self.experiments_path / score / 'test_outputs.pt')
+                torch.save(out, self.experiments_path / best_drift_model / 'test_outputs.pt')
 
             results_df = pd.DataFrame.from_dict(results, orient='index')
             results_df.to_csv(score_dir / 'baseline_results.csv')
