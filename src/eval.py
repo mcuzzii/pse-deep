@@ -1319,10 +1319,10 @@ class Eval:
 
         plt.figure(figsize=(8, 5))
 
-        plt.plot(profits.cpu().numpy(), label='Profits')
+        plt.plot(profits.cpu().numpy(), label='Profits', color=COLORS['seafoam'])
 
         plt.xlabel("Time")
-        plt.ylabel("Money")
+        plt.ylabel("Cumulative Profit")
         plt.title(f"Trading Simulation")
         plt.grid(False)
         plt.tight_layout()
@@ -1581,7 +1581,7 @@ class Eval:
                 palette=palette, dashes=dashes,
             )
 
-            g.set_axis_labels('Time', 'Cumulative Return')
+            g.set_axis_labels('Time', 'Cumulative Profit')
             g.set_titles(row_template='{row_name}', col_template='{col_name}')
             g.add_legend(title='')
             g.figure.subplots_adjust(top=0.92)
@@ -1652,7 +1652,7 @@ class Eval:
             )
 
             ax.set_xlabel('Time')
-            ax.set_ylabel('Cumulative Return')
+            ax.set_ylabel('Cumulative Profit')
             ax.set_title('Trading Simulation Results', fontsize=13, fontweight='bold')
             ax.axhline(1.0, color='black', linewidth=0.6, linestyle=':', alpha=0.5)
             ax.yaxis.set_major_formatter(ticker.FuncFormatter(lambda y, _: f'{y:.2f}'))
