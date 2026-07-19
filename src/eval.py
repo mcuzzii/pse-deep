@@ -1015,7 +1015,7 @@ class Eval:
                     # --- expanding window threshold optimization ---
                     if (score_dir / f'{name}_y_preds.pt').exists():
                         print(f'Model preds already saved at {(score_dir / f'{name}_y_preds.pt')}... Skipping')
-                        y_pred_per_stock = torch.load(score_dir / f'{name}_y_preds.pt', map_location=device, weights_only=True).numpy()
+                        y_pred_per_stock = torch.load(score_dir / f'{name}_y_preds.pt', map_location=device, weights_only=True).cpu().numpy()
                         y_pred = y_pred_per_stock.flatten()
                         y_test_flat = y_test_s.flatten()
                     else:
