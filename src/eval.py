@@ -982,12 +982,13 @@ class Eval:
         
         mcc_filename = get_best_dataset('mcc', self.results_path / 'mixed_effects')
         drift_filename = get_best_dataset('drift', self.results_path / 'mixed_effects')
+        best_drift_model = get_best_dataset('drift', self.results_path / 'mixed_effects', False)
 
         msd_scores = dict()
         width_scores = dict()
 
         out = torch.load(
-            self.experiments_path / drift_filename / 'test_outputs.pt',
+            self.experiments_path / best_drift_model / 'test_outputs.pt',
             map_location=device,
             weights_only=False
         )
@@ -1133,7 +1134,7 @@ class Eval:
                 msd = out['msd']
                 width_histories = out['width_histories']
 
-                msd = (msd - msd_min) / (msd - msd_min)
+                msd = (msd - msd_min) / (msd_max - msd_min)
                 width_histories = (width_histories - width_min) / (width_max - width_min)
                 width_histories = 1 - width_histories
 
