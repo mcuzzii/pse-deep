@@ -103,17 +103,7 @@ def compute_drift(loss):
     
     msd = (loss - means).abs()
 
-    msd = (msd - msd.min()) / (msd.max() - msd.min())
-    mean_squared_loss_deviations = msd.mean(dim=0)
-
-    width_histories = (width_histories - width_histories.min()) / (width_histories.max() - width_histories.min())
-    drift_from_width = 1 - width_histories.mean(dim=0)
-
-    msd_mean = msd.mean().item()
-    widths_mean = 1 - width_histories.mean().item()
-    combined_drift_score_mean = msd_mean * widths_mean
-
-    return mean_squared_loss_deviations, drift_from_width, msd_mean, widths_mean, combined_drift_score_mean
+    return msd, width_histories
 
 def analyze(
     df,
@@ -646,6 +636,12 @@ class Eval:
         model_scores = pd.read_csv(self.results_path / 'model_scores.csv', index_col=0)
 
         overall_scores = dict()
+
+        self.msd_min = float('inf')
+        self.msd_max = float('-inf')
+        self.width_min = float('inf')
+        self.width_max = float('-inf')
+
         for dir in self.experiments_path.iterdir():
 
             if dir.name in ('data', 'experiments', 'results'):
@@ -728,7 +724,7 @@ class Eval:
                     'test_f1_neg_rolling': f1_score(1 - targets_np, 1 - preds_np),
                 })
             
-            if 'drift_from_width' not in out:
+            if 'width_histories' not in out:
 
                 if dir.name not in overall_scores:
                     overall_scores[dir.name] = dict()
@@ -736,22 +732,51 @@ class Eval:
                 criterion = nn.CrossEntropyLoss(reduction='none')
                 loss = criterion(logit_scores.permute(0, 2, 1), targets)                        # N, S
 
-                mean_squared_loss_deviations, drift_from_width, msd_mean, widths_mean, combined_drift_score_mean = compute_drift(loss)
+                msd, width_histories = compute_drift(loss)
 
-                print(f'Drift scores: {mean_squared_loss_deviations}')
-                print(f'Drift from width: {drift_from_width}')
+                out['msd'] = msd
+                out['width_histories'] = width_histories
 
-                out['mean_squared_loss_deviations'] = mean_squared_loss_deviations
-                out['drift_from_width'] = drift_from_width
-                out['combined_drift_scores'] = mean_squared_loss_deviations * drift_from_width
+                self.msd_min = min(self.msd_min, msd.min().item())
+                self.msd_max = max(self.msd_max, msd.max().item())
+
+                self.width_min = min(self.width_min, width_histories.min().item())
+                self.width_max = max(self.width_max, width_histories.max().item())
 
                 torch.save(out, test_outputs)
+        
+        for dir in self.experiments_path.iterdir():
 
-                overall_scores[dir.name].update({
-                    'msd_mean': msd_mean,
-                    'widths_mean': widths_mean,
-                    'combined_drift_score_mean': combined_drift_score_mean
-                })
+            if dir.name in ('data', 'experiments', 'results'):
+                continue
+
+            test_outputs = dir / 'test_outputs.pt'
+            out = torch.load(test_outputs, map_location=device, weights_only=False)
+
+            msd = out['msd']
+            width_histories = out['width_histories']
+
+            msd = (msd - self.msd_min) / (self.msd_max - self.msd_min)
+            width_histories = (width_histories - self.width_min) / (self.width_max - self.width_min)
+
+            width_histories = 1 - width_histories
+
+            mean_squared_loss_deviations = msd.mean(dim=0)
+            drift_from_width = width_histories.mean(dim=0)
+            
+            out['mean_squared_loss_deviations'] = mean_squared_loss_deviations
+            out['drift_from_width'] = drift_from_width
+            out['combined_drift_scores'] = mean_squared_loss_deviations * drift_from_width
+
+            msd_mean = msd.mean().item()
+            widths_mean = width_histories.mean().item()
+            combined_drift_score_mean = msd_mean * widths_mean
+
+            overall_scores[dir.name].update({
+                'msd_mean': msd_mean,
+                'widths_mean': widths_mean,
+                'combined_drift_score_mean': combined_drift_score_mean
+            })
         
         if not overall_scores:
             return
@@ -954,6 +979,20 @@ class Eval:
         mcc_filename = get_best_dataset('mcc', self.results_path / 'mixed_effects')
         drift_filename = get_best_dataset('drift', self.results_path / 'mixed_effects')
 
+        msd_scores = dict()
+        width_scores = dict()
+
+        out = torch.load(
+            self.experiments_path / drift_filename / 'test_outputs.pt',
+            map_location=device,
+            weights_only=False
+        )
+
+        msd_min = out['msd'].min().item()
+        msd_max = out['msd'].max().item()
+        width_min = out['width_histories'].min().item()
+        width_max = out['width_histories'].max().item()
+
         for score in {mcc_filename, drift_filename}:
 
             score_dir, S, y_test_s, model_outs = self._train_ml_models(score)
@@ -1031,7 +1070,37 @@ class Eval:
                     # --- computing drift scores ---
                     print("Computing drift scores")
 
-                    mean_squared_loss_deviations, drift_from_width, msd_mean, widths_mean, combined_drift_score_mean = compute_drift(loss_s)
+                    msd, width_histories = compute_drift(loss_s)
+
+                    msd_scores[name] = msd
+                    width_scores[name] = width_histories
+
+                    msd_min = min(msd_min, msd.min().item())
+                    msd_max = max(msd_max, msd.max().item())
+                    width_min = min(width_min, width_histories.min().item())
+                    width_max = max(width_max, width_histories.max().item())
+                
+                results[name] = metrics
+            
+            for name in model_outs:
+                metrics = results[name] if name in results else dict()
+                _, _, _, _, _, train_time = model_outs[name]
+
+                if score == drift_filename:
+
+                    msd = msd_scores[name]
+                    width_histories = width_scores[name]
+
+                    msd = (msd - msd_min) / (msd_max - msd_min)
+                    width_histories = (width_histories - width_min) / (width_max - width_min)
+                    width_histories = 1 - width_histories
+
+                    mean_squared_loss_deviations = msd.mean(dim=0)
+                    drift_from_width = width_histories.mean(dim=0)
+
+                    msd_mean = msd.mean().item()
+                    widths_mean = width_histories.mean().item()
+                    combined_drift_score_mean = msd_mean * widths_mean
 
                     pd.DataFrame({
                         'stock_id': range(S),
@@ -1055,6 +1124,33 @@ class Eval:
                     print(f"Combined Drift: {metrics['combined_drift_score_mean']:.4f}")
                 
                 results[name] = metrics
+            
+            if score == drift_filename:
+                msd = out['msd']
+                width_histories = out['width_histories']
+
+                msd = (msd - msd_min) / (msd - msd_min)
+                width_histories = (width_histories - width_min) / (width_max - width_min)
+                width_histories = 1 - width_histories
+
+                mean_squared_loss_deviations = msd.mean(dim=0)
+                drift_from_width = width_histories.mean(dim=0)
+
+                msd_mean = msd.mean().item()
+                widths_mean = width_histories.mean().item()
+                combined_drift_score_mean = msd_mean * widths_mean
+
+                out['baseline_mean_squared_loss_deviations'] = mean_squared_loss_deviations
+                out['baseline_drift_from_width'] = drift_from_width
+                out['baseline_combined_drift_scores'] = mean_squared_loss_deviations * drift_from_width
+
+                results[score] = {
+                    'msd_mean' = msd_mean,
+                    'widths_mean' = widths_mean,
+                    'combined_drift_score_mean' = combined_drift_score_mean,
+                    'train_time_s' = 0,
+                    'pred_time_s' = 0
+                }
 
             results_df = pd.DataFrame.from_dict(results, orient='index')
             results_df.to_csv(score_dir / 'baseline_results.csv')
@@ -1081,7 +1177,7 @@ class Eval:
 
         dl_reorder = torch.argmax(self.stock_map[best_dl_name]['stock_map'], dim=-1)
 
-        score_tensor = dl_out['mcc_scores' if score == 'mcc' else 'combined_drift_scores']
+        score_tensor = dl_out['mcc_scores' if score == 'mcc' else 'baseline_combined_drift_scores']
         score_reordered = torch.zeros_like(score_tensor)
         score_reordered[dl_reorder] = score_tensor
 
