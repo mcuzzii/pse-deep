@@ -2098,7 +2098,7 @@ class Eval:
                 else:
                     update_dict(summary_tensors[dir.name], 'market_close', snapshot)
                 
-                update_dict(summary_tensors[dir.name], str(ts[i].date()), snapshot)
+                update_dict(summary_tensors[dir.name], str(ts[i]), snapshot)
                 update_dict(summary_tensors[dir.name], 'overall', snapshot)
             
         torch.save(summary_tensors, self.results_path / 'attn_analysis' / 'summary_tensors.pt')
@@ -2150,7 +2150,7 @@ class Eval:
                             ytick = [f'Top {i}' for i in range(1, 6)]
                             xlab = 'Minutes Ago (Q)'
                             ylab = f'Selected {'News' if w == 'nft' else 'X Posts'} (KV)'
-                            figsize = (7, 2)
+                            figsize = (14, 4)
                         if w in ('nintr', 'sintr'):
                             n_cols = item.shape[1]
                             step = max(1, n_cols // 20)  # aim for ~20 visible labels regardless of n_cols
@@ -2161,7 +2161,7 @@ class Eval:
                             ytick = [f'Top {i}' for i in range(1, 6)]
                             xlab = f'{"Article" if w == "nintr" else "Post"} Recency'
                             ylab = f'Selected {"News" if w == "nintr" else "X Posts"}'
-                            figsize = (7, 2)  # let width scale with n_cols too
+                            figsize = (14, 4)  # let width scale with n_cols too
 
                         viridis_cmap = mcolors.LinearSegmentedColormap.from_list(
                             'custom_viridis',
