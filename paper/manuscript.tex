@@ -99,22 +99,22 @@ Why does each one of model architectural complexity, prediction horizon, inclusi
 In line with each of these questions are the following research objectives to tackle, concretizing the tangibility of the directions to which the study shall be taken.
 
 \begin{longtable}{p{7cm}p{8cm}}
-\caption{Objectives Matrix}
-\label{tab:objectives}\\
+\caption{Objectives matrix}
+\label{tab:objectives} \\
 
 \toprule
 Research Question & Objective \\
 \midrule
 \endfirsthead
 
-\caption[]{Objectives Matrix (continued)}\\
+\caption[]{Objectives matrix (continued)} \\
 \toprule
 Research Question & Objective \\
 \midrule
 \endhead
 
 \midrule
-\multicolumn{2}{r}{Continued on next page}\\
+\multicolumn{2}{r}{Continued on next page} \\
 \endfoot
 
 \bottomrule
@@ -216,9 +216,9 @@ Copper futures work nearly the same—contracts for purchases of copper are the 
 
 Foreign exchange markets on one hand are the best examples of a decentralized market. Here, items traded are currencies themselves, whose values can fluctuate as a direct consequence of macro-scale differences in interest rates between the countries of the currencies involved. Its relevance on stock prices is in how it indicates inflation differentials and global supply purchasing power—and by extension, company operational costs, especially on imported supplies \parencite{phylaktis2005fx}.
 
-Government bonds are another good indicator of inflation \parencite{mishkin2018economics}. These are instruments that allow the government to borrow from willing investors, promising fixed repayments with interest over a maturity period, which can extend up to several years or decades, namely time scales where the purchasing power of subsequent fixed repayments can change significantly due to inflation, thereby affecting market desirability and valuation of bonds. Moreover, the percentage of a bond's market price constituting the fixed return is the bond yield, whose value reflects general market expectations on fixed returns; participants would sell bonds with returns lower than expectations to obtain assets with higher returns, reducing the bond's market price and thereby increasing its yield. Such expectations may be tied to climbing inflation rates, since central governments raise interest rates to combat inflation, opening new high-return opportunities for investors; thus, bond yields also capture information related to inflation. Taken to another level, bond yields between different bonds of different maturity periods can be compared by calculating yield spreads, whose directionality and magnitude encode information regarding the expected evolution of inflation over time (for instance, long-term bond yields lower than short-term bond yields indicate an expectation of peak inflation in the near future that would stabilize in the far future) \parencite{fabozzi2026bonds}. In summary, bond prices, bond yields, and yield spreads contain a lot of macroeconomic information that globally affect stocks \parencite{baele2010bonds}.
+Government bonds are another good indicator of inflation \parencite{mishkin2018economics}. These are instruments that allow the government to borrow from willing investors, promising fixed repayments with interest over a maturity period, which can extend up to several years or decades, namely time scales where the purchasing power of subsequent fixed repayments can change significantly due to inflation, thereby affecting market desirability and valuation of bonds. Moreover, the percentage of a bond's market price constituting the fixed return is the bond yield, whose value reflects general market expectations on fixed returns; participants would sell bonds with returns lower than expectations to obtain assets with higher returns, reducing the bond's market price and thereby increasing its yield. Such expectations may be tied to climbing inflation rates, since central governments raise interest rates to combat inflation, making high-return opportunities more appealing for investors, and rendering low-return opportunities such as bonds issued long ago less capable of satisfying investors' requirements on returns given lower purchasing power; thus, bond yields also capture information related to inflation. Taken to another level, bond yields between different bonds of different remaining maturity periods can be compared by calculating yield spreads, whose directionality and magnitude encode information regarding the expected evolution of inflation over time (for instance, bonds reaching maturity in the far future with yields lower than that of bonds reaching maturity in the near future indicate an expectation of peak inflation in the near future—given that investors expect yields to reflect their requirements given changes to purchasing power—that would stabilize to lower inflation levels in the far future—since a rise in a far-future-maturing bond's yields would require longer-term perceived difficulty for fixed returns to match investor requirements, which is not the case with an expected eventual relaxation of inflation levels) \parencite{fabozzi2026bonds}. In summary, bond prices, bond yields, and yield spreads contain a lot of macroeconomic information that globally affect stocks \parencite{baele2010bonds}.
 
-Finally, gold markets serve as a ``safe storage of value'' for investors \parencite{ciner2023safe}—when uncertainty arises, such as poorly performing stocks, economic recession, wars, and etc., gold becomes desirable as its value remains nearly constant despite economic shocks (since changes in value would theoretically accompany changes in the overall scarcity of gold, which is unlikely) \parencite{baur2010gold}. In such regimes, participants would sell unstable assets from other financial markets including stocks and buy gold. Conversely, when economic expectations shift more positively (companies will grow, economy stabilizes, etc.), participants would sell gold to restore positions in other financial markets. This theorizes a potential inverse relationship component between gold prices and asset prices from other types of markets including stocks.
+Finally, gold markets serve as a ``safe storage of value'' for investors \parencite{ciner2023safe}—when uncertainty arises, such as poorly performing stocks, economic recession, wars, and etc., gold becomes desirable as its value remains intrinsically unaffected by economic shocks (since changes in intrinsic value would theoretically accompany changes in the overall scarcity of gold, which is unlikely) \parencite{baur2010gold}. In such regimes, participants would sell unstable assets from other financial markets including stocks and buy gold. Conversely, when economic expectations shift more positively (companies will grow, economy stabilizes, etc.), participants would sell gold to restore positions in other financial markets. This theorizes a potential inverse relationship component between gold prices and asset prices from other types of markets including stocks.
 
 \subsubsection{The Fate of Prediction Algorithms}
 
@@ -592,52 +592,51 @@ In summary, the main conceptual framework of independent and dependent variables
 \end{equation}
 where $\mathrm{TP}$ (true positives), $\mathrm{TN}$ (true negatives), $\mathrm{FP}$ (false positives), and $\mathrm{FN}$ (false negatives), are elements of the model's confusion matrix on a single stock on the testing period.
   \item \textit{Model performance as ranking ability:} a continuous variable denoting the cumulative return of the model on a simulated long-short investment strategy on the testing period that at every interval, ranks stocks according to predicted probabilities, goes long on the top $K$ stocks, and goes short on the bottom $K$ stocks, given a value for $K$ and an offset along the trading interval indicating when the simulation begins (counting as one observation). While trading simulations are normally used to estimate the trading profitability of a model, this implementation aims not to measure the model's profitability, but rather measures how well a model \textit{ranks} stocks according to trading profitability.
-  \item \textit{Model drift:} a continuous variable denoting a combination (product) of two normalized scores for every stock, namely a normalized score denoting the mean absolute differences between the model's instantaneous loss values and the expanding-window averages of the model's loss over the current adaptive windows defined by an ADWIN detector for that stock (signifying loss function instability, hence drift, within local regimes), and a normalized score denoting the average ADWIN window length
+  \item \textit{Model drift:} a continuous variable denoting a combination (product) of two normalized scores (ranging from $0$ to $1$) for every stock, namely a normalized score denoting the mean absolute differences between the model's instantaneous loss values and the expanding-window averages of the model's loss over the current adaptive windows defined by an ADWIN detector for that stock (signifying loss function instability within local regimes, hence drift), and a normalized score denoting the complement of the adaptive windows' average length for the same stock, so that small lengths yield higher scores (signifying the overall instability of the loss function across regimes, hence drift).
   \end{itemize}
 \end{enumerate}
+The independent variables are understood to interact with each other (namely, that certain independent variables ``mderate'' relationships between other independent variables and a dependent variable); thus, both \textit{main} and \textit{interaction} effects are considered for the study.
 
-Given these requirements, the research design is split into two major sections:
+As mentioned before, the study entails not only descriptive and relational analyses involving the above variables, but also diagnostic analyses that shed light into why such relationships arise. Given these requirements, the research design is split into two major sections:
 \begin{enumerate}
-  \item \textbf{Factorial analysis:} a factorial experiment to analyze model performance and model drift in terms of the four independent variables (model architectural complexity, inclusion of news data, inclusion of social media data, and prediction horizon), which also takes into account two-way interactions, will be central to the study. While this is methodically a single experiment, there are \textit{three} different analyses—that of model performance in terms of a chosen traditional machine learning evaluation metric, model performance in terms of the model's capacity to \textit{rank} stocks in terms of profitability of model performance and model drift are done separately, each with its own study of main and interaction effects. A second phase of this section of the research design shall also be implemented, featuring descriptive and post-hoc analyses to understand which experimental settings provide the best performing models (only in terms of model performance, not model drift), after which a final phase involving the best performing model is then carried out, comparing it against heuristic methods. All models to be analyzed in the entire study will be created for this section; interpretability analysis shall only draw from the models already analyzed herein.
-  \item \textbf{Interpretability analysis:} an exploratory data analysis involving feature importances and attention mechanisms shall also be performed through various methods that aim to answer research questions for describing explainability structures, as well as explaining the main and interaction effects. The first phase involves extracting and inspecting the distributions of global feature importances and attention on the test set for every stock on each experimental setting to obtain aggregate descriptives across settings and notable differences between settings that may explain the main and interaction effects observed on model performance. The second phase involves analyzing the evolution of feature importance distributions and attention mechanisms over time across the test sets, to identify possible mechanisms for potential model drift, and how the presence of different data modalities and prediction horizon modifications may affect these mechanisms.
+  \item \textbf{Factorial analysis:} a factorial experiment to analyze the above model performance and model drift metrics in terms of the four given independent variables (model architectural complexity, inclusion of news data, inclusion of social media data, and prediction horizon), which also takes into account two-way interactions, will be central to the study. Each of the above dependent variables correspond to a separate analysis of main and interaction effects; however, these analyses are made on top of the same set of trained models, as mentioned before. This means that the results from the analyses are not independent results, albeit the results hold. Another phase of this section of the research design shall also be implemented, featuring descriptive and post-hoc analyses for every dependent variable to understand which experimental settings provide the best performing models on each metric. Finally, a final phase involving a comparison between the best performing deep learning model and baseline machine learning methods (logistic regression, support vector machines, random forests, and an extreme gradient boosting) trained on the same model architecture and data configuration settings as the deep learning model is performed for each of the dependent variables on corresponding similar tests. All models to be analyzed in the entire study will be created for this section; interpretability analysis shall only draw from the models already analyzed herein.
+  \item \textbf{Interpretability analysis:} an exploratory data analysis involving feature importances and attention mechanisms shall also be performed through various methods that aim to answer research questions for describing explainability structures, as well as explaining the main and interaction effects. The first phase involves extracting and inspecting the distributions of global feature group importances and attention weights of individual transformer modules (for transformer-based models) over the testing period on each experimental setting to obtain aggregate descriptives across settings and notable differences between settings that may explain the main and interaction effects observed on the two model performance metrics described above. The second phase involves analyzing the evolution of feature importance distributions and attention mechanisms over time across the testing period, to identify possible mechanisms for potential model drift, and how the presence of different model architectures, data modalities and prediction horizon modifications may affect these mechanisms. Statistical testing similar to the main and interaction effects analyses above are carried out as \textit{auxiliary tests} to help drive an exploratory data analysis narrative, where the independent variables are all the above specified except model architecture (tests are done separately for each kind of deep learning model) with the addition of \textit{time of day} and \textit{elapsed time} variables, and the dependent variable is the SHAP value for each stock at each timestamp among a given sample of timestamps over the testing period. Separate tests for different model types are done—one for all transformer models, and another for all multi-layer perceptrons—each as well with its own dataset of SHAP values, since it is difficult to establish comparability of SHAP scores between models given the sheer difference in forward- and backward-pass mechanics between the architectures. All one-way and two-way interactions between the given independent variables and time-based variables are considered (except for interactions between the time of day and the elapsed time). Interactions involving time of day and elapsed time variables are relevant for studying model drift explainability patterns  These tests are not to be treated as primary analyses, but rather only supporting evidence for the interpretability analysis narrative.
 \end{enumerate}
-The factorial analysis aims to answer research questions \ref{rq:baseline}, \ref{rq:performance}, and \ref{rq:drift}, whereas the interpretability analysis shall attend to \ref{rq:interpretperformance} and \ref{rq:interpretdrift}.
+The above analyses are purposed for the central research questions as follows: research questions \ref{rq:baseline}, \ref{rq:performance}, and \ref{rq:drift} are addressed by the above described factorial analyses, whereas the interpretability analysis shall attend to \ref{rq:interpretperformance} and \ref{rq:interpretdrift}.
 
 \subsection{Training and Evaluation Data Sources}
 
 The data requirements for this research are highly specific, and mostly require proprietary sources. Each data modality follows a format, described as follows:
 \begin{enumerate}
-\item \textbf{Financial tickers:} these are time-series tickers that update at a high frequency, composed of the stock prices of each blue-chip company in the PSE (the top 30 most highly recognized and most actively-traded stocks), the six sectoral indices, the PSEi (composite index), and a few 1-minute-frequency economic indicators such as USD to PHP exchange rate, the Philippine 10-year government bond (loans from investors to the government), commodity prices (PHP to gold exchange rate, and continuous copper futures), and oil prices (PHP to Brent crude oil future). Each ticker is a bundle of multiple raw time-series features: every stock price, sectoral index, and composite index are composed of seven features, namely the opening, high, low, and closing (OHLC) prices, absolute and percent net change in closing prices (returns), as well as the trading volume (number of trades during the given interval); the PHP to USD and gold to PHP exchange rates are similarly composed of seven features—bid (best price in PHP at which banks/market makers are willing to pay for 1 USD or 1 troy ounce of gold), ask (best price in PHP at which banks/market makers are willing to sell 1 USD or 1 troy ounce of gold), open, high, and low (OHL) prices, refresh rate, and net change in bid price; the Brent crude oil future on one hand is composed of 10 features—OHLC, volume, net change, percent net change, open interest, bid, and ask; the continuous copper futures are made of the same features as Brent crude oil future except for open interest; lastly, the Philippine 10-year government bond is composed of five features, namely bid (highest price an investor is willing to pay for the bond), ask (lowest price the government is willing to accept for the bond), bid yield (the annual interest rate corresponding to the bond at the bid price), ask yield (interest rate at the ask price), and percent change in bid yield.
+\item \textbf{Financial time-series datasets:} these are time-series datasets that update at a minute-level frequency, composed of the stock prices of each blue-chip company in the PSE (the top 30 most highly recognized and most actively-traded stocks), the six sectoral indices, the PSEi (composite index), 1-minute-frequency economic indicators such as the PHP to USD exchange rate, the PHP to gold exchange rate, continuous front-month Commodity Exchange (COMEX) High-grade Copper futures (with ``continuous front-month'' meaning the nearest active contract, rolling over to the next month whenever such contract reaches expiration), continuous front-month Intercontinental Exchange (ICE) Brent Crude Oil futures, and daily-frequency Philippine government bonds maturing in approximately 20 years, 10 years, 7 years, 5 years, and 2 years respectively, at the time of data collection.
 
 \begin{longtable}{@{}l p{3.5in}@{}}
-\caption*{\textbf{Table 1}\\
-\textit{PSE Composite Index Constituents and Related Market Indicators}} \\
+\caption{All financial datasets constituting all technical time-series data} \\
 \toprule
-Ticker & Name \\
+Abbrev. & Name \\
 \midrule
 \endfirsthead
  
-\multicolumn{2}{l}{\textit{Table 1 continued}} \\
+\caption[]{All financial datasets constituting all technical time-series data (continued)} \\
 \toprule
-Ticker & Name \\
+Abbrev. & Name \\
 \midrule
 \endhead
- 
+
 \midrule
-\multicolumn{2}{r}{\textit{(table continues)}} \\
+\multicolumn{2}{r}{Continued on next page} \\
 \endfoot
  
 \bottomrule
-\multicolumn{2}{@{}p{5in}@{}}{\footnotesize \textit{Note.} PSFI--PSSE are PSE sector sub-indices; PSEi is the PSE composite index. LCOc1 and HGc1 are continuous futures tickers.} \\
 \endlastfoot
  
-\multicolumn{2}{@{}l}{\textit{Financials}} \\
+\multicolumn{2}{@{}l}{\textit{Stocks: Financials}} \\
 BDO & BDO Unibank, Inc. \\
 BPI & Bank of the Philippine Islands \\
 CBC & China Banking Corporation \\
 MBT & Metropolitan Bank and Trust Company \\
 \addlinespace
-\multicolumn{2}{@{}l}{\textit{Holding Firms}} \\
+\multicolumn{2}{@{}l}{\textit{Stocks: Holding Firms}} \\
 AC & Ayala Corporation \\
 AEV & Aboitiz Equity Ventures \\
 DMC & DMCI Holdings, Inc. \\
@@ -647,7 +646,7 @@ LTG & LT Group, Inc. \\
 SM & SM Investments Corporation \\
 SMC & San Miguel Corporation \\
 \addlinespace
-\multicolumn{2}{@{}l}{\textit{Industrial}} \\
+\multicolumn{2}{@{}l}{\textit{Stocks: Industrial}} \\
 ACEN & ACEN Corporation \\
 CNPF & Century Pacific Food, Inc. \\
 EMI & Emperador Inc. \\
@@ -657,13 +656,13 @@ MONDE & Monde Nissin Corporation \\
 SCC & Semirara Mining and Power Corporation \\
 URC & Universal Robina Corporation \\
 \addlinespace
-\multicolumn{2}{@{}l}{\textit{Property}} \\
+\multicolumn{2}{@{}l}{\textit{Stocks: Property}} \\
 ALI & Ayala Land, Inc. \\
 RCR & RL Commercial REIT, Inc. \\
 AREIT & AREIT, Inc. \\
 SMPH & SM Prime Holdings, Inc. \\
 \addlinespace
-\multicolumn{2}{@{}l}{\textit{Services}} \\
+\multicolumn{2}{@{}l}{\textit{Stocks: Services}} \\
 CNVRG & Converge Information and Communications Technology Solutions, Inc. \\
 GLO & Globe Telecom, Inc. \\
 ICT & International Container Terminal Services, Inc. \\
@@ -671,7 +670,7 @@ PGOLD & Puregold Price Club, Inc. \\
 PLUS & DigiPlus Interactive Corp. \\
 TEL & PLDT, Inc. \\
 \addlinespace
-\multicolumn{2}{@{}l}{\textit{Sectoral Index}} \\
+\multicolumn{2}{@{}l}{\textit{Stocks: Sectoral Indices}} \\
 PSFI & Financials \\
 PSHO & Holding Firms \\
 PSIN & Industrial \\
@@ -679,21 +678,98 @@ PSMO & Mining \& Oil \\
 PSPR & Property \\
 PSSE & Services \\
 \addlinespace
-\multicolumn{2}{@{}l}{\textit{Composite Index}} \\
+\multicolumn{2}{@{}l}{\textit{Stocks: Composite Index}} \\
 PSEi & Philippine Stock Exchange Index \\
 \addlinespace
-\multicolumn{2}{@{}l}{\textit{Foreign Exchange Rate}} \\
+\multicolumn{2}{@{}l}{\textit{Exchange Rates}} \\
 PHP & PHP to USD Exchange Rate \\
+XAU & PHP to Gold Exchange Rate \\
 \addlinespace
-\multicolumn{2}{@{}l}{\textit{Energy Future}} \\
-LCOc1 & Brent Crude Oil Future \\
+\multicolumn{2}{@{}l}{\textit{Energy Futures}} \\
+LCOc1 & Continuous Front-month ICE Brent Crude Oil Future Contracts \\
 \addlinespace
-\multicolumn{2}{@{}l}{\textit{Government Bond}} \\
-PHGV & Philippine 10-year Government Bond \\
+\multicolumn{2}{@{}l}{\textit{Government Bonds}} \\
+PHGV20 & Philippine Treasury Bond at ~20 Years to Maturity \\
+PHGV10 & Philippine Treasury Bond at ~10 Years to Maturity \\
+PHGV7 & Philippine Treasury Bond at ~7 Years to Maturity \\
+PHGV5 & Philippine Treasury Bond at ~5 Years to Maturity \\
+PHGV2 & Philippine Treasury Bond at ~2 Years to Maturity \\
 \addlinespace
 \multicolumn{2}{@{}l}{\textit{Commodity}} \\
-HGc1 & Continuous Copper Futures \\
-XAU/PHP & PHP to Gold Exchange Rate \\
+HGc1 & Continuous Front-month COMEX High-grade Copper Future Contracts \\
+
+\end{longtable}
+
+These datasets comprise of the following data columns:
+
+\begin{longtable}{@{}l p{3.5in}@{}}
+\caption{Relevant raw variable columns for all time-series datasets} \\
+\toprule
+Column & Description \\
+\midrule
+\endfirsthead
+ 
+\caption[]{Relevant raw variable columns for all time-series datasets (continued)} \\
+\toprule
+Column & Description \\
+\midrule
+\endhead
+
+\midrule
+\multicolumn{2}{r}{Continued on next page} \\
+\endfoot
+ 
+\bottomrule
+\endlastfoot
+
+\multicolumn{2}{@{}l}{\textit{Stocks (All Stocks, Sectoral Indices, and the Composite Index)}} \\
+Local Date & Date of the current timestamp in local time (UTC+08) \\
+Local Time & Time of the current timestamp in local time (UTC+08) \\
+Close & Closing price (last traded price) of the current minute \\
+Net & Net change in closing price between the previous and the current minute \\
+\%Chg & Percent change in closing price between the previous and the current minute \\
+Open & Opening price (first traded price) of the current minute \\
+Low & Lowest traded price of the current minute \\
+High & Highest traded price of the current minute \\
+Volume & Number of stocks traded in the current minute \\
+\addlinespace
+\multicolumn{2}{@{}l}{\textit{Exchange Rates (USD and XAU Datasets)}} \\
+Local Date & Date of the current timestamp in local time (UTC+08) \\
+Local Time & Time of the current timestamp in local time (UTC+08) \\
+Bid & Best bidding price (highest price at which any buyer is willing to spend on the asset, namely 1 US dollar for the USD dataset or 1 troy ounce of gold for the XAU dataset) of the current minute \\
+Ask & Best asking price (lowest price at which any seller is willing to sell the asset) of the current minute \\
+High & Highest traded price of the current minute \\
+Low & Lowest traded price of the current minute \\
+Open & Opening price of the current minute \\
+Refresh Rate & Number of quote refreshes during the minute \\
+BidNet & Net change in bid price between the previous and the current minute \\
+\addlinespace
+\multicolumn{2}{@{}l}{\textit{Energy Futures (ICE Brent Crude Future Contracts)}} \\
+Local Date & Date of the current timestamp in local time (UTC+08) \\
+Local Time & Time of the current timestamp in local time (UTC+08) \\
+Close & Closing price of the current minute \\
+Net & Net change in closing price between the previous and the current minute \\
+\%Chg & Percent change in closing price between the previous and the current minute \\
+Open & Opening price of the current minute \\
+Low & Lowest traded price of the current minute \\
+High & Highest traded price of the current minute \\
+Volume & Number of stocks traded in the current minute \\
+Bid & Best bidding price of the current minute \\
+Ask & Best asking price of the current minute \\
+\addlinespace
+\multicolumn{2}{@{}l}{\textit{Copper Futures (COMEX Copper Future Contracts)}} \\
+Local Date & Date of the current timestamp in local time (UTC+08) \\
+Local Time & Time of the current timestamp in local time (UTC+08) \\
+Bid & Best bidding price of the current minute \\
+Ask & Best asking price of the current minute \\
+\addlinespace
+\multicolumn{2}{@{}l}{\textit{Government Bonds (PHGV Datasets)}} \\
+Exchange Date & Date of the current day \\
+Bid & Best bidding price of the current day \\
+Ask & Best asking price of the current day \\
+BidYld & Bond yield implied with the bond price assumed to be the best bidding price of the current day \\
+AskYld & Bond yield implied with the bond price assumed to be the best asking price of the current day \\
+BidYChg & Net change in bond yield implied by the best bidding price between the previous and the current day
 
 \end{longtable}
 
