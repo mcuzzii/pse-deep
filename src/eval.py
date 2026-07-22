@@ -627,8 +627,8 @@ def plot_shap_by_day(df, save_path=None):
     # --- Panels (pred_30) ---
     if has_pred30:
         col_levels = sorted(agg['pred_30'].unique())
-        col_titles = {False: '10-min Return Target',
-                    True: '30-min Return Target'}
+        col_titles = {False: '10-min return target',
+                    True: '30-min return target'}
     else:
         col_levels = [None]
         col_titles = {None: 'Mean SHAP Value'}
@@ -711,7 +711,7 @@ def plot_shap_by_day(df, save_path=None):
             title = col_titles[col_val]
 
             if has_social and has_news:
-                title += f"{'With' if row_val else 'Without'} Social Media"
+                title += f" | {'With' if row_val else 'Without'} social media"
 
             ax.set_title(title)
             ax.set_xlabel("Day")
@@ -722,13 +722,14 @@ def plot_shap_by_day(df, save_path=None):
 
     if color_var is not None:
         for lvl in color_levels:
+            modality = 'news' if color_var.capitalize() == 'News' else 'social media'
             legend_handles.append(
                 mlines.Line2D(
                     [],
                     [],
                     color=colors[lvl],
                     linewidth=2,
-                    label=f'{'With' if lvl else 'Without'} {color_var.capitalize()}'
+                    label=f'{'With' if lvl else 'Without'} {modality}'
                 )
             )
 
