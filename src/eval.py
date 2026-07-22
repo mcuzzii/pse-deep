@@ -711,7 +711,7 @@ def plot_shap_by_day(df, save_path=None):
             title = col_titles[col_val]
 
             if has_social and has_news:
-                title += f"\nSocial: {row_val}"
+                title += f"{'With' if row_val else 'Without'} Social Media"
 
             ax.set_title(title)
             ax.set_xlabel("Day")
@@ -728,7 +728,7 @@ def plot_shap_by_day(df, save_path=None):
                     [],
                     color=colors[lvl],
                     linewidth=2,
-                    label=f'{color_var.capitalize()}: {lvl}'
+                    label=f'{'With' if lvl else 'Without'} {color_var.capitalize()}'
                 )
             )
 
@@ -738,7 +738,7 @@ def plot_shap_by_day(df, save_path=None):
             loc='center left',
             bbox_to_anchor=(1.0, 0.5),
             frameon=False,
-            title=color_var.capitalize(),
+            title=None,
         )
 
     fig.suptitle('Mean SHAP Value Over Time', fontsize=13, y=1.02)
