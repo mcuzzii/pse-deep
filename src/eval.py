@@ -595,6 +595,131 @@ def plot_text_scores(text_scores: dict, out_dir, top_n: int = 20, figsize=None, 
     plt.close()
     return fig, ax
 
+def plot_shap_by_day(df, save_path=None):
+    """
+    Line plot: mean SHAP value per day.
+
+    Plotting rules (applied only for columns that are actually present):
+        - pred_30 -> facet into separate panels (columns)
+        - news    -> line color
+        - social  -> line style (solid vs dashed)
+
+    Any subset of {pred_30, news, social} may be present. If none of them
+    are present, a single panel/single line (overall daily mean) is drawn.
+    """
+    setup_plot_style()
+
+    df = df.copy()
+    df['timestamp'] = pd.to_datetime(df['timestamp'])
+    df['day'] = pd.to_datetime(df['timestamp'].dt.date)
+
+    has_pred30 = 'pred_30' in df.columns
+    has_news = 'news' in df.columns
+    has_social = 'social' in df.columns
+
+    group_cols = ['day'] + [c for c, present in
+                             [('pred_30', has_pred30), ('news', has_news), ('social', has_social)]
+                             if present]
+
+    agg = df.groupby(group_cols, as_index=False)['shap'].mean()
+
+    # --- Panels (pred_30) ---
+    if has_pred30:
+        panel_levels = sorted(agg['pred_30'].unique())
+        panel_titles = {False: '10-min Return Target', True: '30-min Return Target'}
+    else:
+        panel_levels = [None]  # single dummy panel
+        panel_titles = {None: 'Mean SHAP Value'}
+
+    # --- Color (news) ---
+    if has_news:
+        news_levels = sorted(agg['news'].unique())
+        news_palette = [COLORS['purple'], COLORS['green'], COLORS['teal'], COLORS['indigo']]
+        news_colors = {lvl: news_palette[i % len(news_palette)] for i, lvl in enumerate(news_levels)}
+    else:
+        news_levels = [None]
+        news_colors = {None: COLORS['purple']}
+
+    # --- Linestyle (social) ---
+    if has_social:
+        social_levels = sorted(agg['social'].unique())
+        style_options = ['-', '--', ':', '-.']
+        social_styles = {lvl: style_options[i % len(style_options)] for i, lvl in enumerate(social_levels)}
+    else:
+        social_levels = [None]
+        social_styles = {None: '-'}
+
+    fig, axes = plt.subplots(1, len(panel_levels), figsize=(6 * len(panel_levels), 5), sharey=True)
+    if len(panel_levels) == 1:
+        axes = [axes]
+
+    for ax, panel_val in zip(axes, panel_levels):
+        if has_pred30:
+            subset = agg[agg['pred_30'] == panel_val]
+        else:
+            subset = agg
+
+        for news_val in news_levels:
+            for social_val in social_levels:
+                sub = subset
+                if has_news:
+                    sub = sub[sub['news'] == news_val]
+                if has_social:
+                    sub = sub[sub['social'] == social_val]
+                if sub.empty:
+                    continue
+
+                sub = sub.sort_values('day')
+                ax.plot(
+                    sub['day'],
+                    sub['shap'],
+                    color=news_colors[news_val],
+                    linestyle=social_styles[social_val],
+                    linewidth=1.8,
+                    marker='o',
+                    markersize=3,
+                    alpha=0.9,
+                )
+
+        ax.set_title(panel_titles.get(panel_val, str(panel_val)))
+        ax.set_xlabel('Day')
+        ax.axhline(0, color='gray', linewidth=0.6, linestyle=':', zorder=0)
+        ax.tick_params(axis='x', rotation=45)
+
+    axes[0].set_ylabel('Mean SHAP Value')
+
+    # --- Legend (only include dimensions that are actually present) ---
+    legend_handles = []
+    if has_news:
+        for lvl in news_levels:
+            legend_handles.append(
+                mlines.Line2D([], [], color=news_colors[lvl], linestyle='-', label=f'News: {lvl}')
+            )
+    if has_social:
+        for lvl in social_levels:
+            legend_handles.append(
+                mlines.Line2D([], [], color='black', linestyle=social_styles[lvl], label=f'Social: {lvl}')
+            )
+
+    if legend_handles:
+        fig.legend(
+            handles=legend_handles,
+            loc='center left',
+            bbox_to_anchor=(1.0, 0.5),
+            frameon=False,
+            title='Feature Config',
+        )
+
+    fig.suptitle('Mean SHAP Value Over Time', fontsize=13, y=1.02)
+    fig.tight_layout()
+
+    if save_path:
+        path = Path(save_path)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        fig.savefig(path, bbox_inches='tight')
+
+    return fig, axes
+
 class Eval:
     def __init__(self):
         self.experiments_path = Path('experiments')
@@ -2206,3 +2331,13 @@ class Eval:
                             dpi=300, bbox_inches='tight'
                         )
                         plt.close()
+    
+    def plot_shap_scores(self):
+        for path in Path('experiments/results/shap_analysis/model_inputs').iterdir():
+            if 'group' in path.name:
+                continue
+            df = pd.read_csv(path.name)
+            plot_shap_by_day(
+                df,
+                f'experiments/results/shap_analysis/{path.name.split('.')[0]}_elapsed_time.png'
+            )
