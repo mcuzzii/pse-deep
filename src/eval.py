@@ -2421,10 +2421,10 @@ class Eval:
             df['group'] = path.name.split('.')[0][4:]
 
             if 'mlp' in path.name:
-                mlp_dfs = pd.concat([mlp_dfs, df['timestamp', 'setting', 'shap']])
+                mlp_dfs = pd.concat([mlp_dfs, df[['group', 'timestamp', 'setting', 'shap']]])
                 print(mlp_dfs.tail())
             else:
-                tfm_dfs = pd.concat([tfm_dfs, df['timestamp', 'setting', 'shap']])
+                tfm_dfs = pd.concat([tfm_dfs, df[['group', 'timestamp', 'setting', 'shap']]])
                 print(tfm_dfs.tail())
 
         for df, name in zip((mlp_dfs, tfm_dfs), ('mlp', 'tfm')):
