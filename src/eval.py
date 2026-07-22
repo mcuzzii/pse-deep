@@ -596,7 +596,7 @@ def plot_text_scores(text_scores: dict, out_dir, top_n: int = 20, figsize=None, 
     plt.close()
     return fig, ax
 
-def plot_shap_by_day(df, save_path=None):
+def plot_shap_by_day(df, time_unit='day', save_path=None):
     """
     Line plot: mean SHAP value per day.
 
@@ -612,13 +612,41 @@ def plot_shap_by_day(df, save_path=None):
 
     df = df.copy()
     df['timestamp'] = pd.to_datetime(df['timestamp'])
-    df['day'] = pd.to_datetime(df['timestamp'].dt.date)
+    df['time_unit'] = (
+        pd.to_datetime(df['timestamp'].dt.date)
+        if time_unit == 'day'
+        else (
+            pd.Categorical(
+                df['timestamp'].dt.strftime("%a"),
+                categories=['Mon', 'Tue', 'Wed', 'Thu', 'Fri'],
+                ordered=True
+            )
+            if time_unit == 'day_of_week'
+            else pd.Categorical(
+                np.where(
+                    df['time_of_day'] == 'market_open',
+                    "Market Open",
+                    np.where(
+                        df['time_of_day'] == 'pre_recess',
+                        "Pre-recess",
+                        np.where(
+                            df['time_of_day'] == 'pm_open',
+                            "Afternoon Open",
+                            "Market Close"
+                        )
+                    )
+                ),
+                categories=['Market Open', 'Pre-recess', 'Afternoon Open', 'Market Close'],
+                ordered=True
+            )
+        )
+    )
 
     has_pred30 = 'pred_30' in df.columns
     has_news = 'news' in df.columns
     has_social = 'social' in df.columns
 
-    group_cols = ['day'] + [c for c, present in
+    group_cols = ['time_unit'] + [c for c, present in
                              [('pred_30', has_pred30), ('news', has_news), ('social', has_social)]
                              if present]
 
@@ -696,10 +724,10 @@ def plot_shap_by_day(df, save_path=None):
                 if sub.empty:
                     continue
 
-                sub = sub.sort_values('day')
+                sub = sub.sort_values('time_unit')
 
                 ax.plot(
-                    sub['day'],
+                    sub['time_unit'],
                     sub['shap'],
                     color=colors[level],
                     linewidth=1.8,
@@ -714,7 +742,15 @@ def plot_shap_by_day(df, save_path=None):
                 title += f" | {'With' if row_val else 'Without'} social media"
 
             ax.set_title(title)
-            ax.set_xlabel("Day")
+            ax.set_xlabel(
+                "Day"
+                if time_unit == 'day'
+                else (
+                    "Day of Week"
+                    if time_unit == 'day_of_week'
+                    else "Intraday Period"
+                )
+            )
             if not col_val:
                 ax.set_ylabel("Mean SHAP Value")
             ax.axhline(0, color="gray", linewidth=0.6, linestyle=":")
@@ -2373,5 +2409,16 @@ class Eval:
             df = pd.read_csv(path)
             plot_shap_by_day(
                 df,
+                'day',
                 f'experiments/results/shap_analysis/{path.name.split('.')[0]}_elapsed_time.png'
+            )
+            plot_shap_by_day(
+                df,
+                'day_of_week',
+                f'experiments/results/shap_analysis/{path.name.split('.')[0]}_day_of_week.png'
+            )
+            plot_shap_by_day(
+                df,
+                'intraday_period',
+                f'experiments/results/shap_analysis/{path.name.split('.')[0]}_intraday_period.png'
             )
