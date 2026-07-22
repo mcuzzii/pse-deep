@@ -626,80 +626,110 @@ def plot_shap_by_day(df, save_path=None):
 
     # --- Panels (pred_30) ---
     if has_pred30:
-        panel_levels = sorted(agg['pred_30'].unique())
-        panel_titles = {False: '10-min Return Target', True: '30-min Return Target'}
+        col_levels = sorted(agg['pred_30'].unique())
+        col_titles = {False: '10-min Return Target',
+                    True: '30-min Return Target'}
     else:
-        panel_levels = [None]  # single dummy panel
-        panel_titles = {None: 'Mean SHAP Value'}
+        col_levels = [None]
+        col_titles = {None: 'Mean SHAP Value'}
 
-    # --- Color (news) ---
+    # Social becomes panel rows whenever news is also present
+    if has_social and has_news:
+        row_levels = sorted(agg['social'].unique())
+    else:
+        row_levels = [None]
+
+    palette = [
+        COLORS['purple'],
+        COLORS['green'],
+        COLORS['teal'],
+        COLORS['indigo']
+    ]
+
     if has_news:
-        news_levels = sorted(agg['news'].unique())
-        news_palette = [COLORS['purple'], COLORS['green'], COLORS['teal'], COLORS['indigo']]
-        news_colors = {lvl: news_palette[i % len(news_palette)] for i, lvl in enumerate(news_levels)}
+        color_levels = sorted(agg['news'].unique())
+        colors = {lvl: palette[i % len(palette)]
+                for i, lvl in enumerate(color_levels)}
+        color_var = 'news'
+
+    elif has_social:
+        color_levels = sorted(agg['social'].unique())
+        colors = {lvl: palette[i % len(palette)]
+                for i, lvl in enumerate(color_levels)}
+        color_var = 'social'
+    
     else:
-        news_levels = [None]
-        news_colors = {None: COLORS['purple']}
+        color_levels = [None]
+        colors = {None: COLORS['purple']}
+        color_var = None
 
-    # --- Linestyle (social) ---
-    if has_social:
-        social_levels = sorted(agg['social'].unique())
-        style_options = ['-', '--', ':', '-.']
-        social_styles = {lvl: style_options[i % len(style_options)] for i, lvl in enumerate(social_levels)}
-    else:
-        social_levels = [None]
-        social_styles = {None: '-'}
+    fig, axes = plt.subplots(
+        len(row_levels),
+        len(col_levels),
+        figsize=(6 * len(col_levels), 4.5 * len(row_levels)),
+        sharey=True,
+        squeeze=False,
+    )
 
-    fig, axes = plt.subplots(1, len(panel_levels), figsize=(6 * len(panel_levels), 5), sharey=True)
-    if len(panel_levels) == 1:
-        axes = [axes]
+    for r, row_val in enumerate(row_levels):
+        for c, col_val in enumerate(col_levels):
 
-    for ax, panel_val in zip(axes, panel_levels):
-        if has_pred30:
-            subset = agg[agg['pred_30'] == panel_val]
-        else:
+            ax = axes[r][c]
+
             subset = agg
 
-        for news_val in news_levels:
-            for social_val in social_levels:
+            if has_pred30:
+                subset = subset[subset['pred_30'] == col_val]
+
+            if has_social and has_news:
+                subset = subset[subset['social'] == row_val]
+
+            for level in color_levels:
+
                 sub = subset
-                if has_news:
-                    sub = sub[sub['news'] == news_val]
-                if has_social:
-                    sub = sub[sub['social'] == social_val]
+
+                if color_var == 'news':
+                    sub = sub[sub['news'] == level]
+                elif color_var == 'social':
+                    sub = sub[sub['social'] == level]
+
                 if sub.empty:
                     continue
 
                 sub = sub.sort_values('day')
+
                 ax.plot(
                     sub['day'],
                     sub['shap'],
-                    color=news_colors[news_val],
-                    linestyle=social_styles[social_val],
+                    color=colors[level],
                     linewidth=1.8,
                     marker='o',
                     markersize=3,
                     alpha=0.9,
                 )
 
-        ax.set_title(panel_titles.get(panel_val, str(panel_val)))
-        ax.set_xlabel('Day')
-        ax.axhline(0, color='gray', linewidth=0.6, linestyle=':', zorder=0)
-        ax.tick_params(axis='x', rotation=45)
+            title = col_titles[col_val]
 
-    axes[0].set_ylabel('Mean SHAP Value')
+            if has_social and has_news:
+                title += f"\nSocial: {row_val}"
 
-    # --- Legend (only include dimensions that are actually present) ---
+            ax.set_title(title)
+            ax.set_xlabel("Day")
+            ax.axhline(0, color="gray", linewidth=0.6, linestyle=":")
+            ax.tick_params(axis="x", rotation=45)
+
     legend_handles = []
-    if has_news:
-        for lvl in news_levels:
+
+    if color_var is not None:
+        for lvl in color_levels:
             legend_handles.append(
-                mlines.Line2D([], [], color=news_colors[lvl], linestyle='-', label=f'News: {lvl}')
-            )
-    if has_social:
-        for lvl in social_levels:
-            legend_handles.append(
-                mlines.Line2D([], [], color='black', linestyle=social_styles[lvl], label=f'Social: {lvl}')
+                mlines.Line2D(
+                    [],
+                    [],
+                    color=colors[lvl],
+                    linewidth=2,
+                    label=f'{color_var.capitalize()}: {lvl}'
+                )
             )
 
     if legend_handles:
@@ -708,7 +738,7 @@ def plot_shap_by_day(df, save_path=None):
             loc='center left',
             bbox_to_anchor=(1.0, 0.5),
             frameon=False,
-            title='Feature Config',
+            title=color_var.capitalize(),
         )
 
     fig.suptitle('Mean SHAP Value Over Time', fontsize=13, y=1.02)
