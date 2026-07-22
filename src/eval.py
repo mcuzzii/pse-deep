@@ -2336,7 +2336,7 @@ class Eval:
         for path in Path('experiments/results/shap_analysis/model_inputs').iterdir():
             if 'group' in path.name:
                 continue
-            df = pd.read_csv(path.name)
+            df = pd.read_csv(path)
             plot_shap_by_day(
                 df,
                 f'experiments/results/shap_analysis/{path.name.split('.')[0]}_elapsed_time.png'
