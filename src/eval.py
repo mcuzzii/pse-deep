@@ -39,6 +39,7 @@ from scipy import stats
 import matplotlib.pyplot as plt
 import matplotlib.ticker as ticker
 import matplotlib.colors as mcolors
+import matplotlib.lines as mlines
 import textwrap
 import seaborn as sns
 import itertools
