@@ -742,7 +742,7 @@ def plot_shap_by_day(df, save_path=None):
             title=None,
         )
 
-    fig.suptitle('Mean SHAP Value Over Time', fontsize=13, y=1.02)
+    fig.suptitle('Mean SHAP Value Over Time', fontsize=13, y=1.02, fontweight='bold')
     fig.tight_layout()
 
     if save_path:
