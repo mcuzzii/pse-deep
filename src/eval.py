@@ -715,7 +715,8 @@ def plot_shap_by_day(df, save_path=None):
 
             ax.set_title(title)
             ax.set_xlabel("Day")
-            ax.set_ylabel("Mean SHAP Value")
+            if not col_levels:
+                ax.set_ylabel("Mean SHAP Value")
             ax.axhline(0, color="gray", linewidth=0.6, linestyle=":")
             ax.tick_params(axis="x", rotation=45)
 
