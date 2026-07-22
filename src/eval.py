@@ -2403,22 +2403,27 @@ class Eval:
                         plt.close()
     
     def plot_shap_scores(self):
+        mlp_dfs = pd.DataFrame(columns=['timestamp', 'setting', 'shap'])
+        tfm_dfs = pd.DataFrame(columns=['timestamp', 'setting', 'shap'])
+
         for path in Path('experiments/results/shap_analysis/model_inputs').iterdir():
             if 'group' in path.name:
                 continue
+
             df = pd.read_csv(path)
-            plot_shap_by_day(
-                df,
-                'day',
-                f'experiments/results/shap_analysis/{path.name.split('.')[0]}_elapsed_time.png'
+            df['setting'] = np.where(
+                '30m' if df['pred_30'] else '10m'
+            ) + ' | ' + 'S+' if 'social' not in df.columns else np.where(
+                'S+ ' if df['social'] else 'S- '
+            ) + 'N+' if 'news' not in df.columns else np.where(
+                'N+' if df['news'] else 'N-'
             )
-            plot_shap_by_day(
-                df,
-                'day_of_week',
-                f'experiments/results/shap_analysis/{path.name.split('.')[0]}_day_of_week.png'
-            )
-            plot_shap_by_day(
-                df,
-                'intraday_period',
-                f'experiments/results/shap_analysis/{path.name.split('.')[0]}_intraday_period.png'
-            )
+            df['group'] = path.name.split('.')[0][4:]
+
+            if 'mlp' in path.name:
+                mlp_dfs = pd.concat([mlp_dfs, df['timestamp', 'setting', 'shap']])
+                print(mlp_dfs.tail())
+            else:
+                tfm_dfs = pd.concat([tfm_dfs, df['timestamp', 'setting', 'shap']])
+                print(tfm_dfs.tail())
+
