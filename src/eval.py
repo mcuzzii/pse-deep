@@ -2403,8 +2403,8 @@ class Eval:
                         plt.close()
     
     def plot_shap_scores(self):
-        mlp_dfs = pd.DataFrame(columns=['timestamp', 'setting', 'shap'])
-        tfm_dfs = pd.DataFrame(columns=['timestamp', 'setting', 'shap'])
+        mlp_dfs = pd.DataFrame(columns=['group', 'timestamp', 'setting', 'shap'])
+        tfm_dfs = pd.DataFrame(columns=['group', 'timestamp', 'setting', 'shap'])
 
         for path in Path('experiments/results/shap_analysis/model_inputs').iterdir():
             if 'group' in path.name:
@@ -2427,20 +2427,3 @@ class Eval:
                 tfm_dfs = pd.concat([tfm_dfs, df[['group', 'timestamp', 'setting', 'shap']]])
                 print(tfm_dfs.tail())
 
-        for df, name in zip((mlp_dfs, tfm_dfs), ('mlp', 'tfm')):
-            
-            plot_shap_by_day(
-                df,
-                'day',
-                f'experiments/results/shap_analysis/{name}_elapsed_time.png'
-            )
-            plot_shap_by_day(
-                df,
-                'day_of_week',
-                f'experiments/results/shap_analysis/{name}_day_of_week.png'
-            )
-            plot_shap_by_day(
-                df,
-                'intraday_period',
-                f'experiments/results/shap_analysis/{name}_intraday_period.png'
-            )
