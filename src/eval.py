@@ -2501,7 +2501,7 @@ class Eval:
                 stratified_beeswarm_sample(
                     df,
                     time_unit='day_minute',
-                    max_points_per_row=1500,
+                    max_points_per_row=500,
                     time_bins=12,
                 ),
                 time_unit='day_minute',
@@ -2511,7 +2511,7 @@ class Eval:
                 stratified_beeswarm_sample(
                     df,
                     time_unit='week_minute',
-                    max_points_per_row=1500,
+                    max_points_per_row=500,
                     time_bins=12,
                 ),
                 time_unit='week_minute',
@@ -2521,7 +2521,7 @@ class Eval:
                 stratified_beeswarm_sample(
                     df,
                     time_unit='all_time',
-                    max_points_per_row=1500,
+                    max_points_per_row=500,
                     time_bins=12,
                 ),
                 time_unit='all_time',
