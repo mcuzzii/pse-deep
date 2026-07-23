@@ -2533,19 +2533,6 @@ class Eval:
                 model_prefix = 'mlp'
             
             elapsed_time = get_elapsed_time(ts, min(ts_30.min(), ts_10.min()))
-            time_of_day = np.where(
-                ts.time <= pd.Timestamp('10:30').time(),
-                'market_open',
-                np.where(
-                    ts.time <= pd.Timestamp('12:00').time(),
-                    'pre_recess',
-                    np.where(
-                        ts.time <= pd.Timestamp('13:45').time(),
-                        'pm_open',
-                        'pre_close'
-                    )
-                )
-            )
 
             stock_labs = self.stock_map[dir.name]['stocks']
             stock_map = self.stock_map[dir.name]['stock_map']
@@ -2564,12 +2551,23 @@ class Eval:
 
                 df['timestamp'] = ts
                 df['elapsed_time'] = elapsed_time
-                df['time_of_day'] = time_of_day
+                df["time_of_week"] = (
+                    df["timestamp"].dt.dayofweek * 24 * 60
+                    + df["timestamp"].dt.hour * 60
+                    + df["timestamp"].dt.minute
+                    + df["timestamp"].dt.second / 60
+                )
+
+                df["time_of_day"] = (
+                    df["timestamp"].dt.hour * 60
+                    + df["timestamp"].dt.minute
+                    + df["timestamp"].dt.second / 60
+                )
                 df['explainer_timestamp'] = ts.astype(str) + f' - {dir.name}'
                 df['model'] = dir.name
 
                 df = df.melt(
-                    id_vars=['timestamp', 'elapsed_time', 'time_of_day', 'explainer_timestamp', 'model'],
+                    id_vars=['timestamp', 'elapsed_time', 'time_of_day', 'time_of_week', 'explainer_timestamp', 'model'],
                     var_name='stock',
                     value_name='shap'
                 )
@@ -2595,7 +2593,7 @@ class Eval:
         for key, df in shap_dfs.items():
             df = df[df.nunique()[df.nunique() > 1].index]
 
-            groups = df.groupby(['time_of_day', 'model', 'stock'])['shap'].count()
+            groups = df.groupby(['model', 'stock'])['shap'].count()
             groups.to_csv(df_dir / f'{key}_groups.csv')
 
             df.to_csv(df_dir / f'{key}.csv', index=False)
@@ -2605,10 +2603,12 @@ class Eval:
             formula = (
                 f"C(stock) + "
                 f"elapsed_time + "
-                f"C(time_of_day) + "
+                f"time_of_day + "
+                f"time_of_week + "
                 f"{factor_terms} + "
                 f"elapsed_time:({factor_terms}) + "
-                f"C(time_of_day):({factor_terms}) + "
+                f"time_of_day:({factor_terms}) + "
+                f"time_of_week:({factor_terms}) + "
                 f"({factor_terms})**2"
             )
 
