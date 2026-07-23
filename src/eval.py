@@ -2413,10 +2413,18 @@ class Eval:
             df = pd.read_csv(path)
             df['setting'] = np.where(
                 df['pred_30'], '30m', '10m'
-            ) + ' | ' + 'S+' if 'social' not in df.columns else np.where(
-                df['social'], 'S+ ', 'S- '
-            ) + 'N+' if 'news' not in df.columns else np.where(
-                df['news'], 'N+', 'N-'
+            ) + ' | ' + (
+                'S+'
+                if 'social' not in df.columns
+                else np.where(
+                    df['social'], 'S+ ', 'S- '
+                )
+            ) + (
+                'N+'
+                if 'news' not in df.columns
+                else np.where(
+                    df['news'], 'N+', 'N-'
+                )
             )
             df['group'] = path.name.split('.')[0][4:]
 
@@ -2427,3 +2435,20 @@ class Eval:
                 tfm_dfs = pd.concat([tfm_dfs, df[['group', 'timestamp', 'setting', 'shap']]])
                 print(tfm_dfs.tail())
 
+        for df, name in zip((mlp_dfs, tfm_dfs), ('mlp', 'tfm')):
+            
+            plot_shap_by_day(
+                df,
+                'day',
+                f'experiments/results/shap_analysis/{name}_elapsed_time.png'
+            )
+            plot_shap_by_day(
+                df,
+                'day_of_week',
+                f'experiments/results/shap_analysis/{name}_day_of_week.png'
+            )
+            plot_shap_by_day(
+                df,
+                'intraday_period',
+                f'experiments/results/shap_analysis/{name}_intraday_period.png'
+            )
