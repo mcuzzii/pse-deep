@@ -40,6 +40,9 @@ import matplotlib.pyplot as plt
 import matplotlib.ticker as ticker
 import matplotlib.colors as mcolors
 import matplotlib.lines as mlines
+import matplotlib.dates as mdates
+from matplotlib.cm import ScalarMappable
+from matplotlib.colors import Normalize
 import textwrap
 import seaborn as sns
 import itertools
@@ -596,199 +599,199 @@ def plot_text_scores(text_scores: dict, out_dir, top_n: int = 20, figsize=None, 
     plt.close()
     return fig, ax
 
-def plot_shap_by_day(df, time_unit='day', save_path=None):
+def plot_grouped_shap_beeswarm(
+    df,
+    group_order=None,
+    setting_order=None,
+    title="SHAP Contributions by Feature Group and Model Setting",
+    figsize=(12, 10),
+    point_size=2.8,
+    time_unit='day',
+    save_path=None,
+):
     """
-    Line plot: mean SHAP value per day.
+    Parameters
+    ----------
+    df : pandas.DataFrame
+        Must contain: group, timestamp, setting, shap
 
-    Plotting rules (applied only for columns that are actually present):
-        - pred_30 -> facet into separate panels (columns)
-        - news    -> line color
-        - social  -> line style (solid vs dashed)
+    group_order : list[str], optional
+        Display order for feature groups. Unlisted groups are appended.
 
-    Any subset of {pred_30, news, social} may be present. If none of them
-    are present, a single panel/single line (overall daily mean) is drawn.
+    setting_order : list[str], optional
+        Preferred display order for settings. Unlisted settings are appended.
     """
+    required = {"group", "timestamp", "setting", "shap"}
+    missing = required - set(df.columns)
+    if missing:
+        raise ValueError(f"Missing required columns: {sorted(missing)}")
+
     setup_plot_style()
 
-    df = df.copy()
-    df['timestamp'] = pd.to_datetime(df['timestamp'])
-    df['time_unit'] = (
-        pd.to_datetime(df['timestamp'].dt.date)
-        if time_unit == 'day'
+    data = df.copy()
+    data["timestamp"] = pd.to_datetime(data["timestamp"])
+    data = data.dropna(subset=["group", "setting", "timestamp", "shap"])
+
+    # Recommended explicit ordering for your 2 × 2 × 2 experiment.
+    if setting_order is None:
+        setting_order = [
+            "10m | S- N-",
+            "10m | S- N+",
+            "10m | S+ N-",
+            "10m | S+ N+",
+            "30m | S- N-",
+            "30m | S- N+",
+            "30m | S+ N-",
+            "30m | S+ N+",
+        ]
+
+    observed_groups = data["group"].drop_duplicates().tolist()
+    if group_order is None:
+        group_order = observed_groups
+    else:
+        group_order = (
+            [g for g in group_order if g in observed_groups]
+            + [g for g in observed_groups if g not in group_order]
+        )
+
+    observed_settings = data["setting"].drop_duplicates().tolist()
+    setting_order = (
+        [s for s in setting_order if s in observed_settings]
+        + [s for s in observed_settings if s not in setting_order]
+    )
+
+    # Create one categorical y-row per (group, setting), with a blank row
+    # separating feature groups.
+    row_order = []
+    row_metadata = []
+    group_rows = {}
+
+    for group_idx, group in enumerate(group_order):
+        available_settings = set(
+            data.loc[data["group"].eq(group), "setting"]
+        )
+        group_settings = [s for s in setting_order if s in available_settings]
+
+        rows_for_group = []
+        for setting in group_settings:
+            row_id = f"{group}___{setting}"
+            row_order.append(row_id)
+            rows_for_group.append(row_id)
+            row_metadata.append({
+                "row_id": row_id,
+                "group": group,
+                "setting": setting,
+            })
+
+        group_rows[group] = rows_for_group
+
+        # Empty categorical row creates visual breathing room between groups.
+        if group_idx < len(group_order) - 1:
+            row_order.append(f"__gap_{group_idx}__")
+
+    data["row_id"] = data["group"] + "___" + data["setting"]
+
+    # A numeric timestamp allows a continuous, shared colormap.
+    data["week_minute"] = (
+        data["timestamp"].dt.dayofweek * 24 * 60
+        + data["timestamp"].dt.hour * 60
+        + data["timestamp"].dt.minute
+        + data["timestamp"].dt.second / 60
+    )
+    data['day_minute'] = (
+        data["timestamp"].dt.hour * 60
+        + data["timestamp"].dt.minute
+        + data["timestamp"].dt.second / 60
+    )
+
+    timestamp_num = (
+        mdates.date2num(data["timestamp"])
+        if time_unit == 'all_time'
         else (
-            pd.Categorical(
-                df['timestamp'].dt.strftime("%a"),
-                categories=['Mon', 'Tue', 'Wed', 'Thu', 'Fri'],
-                ordered=True
-            )
-            if time_unit == 'day_of_week'
-            else pd.Categorical(
-                np.where(
-                    df['time_of_day'] == 'market_open',
-                    "Market Open",
-                    np.where(
-                        df['time_of_day'] == 'pre_recess',
-                        "Pre-recess",
-                        np.where(
-                            df['time_of_day'] == 'pm_open',
-                            "Afternoon Open",
-                            "Market Close"
-                        )
-                    )
-                ),
-                categories=['Market Open', 'Pre-recess', 'Afternoon Open', 'Market Close'],
-                ordered=True
-            )
+            data["week_minute"]
+            if time_unit == 'week'
+            else data['day_minute']
         )
     )
+    norm = Normalize(vmin=timestamp_num.min(), vmax=timestamp_num.max())
+    cmap = plt.get_cmap("viridis")
 
-    has_pred30 = 'pred_30' in df.columns
-    has_news = 'news' in df.columns
-    has_social = 'social' in df.columns
+    height = max(5.5, 0.43 * len(row_order) + 1.6)
+    fig, ax = plt.subplots(figsize=(figsize[0], max(figsize[1], height)))
 
-    group_cols = ['time_unit'] + [c for c, present in
-                             [('pred_30', has_pred30), ('news', has_news), ('social', has_social)]
-                             if present]
-
-    agg = df.groupby(group_cols, as_index=False)['shap'].mean()
-
-    # --- Panels (pred_30) ---
-    if has_pred30:
-        col_levels = sorted(agg['pred_30'].unique())
-        col_titles = {False: '10-min return target',
-                    True: '30-min return target'}
-    else:
-        col_levels = [None]
-        col_titles = {None: 'Mean SHAP Value'}
-
-    # Social becomes panel rows whenever news is also present
-    if has_social and has_news:
-        row_levels = sorted(agg['social'].unique())
-    else:
-        row_levels = [None]
-
-    palette = [
-        COLORS['purple'],
-        COLORS['green'],
-        COLORS['teal'],
-        COLORS['indigo']
-    ]
-
-    if has_news:
-        color_levels = sorted(agg['news'].unique())
-        colors = {lvl: palette[i % len(palette)]
-                for i, lvl in enumerate(color_levels)}
-        color_var = 'news'
-
-    elif has_social:
-        color_levels = sorted(agg['social'].unique())
-        colors = {lvl: palette[i % len(palette)]
-                for i, lvl in enumerate(color_levels)}
-        color_var = 'social'
-    
-    else:
-        color_levels = [None]
-        colors = {None: COLORS['purple']}
-        color_var = None
-
-    fig, axes = plt.subplots(
-        len(row_levels),
-        len(col_levels),
-        figsize=(6 * len(col_levels), 4.5 * len(row_levels)),
-        sharey=True,
-        squeeze=False,
+    sns.swarmplot(
+        data=data,
+        x="shap",
+        y="row_id",
+        order=row_order,
+        hue=timestamp_num,
+        palette=cmap,
+        hue_norm=(timestamp_num.min(), timestamp_num.max()),
+        size=point_size,
+        alpha=0.72,
+        linewidth=0,
+        dodge=False,
+        legend=False,
+        ax=ax,
     )
 
-    for r, row_val in enumerate(row_levels):
-        for c, col_val in enumerate(col_levels):
+    # Shared reference point for positive vs. negative contribution.
+    ax.axvline(0, color="0.35", linewidth=0.8, zorder=0)
 
-            ax = axes[r][c]
+    # The setting is the regular y-axis label.
+    tick_labels = []
+    row_positions = {key: i for i, key in enumerate(row_order)}
 
-            subset = agg
+    for row_id in row_order:
+        match = next((r for r in row_metadata if r["row_id"] == row_id), None)
+        tick_labels.append(match["setting"] if match else "")
 
-            if has_pred30:
-                subset = subset[subset['pred_30'] == col_val]
+    ax.set_yticks(range(len(row_order)))
+    ax.set_yticklabels(tick_labels)
+    ax.set_ylabel("Setting")
+    ax.set_xlabel("SHAP value (feature-group contribution)")
+    ax.set_title(title, pad=14)
 
-            if has_social and has_news:
-                subset = subset[subset['social'] == row_val]
+    # Add group headings, centered beside their respective setting rows.
+    # The negative x-position places them left of the setting labels.
+    for group, rows in group_rows.items():
+        positions = [row_positions[row] for row in rows]
+        center_y = np.mean(positions)
 
-            for level in color_levels:
-
-                sub = subset
-
-                if color_var == 'news':
-                    sub = sub[sub['news'] == level]
-                elif color_var == 'social':
-                    sub = sub[sub['social'] == level]
-
-                if sub.empty:
-                    continue
-
-                sub = sub.sort_values('time_unit')
-
-                ax.plot(
-                    sub['time_unit'],
-                    sub['shap'],
-                    color=colors[level],
-                    linewidth=1.8,
-                    marker='o',
-                    markersize=3,
-                    alpha=0.9,
-                )
-
-            title = col_titles[col_val]
-
-            if has_social and has_news:
-                title += f" | {'With' if row_val else 'Without'} social media"
-
-            ax.set_title(title)
-            ax.set_xlabel(
-                "Day"
-                if time_unit == 'day'
-                else (
-                    "Day of Week"
-                    if time_unit == 'day_of_week'
-                    else "Intraday Period"
-                )
-            )
-            if not col_val:
-                ax.set_ylabel("Mean SHAP Value")
-            ax.axhline(0, color="gray", linewidth=0.6, linestyle=":")
-            ax.tick_params(axis="x", rotation=45)
-
-    legend_handles = []
-
-    if color_var is not None:
-        for lvl in color_levels:
-            modality = 'news' if color_var.capitalize() == 'News' else 'social media'
-            legend_handles.append(
-                mlines.Line2D(
-                    [],
-                    [],
-                    color=colors[lvl],
-                    linewidth=2,
-                    label=f'{'With' if lvl else 'Without'} {modality}'
-                )
-            )
-
-    if legend_handles:
-        fig.legend(
-            handles=legend_handles,
-            loc='center left',
-            bbox_to_anchor=(1.0, 0.5),
-            frameon=False,
-            title=None,
+        ax.text(
+            -0.29,
+            center_y,
+            group.replace("_", " ").title(),
+            transform=ax.get_yaxis_transform(),
+            ha="right",
+            va="center",
+            fontweight="bold",
+            color=COLORS["purple"],
+            clip_on=False,
         )
 
-    fig.suptitle('Mean SHAP Value Over Time', fontsize=13, y=1.02, fontweight='bold')
-    fig.tight_layout()
+    # Optional faint separators in the deliberately blank gap rows.
+    for i, row_id in enumerate(row_order):
+        if row_id.startswith("__gap_"):
+            ax.axhline(i, color="0.88", linewidth=0.7, zorder=0)
+
+    # Timestamp colorbar, shared across every group and setting.
+    sm = ScalarMappable(norm=norm, cmap=cmap)
+    sm.set_array([])
+
+    cbar = fig.colorbar(sm, ax=ax, pad=0.02, aspect=35)
+    cbar.set_label("Timestamp")
+    cbar.ax.yaxis.set_major_formatter(mdates.DateFormatter("%d %b\n%H:%M"))
+
+    # Space for the group-label column.
+    fig.subplots_adjust(left=0.34, right=0.93, top=0.92, bottom=0.10)
 
     if save_path:
         path = Path(save_path)
         path.parent.mkdir(parents=True, exist_ok=True)
         fig.savefig(path, bbox_inches='tight')
 
-    return fig, axes
+    return fig, ax
 
 class Eval:
     def __init__(self):
@@ -2435,3 +2438,20 @@ class Eval:
                 tfm_dfs = pd.concat([tfm_dfs, df[['group', 'timestamp', 'setting', 'shap']]])
                 print(tfm_dfs.tail())
 
+        for df, name in zip((mlp_dfs, tfm_dfs), ('mlp', 'tfm')):
+            
+            plot_grouped_shap_beeswarm(
+                df,
+                time_unit='day_minute',
+                save_path=f'experiments/results/shap_analysis/{name}_day_minute.png'
+            )
+            plot_grouped_shap_beeswarm(
+                df,
+                time_unit='week_minute',
+                save_path=f'experiments/results/shap_analysis/{name}_week_minute.png'
+            )
+            plot_grouped_shap_beeswarm(
+                df,
+                time_unit='all_time',
+                save_path=f'experiments/results/shap_analysis/{name}_all_time.png'
+            )
