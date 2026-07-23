@@ -968,6 +968,11 @@ def plot_overall_group_shap(
         if subset.empty:
             continue
 
+        subset = subset.sample(
+            frac=1,
+            random_state=42 + row_y,
+        ).copy()
+
         y = row_y + shap_style_offsets(
             subset["shap"].to_numpy(),
             row_height=0.9,
@@ -1086,6 +1091,11 @@ def plot_group_settings_shap(
 
         if subset.empty:
             continue
+
+        subset = subset.sample(
+            frac=1,
+            random_state=42 + row_y,
+        ).copy()
 
         y = row_y + shap_style_offsets(
             subset["shap"].to_numpy(),
