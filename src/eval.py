@@ -1004,7 +1004,7 @@ def plot_overall_group_shap(
 
     ax.set_xlabel("SHAP value (feature-group contribution)")
     ax.set_ylabel("Feature group")
-    ax.set_title(title, pad=14)
+    ax.set_title(title, pad=14, fontweight='bold')
 
     add_time_colorbar(
         fig,
@@ -1132,11 +1132,10 @@ def plot_group_settings_shap(
         title = f"{group_label}: SHAP Contributions by Setting"
     else:
         title = (
-            f"{group_label}: SHAP Contributions by Setting "
-            f"(display trimmed to ±{display_limit:.3g})"
+            f"{group_label}: SHAP Contributions by Setting"
         )
 
-    ax.set_title(title, pad=14)
+    ax.set_title(title, pad=14, fontweight='bold')
 
     add_time_colorbar(
         fig,
@@ -1261,8 +1260,7 @@ def generate_shap_beeswarm_plots(
         max_points_per_group=max_points_overview,
         point_size=point_size,
         title=(
-            "Overall SHAP Contributions by Feature Group "
-            f"(display trimmed to ±{overview_limit:.3g})"
+            "Overall SHAP Contributions by Feature Group"
         ),
         save_path=overview_path,
     )
