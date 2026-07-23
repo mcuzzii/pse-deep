@@ -43,6 +43,7 @@ import matplotlib.lines as mlines
 import matplotlib.dates as mdates
 from matplotlib.cm import ScalarMappable
 from matplotlib.colors import Normalize
+from matplotlib.ticker import FixedLocator, FuncFormatter
 import textwrap
 import seaborn as sns
 import itertools
