@@ -1002,8 +1002,8 @@ def plot_overall_group_shap(
     ])
     ax.invert_yaxis()
 
-    ax.set_xlabel("SHAP value (feature-group contribution)")
-    ax.set_ylabel("Feature group")
+    ax.set_xlabel("SHAP Value (Feature Group Contribution)")
+    ax.set_ylabel("Feature Group")
     ax.set_title(title, pad=14, fontweight='bold')
 
     add_time_colorbar(
@@ -1125,7 +1125,7 @@ def plot_group_settings_shap(
 
     group_label = str(group).replace("_", " ").title()
 
-    ax.set_xlabel("SHAP value (feature-group contribution)")
+    ax.set_xlabel("SHAP Value (Feature Group Contribution)")
     ax.set_ylabel("Setting")
 
     if display_limit is None:
