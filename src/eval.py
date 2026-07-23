@@ -599,18 +599,24 @@ def plot_text_scores(text_scores: dict, out_dir, top_n: int = 20, figsize=None, 
     plt.close()
     return fig, ax
 
-def stratified_beeswarm_sample(
-    data,
-    time_unit='all_time',
-    max_points_per_row=1_500,
-    time_bins=12,
-    random_state=42,
-):
-    data = data.copy()
-    data["timestamp"] = pd.to_datetime(data["timestamp"])
-    data = data.dropna(subset=["group", "setting", "timestamp", "shap"])
+def add_time_coordinate(data, time_unit="all_time"):
+    """
+    Add timestamp_num, the continuous value used for point color.
 
-    # Assumes week_minute was created earlier.
+    time_unit:
+        all_time : absolute calendar timestamp
+        week     : Monday 00:00 through Friday 23:59
+        day      : 00:00 through 23:59, irrespective of weekday
+    """
+    data = data.copy()
+    data["timestamp"] = pd.to_datetime(
+        data["timestamp"],
+        errors="coerce",
+    )
+
+    data = data.dropna(
+        subset=["group", "setting", "timestamp", "shap"]
+    ).reset_index(drop=True)
 
     data["week_minute"] = (
         data["timestamp"].dt.dayofweek * 24 * 60
@@ -618,98 +624,244 @@ def stratified_beeswarm_sample(
         + data["timestamp"].dt.minute
         + data["timestamp"].dt.second / 60
     )
-    data['day_minute'] = (
+
+    data["day_minute"] = (
         data["timestamp"].dt.hour * 60
         + data["timestamp"].dt.minute
         + data["timestamp"].dt.second / 60
     )
 
-    data['timestamp_num'] = (
-        mdates.date2num(data["timestamp"])
-        if time_unit == 'all_time'
-        else (
-            data["week_minute"]
-            if time_unit == 'week'
-            else data['day_minute']
+    if time_unit == "all_time":
+        data["timestamp_num"] = mdates.date2num(
+            data["timestamp"].dt.to_pydatetime()
         )
-    )
+
+    elif time_unit == "week":
+        data["timestamp_num"] = data["week_minute"]
+
+    elif time_unit == "day":
+        data["timestamp_num"] = data["day_minute"]
+
+    else:
+        raise ValueError(
+            "time_unit must be 'all_time', 'week', or 'day'"
+        )
+
+    return data
+
+
+def stratified_beeswarm_sample(
+    data,
+    max_points_per_row=750,
+    time_bins=12,
+    random_state=42,
+):
+    """
+    Sample each (group, setting) row while retaining coverage over
+    the timestamp/color gradient.
+
+    Expects `timestamp_num` to already exist.
+    """
+    data = data.copy()
+
     data["time_bin"] = pd.cut(
-        data["week_minute"],
+        data["timestamp_num"],
         bins=time_bins,
         labels=False,
         include_lowest=True,
     )
 
-    def sample_row(frame):
+    rng = np.random.default_rng(random_state)
+    samples = []
+
+    for _, frame in data.groupby(
+        ["group", "setting"],
+        observed=True,
+        sort=False,
+    ):
         if len(frame) <= max_points_per_row:
-            return frame
+            samples.append(frame)
+            continue
 
-        # Roughly equal representation of each weekly-time segment.
-        per_bin = max(1, max_points_per_row // time_bins)
+        bin_frames = [
+            bin_frame
+            for _, bin_frame in frame.groupby(
+                "time_bin",
+                observed=True,
+                sort=True,
+            )
+        ]
 
-        sampled = (
-            frame.groupby("time_bin", group_keys=False, observed=True)
-                 .apply(
-                     lambda x: x.sample(
-                         n=min(len(x), per_bin),
-                         random_state=random_state,
-                     )
-                 )
+        # Equal allocation across non-empty time bins.
+        base_n, extra_n = divmod(
+            max_points_per_row,
+            len(bin_frames),
         )
 
-        # Fill any unused capacity from the remaining observations.
+        chosen = []
+
+        for i, bin_frame in enumerate(bin_frames):
+            n = min(
+                len(bin_frame),
+                base_n + (i < extra_n),
+            )
+
+            chosen.append(
+                bin_frame.sample(
+                    n=n,
+                    random_state=int(rng.integers(0, 2**32 - 1)),
+                )
+            )
+
+        sampled = pd.concat(chosen)
         remaining_n = max_points_per_row - len(sampled)
+
+        # If some time bins contained few observations, use the
+        # remaining capacity with observations not already sampled.
         if remaining_n > 0:
-            remainder = frame.drop(sampled.index, errors="ignore")
-            if len(remainder):
+            remainder = frame.loc[
+                ~frame.index.isin(sampled.index)
+            ]
+
+            if not remainder.empty:
                 sampled = pd.concat([
                     sampled,
                     remainder.sample(
-                        n=min(len(remainder), remaining_n),
-                        random_state=random_state,
+                        n=min(remaining_n, len(remainder)),
+                        random_state=int(
+                            rng.integers(0, 2**32 - 1)
+                        ),
                     ),
                 ])
 
-        return sampled
+        samples.append(sampled)
 
     return (
-        data.groupby(["group", "setting"], group_keys=False, observed=True)
-            .apply(sample_row)
-            .drop(columns="time_bin")
+        pd.concat(samples, ignore_index=True)
+        .drop(columns="time_bin")
     )
+
+
+def shap_style_offsets(
+    x,
+    row_height=1.0,
+    nbins=100,
+    seed=42,
+):
+    """
+    Create vertical offsets using SHAP-like beeswarm packing.
+
+    Nearby SHAP values occupy the same horizontal bin, then get
+    stacked as 0, +1, -1, +2, -2, ...
+    """
+    x = np.asarray(x, dtype=float)
+    offsets = np.zeros(len(x))
+
+    if len(x) <= 1:
+        return offsets
+
+    x_min = np.nanmin(x)
+    x_max = np.nanmax(x)
+
+    if np.isclose(x_min, x_max):
+        bins = np.zeros(len(x), dtype=int)
+    else:
+        bins = np.round(
+            nbins * (x - x_min) / (x_max - x_min)
+        ).astype(int)
+
+    rng = np.random.default_rng(seed)
+
+    # Small random noise only breaks ties within a bin.
+    order = np.argsort(
+        bins + rng.normal(0, 1e-6, size=len(x))
+    )
+
+    current_bin = None
+    layer = 0
+
+    for index in order:
+        if bins[index] != current_bin:
+            current_bin = bins[index]
+            layer = 0
+
+        # 0, +1, -1, +2, -2, ...
+        if layer == 0:
+            offsets[index] = 0
+        else:
+            offsets[index] = (
+                ((layer + 1) // 2)
+                * (1 if layer % 2 else -1)
+            )
+
+        layer += 1
+
+    max_offset = np.max(np.abs(offsets))
+
+    if max_offset > 0:
+        # Points span 90% of a categorical row's height.
+        offsets *= (0.45 * row_height) / max_offset
+
+    return offsets
+
+
+def format_week_minute(value, _):
+    weekdays = ["Mon", "Tue", "Wed", "Thu", "Fri"]
+
+    total_minutes = int(round(value))
+    day, minute_of_day = divmod(total_minutes, 24 * 60)
+    hour, minute = divmod(minute_of_day, 60)
+
+    if 0 <= day < len(weekdays):
+        return f"{weekdays[day]}\n{hour:02d}:{minute:02d}"
+
+    return ""
+
+
+def format_day_minute(value, _):
+    total_minutes = int(round(value))
+    hour, minute = divmod(total_minutes, 60)
+    return f"{hour:02d}:{minute:02d}"
+
 
 def plot_grouped_shap_beeswarm(
     df,
     group_order=None,
     setting_order=None,
     title="SHAP Contributions by Feature Group and Model Setting",
+    time_unit="week",
+    max_points_per_row=750,
+    time_bins=12,
+    point_size=2.4,
     figsize=(12, 10),
-    point_size=2.8,
-    time_unit='day',
     save_path=None,
 ):
     """
-    Parameters
-    ----------
-    df : pandas.DataFrame
-        Must contain: group, timestamp, setting, shap
+    Create a grouped, SHAP-style beeswarm plot.
 
-    group_order : list[str], optional
-        Display order for feature groups. Unlisted groups are appended.
-
-    setting_order : list[str], optional
-        Preferred display order for settings. Unlisted settings are appended.
+    Required dataframe columns:
+        group, timestamp, setting, shap
     """
-    required = {"group", "timestamp", "setting", "shap"}
-    missing = required - set(df.columns)
-    if missing:
-        raise ValueError(f"Missing required columns: {sorted(missing)}")
+    required_columns = {"group", "timestamp", "setting", "shap"}
+    missing_columns = required_columns - set(df.columns)
+
+    if missing_columns:
+        raise ValueError(
+            f"Missing required columns: {sorted(missing_columns)}"
+        )
 
     setup_plot_style()
 
-    data = df.copy()
+    # Full data determines the shared color scale.
+    data = add_time_coordinate(df, time_unit=time_unit)
 
-    # Recommended explicit ordering for your 2 × 2 × 2 experiment.
+    # Sampled data determines which points are drawn.
+    plot_data = stratified_beeswarm_sample(
+        data,
+        max_points_per_row=max_points_per_row,
+        time_bins=time_bins,
+    )
+
     if setting_order is None:
         setting_order = [
             "10m | S- N-",
@@ -723,37 +875,73 @@ def plot_grouped_shap_beeswarm(
         ]
 
     observed_groups = data["group"].drop_duplicates().tolist()
+
     if group_order is None:
         group_order = observed_groups
     else:
         group_order = (
-            [g for g in group_order if g in observed_groups]
-            + [g for g in observed_groups if g not in group_order]
+            [group for group in group_order if group in observed_groups]
+            + [
+                group
+                for group in observed_groups
+                if group not in group_order
+            ]
         )
 
     observed_settings = data["setting"].drop_duplicates().tolist()
+
     setting_order = (
-        [s for s in setting_order if s in observed_settings]
-        + [s for s in observed_settings if s not in setting_order]
+        [
+            setting
+            for setting in setting_order
+            if setting in observed_settings
+        ]
+        + [
+            setting
+            for setting in observed_settings
+            if setting not in setting_order
+        ]
     )
 
-    # Create one categorical y-row per (group, setting), with a blank row
-    # separating feature groups.
+    data["row_id"] = (
+        data["group"].astype(str)
+        + "___"
+        + data["setting"].astype(str)
+    )
+
+    plot_data["row_id"] = (
+        plot_data["group"].astype(str)
+        + "___"
+        + plot_data["setting"].astype(str)
+    )
+
+    # Add a blank row between feature groups.
     row_order = []
     row_metadata = []
     group_rows = {}
 
-    for group_idx, group in enumerate(group_order):
+    for group_index, group in enumerate(group_order):
         available_settings = set(
-            data.loc[data["group"].eq(group), "setting"]
+            data.loc[
+                data["group"].eq(group),
+                "setting",
+            ]
         )
-        group_settings = [s for s in setting_order if s in available_settings]
+
+        group_settings = [
+            setting
+            for setting in setting_order
+            if setting in available_settings
+        ]
 
         rows_for_group = []
+
         for setting in group_settings:
             row_id = f"{group}___{setting}"
+
             row_order.append(row_id)
             rows_for_group.append(row_id)
+
             row_metadata.append({
                 "row_id": row_id,
                 "group": group,
@@ -762,58 +950,98 @@ def plot_grouped_shap_beeswarm(
 
         group_rows[group] = rows_for_group
 
-        # Empty categorical row creates visual breathing room between groups.
-        if group_idx < len(group_order) - 1:
-            row_order.append(f"__gap_{group_idx}__")
+        if group_index < len(group_order) - 1:
+            row_order.append(f"__gap_{group_index}__")
 
-    data["row_id"] = data["group"] + "___" + data["setting"]
+    row_positions = {
+        row_id: position
+        for position, row_id in enumerate(row_order)
+    }
 
-    # A numeric timestamp allows a continuous, shared colormap.
-    timestamp_num = data['timestamp_num']
-    norm = Normalize(vmin=timestamp_num.min(), vmax=timestamp_num.max())
+    timestamp_num = data["timestamp_num"]
+    vmin = timestamp_num.min()
+    vmax = timestamp_num.max()
+
+    if np.isclose(vmin, vmax):
+        vmax = vmin + 1
+
+    norm = Normalize(vmin=vmin, vmax=vmax)
     cmap = plt.get_cmap("viridis")
 
     height = max(5.5, 0.43 * len(row_order) + 1.6)
-    fig, ax = plt.subplots(figsize=(figsize[0], max(figsize[1], height)))
 
-    sns.swarmplot(
-        data=data,
-        x="shap",
-        y="row_id",
-        order=row_order,
-        hue=timestamp_num,
-        palette=cmap,
-        hue_norm=(timestamp_num.min(), timestamp_num.max()),
-        size=point_size,
-        alpha=0.72,
-        linewidth=0,
-        dodge=False,
-        legend=False,
-        ax=ax,
+    fig, ax = plt.subplots(
+        figsize=(figsize[0], max(figsize[1], height))
     )
 
-    # Shared reference point for positive vs. negative contribution.
-    ax.axvline(0, color="0.35", linewidth=0.8, zorder=0)
+    # Plot each group/setting row separately.
+    for row_id, row_y in row_positions.items():
+        if row_id.startswith("__gap_"):
+            continue
 
-    # The setting is the regular y-axis label.
+        subset = plot_data.loc[
+            plot_data["row_id"].eq(row_id)
+        ]
+
+        if subset.empty:
+            continue
+
+        y = row_y + shap_style_offsets(
+            subset["shap"].to_numpy(),
+            row_height=1.0,
+            nbins=100,
+        )
+
+        ax.scatter(
+            subset["shap"],
+            y,
+            c=cmap(norm(subset["timestamp_num"])),
+            s=point_size ** 2,
+            alpha=0.75,
+            linewidths=0,
+            rasterized=True,
+        )
+
+    # Zero contribution reference line.
+    ax.axvline(
+        0,
+        color="0.35",
+        linewidth=0.8,
+        zorder=0,
+    )
+
+    # Setting labels on the ordinary y-axis.
     tick_labels = []
-    row_positions = {key: i for i, key in enumerate(row_order)}
 
     for row_id in row_order:
-        match = next((r for r in row_metadata if r["row_id"] == row_id), None)
+        match = next(
+            (
+                item
+                for item in row_metadata
+                if item["row_id"] == row_id
+            ),
+            None,
+        )
+
         tick_labels.append(match["setting"] if match else "")
 
     ax.set_yticks(range(len(row_order)))
     ax.set_yticklabels(tick_labels)
+    ax.invert_yaxis()
+
     ax.set_ylabel("Setting")
     ax.set_xlabel("SHAP value (feature-group contribution)")
     ax.set_title(title, pad=14)
 
-    # Add group headings, centered beside their respective setting rows.
-    # The negative x-position places them left of the setting labels.
+    # Feature-group labels centered beside their setting rows.
     for group, rows in group_rows.items():
-        positions = [row_positions[row] for row in rows]
-        center_y = np.mean(positions)
+        if not rows:
+            continue
+
+        center_y = np.mean([
+            row_positions[row]
+            for row in rows
+        ])
 
         ax.text(
             -0.29,
@@ -827,26 +1055,84 @@ def plot_grouped_shap_beeswarm(
             clip_on=False,
         )
 
-    # Optional faint separators in the deliberately blank gap rows.
-    for i, row_id in enumerate(row_order):
+    # Divider in each intentionally blank row.
+    for position, row_id in enumerate(row_order):
         if row_id.startswith("__gap_"):
-            ax.axhline(i, color="0.88", linewidth=0.7, zorder=0)
+            ax.axhline(
+                position,
+                color="0.88",
+                linewidth=0.7,
+                zorder=0,
+            )
 
-    # Timestamp colorbar, shared across every group and setting.
-    sm = ScalarMappable(norm=norm, cmap=cmap)
-    sm.set_array([])
+    # Shared timestamp colorbar.
+    scalar_mappable = ScalarMappable(norm=norm, cmap=cmap)
+    scalar_mappable.set_array([])
 
-    cbar = fig.colorbar(sm, ax=ax, pad=0.02, aspect=35)
-    cbar.set_label("Timestamp")
-    cbar.ax.yaxis.set_major_formatter(mdates.DateFormatter("%d %b\n%H:%M"))
+    cbar = fig.colorbar(
+        scalar_mappable,
+        ax=ax,
+        pad=0.02,
+        aspect=35,
+    )
 
-    # Space for the group-label column.
-    fig.subplots_adjust(left=0.34, right=0.93, top=0.92, bottom=0.10)
+    if time_unit == "all_time":
+        cbar.set_label("Timestamp")
+
+        locator = mdates.AutoDateLocator()
+        cbar.ax.yaxis.set_major_locator(locator)
+        cbar.ax.yaxis.set_major_formatter(
+            mdates.ConciseDateFormatter(locator)
+        )
+
+    elif time_unit == "week":
+        cbar.set_label("Time within trading week")
+
+        cbar.ax.yaxis.set_major_locator(
+            FixedLocator([
+                0,
+                1 * 24 * 60,
+                2 * 24 * 60,
+                3 * 24 * 60,
+                4 * 24 * 60,
+            ])
+        )
+
+        cbar.ax.yaxis.set_major_formatter(
+            FuncFormatter(format_week_minute)
+        )
+
+    elif time_unit == "day":
+        cbar.set_label("Time of day")
+
+        cbar.ax.yaxis.set_major_locator(
+            FixedLocator([
+                0,
+                6 * 60,
+                12 * 60,
+                18 * 60,
+            ])
+        )
+
+        cbar.ax.yaxis.set_major_formatter(
+            FuncFormatter(format_day_minute)
+        )
+
+    fig.subplots_adjust(
+        left=0.34,
+        right=0.93,
+        top=0.92,
+        bottom=0.10,
+    )
 
     if save_path:
-        path = Path(save_path)
-        path.parent.mkdir(parents=True, exist_ok=True)
-        fig.savefig(path, bbox_inches='tight')
+        save_path = Path(save_path)
+        save_path.parent.mkdir(parents=True, exist_ok=True)
+
+        fig.savefig(
+            save_path,
+            bbox_inches="tight",
+        )
 
     return fig, ax
 
@@ -2496,34 +2782,24 @@ class Eval:
                 print(tfm_dfs.tail())
 
         for df, name in zip((mlp_dfs, tfm_dfs), ('mlp', 'tfm')):
+
+            plot_grouped_shap_beeswarm(
+                df,
+                time_unit="all_time",
+                max_points_per_row=750,
+                save_path=f"outputs/{name}_all_time.png",
+            )
             
             plot_grouped_shap_beeswarm(
-                stratified_beeswarm_sample(
-                    df,
-                    time_unit='day_minute',
-                    max_points_per_row=500,
-                    time_bins=12,
-                ),
-                time_unit='day_minute',
-                save_path=f'experiments/results/shap_analysis/{name}_day_minute.png'
+                df,
+                time_unit="week",
+                max_points_per_row=750,
+                save_path=f"outputs/{name}_week.png",
             )
+
             plot_grouped_shap_beeswarm(
-                stratified_beeswarm_sample(
-                    df,
-                    time_unit='week_minute',
-                    max_points_per_row=500,
-                    time_bins=12,
-                ),
-                time_unit='week_minute',
-                save_path=f'experiments/results/shap_analysis/{name}_week_minute.png'
-            )
-            plot_grouped_shap_beeswarm(
-                stratified_beeswarm_sample(
-                    df,
-                    time_unit='all_time',
-                    max_points_per_row=500,
-                    time_bins=12,
-                ),
-                time_unit='all_time',
-                save_path=f'experiments/results/shap_analysis/{name}_all_time.png'
+                df,
+                time_unit="day",
+                max_points_per_row=750,
+                save_path=f"outputs/{name}_day.png",
             )
