@@ -978,7 +978,7 @@ def plot_overall_group_shap(
             y,
             c=cmap(norm(subset["timestamp_num"])),
             s=point_size ** 2,
-            alpha=0.75,
+            alpha=1,
             linewidths=0,
             rasterized=True,
         )
@@ -1097,7 +1097,7 @@ def plot_group_settings_shap(
             y,
             c=cmap(norm(subset["timestamp_num"])),
             s=point_size ** 2,
-            alpha=0.75,
+            alpha=1,
             linewidths=0,
             rasterized=True,
         )
@@ -2957,7 +2957,7 @@ class Eval:
                 df,
                 output_dir=f"experiments/results/shap_analysis/{name}_shap_beeswarms_all_time",
                 time_unit="all_time",       # "all_time", "week", or "day"
-                trim_quantile=0.995,        # removes largest 0.5% |SHAP| for display
+                trim_quantile=0.98,        # removes largest 0.5% |SHAP| for display
                 max_points_overview=1_500,
                 max_points_per_setting=750,
             )
@@ -2966,7 +2966,7 @@ class Eval:
                 df,
                 output_dir=f"experiments/results/shap_analysis/{name}_shap_beeswarms_week",
                 time_unit="week",       # "all_time", "week", or "day"
-                trim_quantile=0.95,        # removes largest 0.5% |SHAP| for display
+                trim_quantile=0.98,        # removes largest 0.5% |SHAP| for display
                 max_points_overview=1_500,
                 max_points_per_setting=750,
             )
@@ -2975,7 +2975,7 @@ class Eval:
                 df,
                 output_dir=f"experiments/results/shap_analysis/{name}_shap_beeswarms_day",
                 time_unit="day",       # "all_time", "week", or "day"
-                trim_quantile=0.995,        # removes largest 0.5% |SHAP| for display
-                max_points_overview=1_500,
-                max_points_per_setting=750,
+                trim_quantile=0.98,        # removes largest 0.5% |SHAP| for display
+                max_points_overview=15000,
+                max_points_per_setting=15000,
             )
