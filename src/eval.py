@@ -2557,7 +2557,6 @@ class Eval:
                     + df["timestamp"].dt.minute
                     + df["timestamp"].dt.second / 60
                 )
-
                 df["time_of_day"] = (
                     df["timestamp"].dt.hour * 60
                     + df["timestamp"].dt.minute
@@ -2565,6 +2564,9 @@ class Eval:
                 )
                 df['explainer_timestamp'] = ts.astype(str) + f' - {dir.name}'
                 df['model'] = dir.name
+
+                df["time_of_week"] = (df["time_of_week"] - df["time_of_week"].min()) / (df["time_of_week"].max() - df["time_of_week"].min())
+                df["time_of_day"] = (df["time_of_day"] - df["time_of_day"].min()) / (df["time_of_day"].max() - df["time_of_day"].min())
 
                 df = df.melt(
                     id_vars=['timestamp', 'elapsed_time', 'time_of_day', 'time_of_week', 'explainer_timestamp', 'model'],
