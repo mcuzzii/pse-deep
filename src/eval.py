@@ -978,7 +978,7 @@ def plot_overall_group_shap(
             y,
             c=cmap(norm(subset["timestamp_num"])),
             s=point_size ** 2,
-            alpha=0.005,
+            alpha=0.1,
             linewidths=0,
             rasterized=True,
         )
@@ -1097,7 +1097,7 @@ def plot_group_settings_shap(
             y,
             c=cmap(norm(subset["timestamp_num"])),
             s=point_size ** 2,
-            alpha=0.005,
+            alpha=0.1,
             linewidths=0,
             rasterized=True,
         )
