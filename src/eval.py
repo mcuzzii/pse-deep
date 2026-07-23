@@ -607,6 +607,8 @@ def stratified_beeswarm_sample(
     random_state=42,
 ):
     data = data.copy()
+    data["timestamp"] = pd.to_datetime(data["timestamp"])
+    data = data.dropna(subset=["group", "setting", "timestamp", "shap"])
 
     # Assumes week_minute was created earlier.
 
@@ -706,8 +708,6 @@ def plot_grouped_shap_beeswarm(
     setup_plot_style()
 
     data = df.copy()
-    data["timestamp"] = pd.to_datetime(data["timestamp"])
-    data = data.dropna(subset=["group", "setting", "timestamp", "shap"])
 
     # Recommended explicit ordering for your 2 × 2 × 2 experiment.
     if setting_order is None:
