@@ -876,7 +876,7 @@ def add_time_colorbar(fig, ax, norm, cmap, time_unit):
         )
 
     elif time_unit == "week":
-        cbar.set_label("Time within trading week")
+        cbar.set_label("Time Within Trading Week")
 
         cbar.ax.yaxis.set_major_locator(
             FixedLocator([
@@ -893,7 +893,7 @@ def add_time_colorbar(fig, ax, norm, cmap, time_unit):
         )
 
     elif time_unit == "day":
-        cbar.set_label("Time of day")
+        cbar.set_label("Time of Day")
 
         cbar.ax.yaxis.set_major_locator(
             FixedLocator([
