@@ -2969,7 +2969,7 @@ class Eval:
                 df,
                 output_dir=f"experiments/results/shap_analysis/{name}_shap_beeswarms_all_time",
                 time_unit="all_time",       # "all_time", "week", or "day"
-                trim_quantile=0.995,        # removes largest 0.5% |SHAP| for display
+                trim_quantile=0.98,        # removes largest 0.5% |SHAP| for display
                 max_points_overview=6000,
                 max_points_per_setting=6000,
             )
@@ -2978,7 +2978,7 @@ class Eval:
                 df,
                 output_dir=f"experiments/results/shap_analysis/{name}_shap_beeswarms_week",
                 time_unit="week",       # "all_time", "week", or "day"
-                trim_quantile=0.995,        # removes largest 0.5% |SHAP| for display
+                trim_quantile=0.98,        # removes largest 0.5% |SHAP| for display
                 max_points_overview=6000,
                 max_points_per_setting=6000,
             )
@@ -2987,7 +2987,7 @@ class Eval:
                 df,
                 output_dir=f"experiments/results/shap_analysis/{name}_shap_beeswarms_day",
                 time_unit="day",       # "all_time", "week", or "day"
-                trim_quantile=0.995,        # removes largest 0.5% |SHAP| for display
+                trim_quantile=0.98,        # removes largest 0.5% |SHAP| for display
                 max_points_overview=6000,
                 max_points_per_setting=6000,
             )
