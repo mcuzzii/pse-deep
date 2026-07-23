@@ -599,6 +599,60 @@ def plot_text_scores(text_scores: dict, out_dir, top_n: int = 20, figsize=None, 
     plt.close()
     return fig, ax
 
+def stratified_beeswarm_sample(
+    data,
+    max_points_per_row=1_500,
+    time_bins=12,
+    random_state=42,
+):
+    data = data.copy()
+
+    # Assumes week_minute was created earlier.
+    data["time_bin"] = pd.cut(
+        data["week_minute"],
+        bins=time_bins,
+        labels=False,
+        include_lowest=True,
+    )
+
+    def sample_row(frame):
+        if len(frame) <= max_points_per_row:
+            return frame
+
+        # Roughly equal representation of each weekly-time segment.
+        per_bin = max(1, max_points_per_row // time_bins)
+
+        sampled = (
+            frame.groupby("time_bin", group_keys=False, observed=True)
+                 .apply(
+                     lambda x: x.sample(
+                         n=min(len(x), per_bin),
+                         random_state=random_state,
+                     )
+                 )
+        )
+
+        # Fill any unused capacity from the remaining observations.
+        remaining_n = max_points_per_row - len(sampled)
+        if remaining_n > 0:
+            remainder = frame.drop(sampled.index, errors="ignore")
+            if len(remainder):
+                sampled = pd.concat([
+                    sampled,
+                    remainder.sample(
+                        n=min(len(remainder), remaining_n),
+                        random_state=random_state,
+                    ),
+                ])
+
+        return sampled
+
+    return (
+        data.groupby(["group", "setting"], group_keys=False, observed=True)
+            .apply(sample_row)
+            .drop(columns="time_bin")
+    )
+
 def plot_grouped_shap_beeswarm(
     df,
     group_order=None,
@@ -2439,19 +2493,25 @@ class Eval:
                 print(tfm_dfs.tail())
 
         for df, name in zip((mlp_dfs, tfm_dfs), ('mlp', 'tfm')):
+
+            plot_data = stratified_beeswarm_sample(
+                df,
+                max_points_per_row=1500,
+                time_bins=12,
+            )
             
             plot_grouped_shap_beeswarm(
-                df,
+                plot_data,
                 time_unit='day_minute',
                 save_path=f'experiments/results/shap_analysis/{name}_day_minute.png'
             )
             plot_grouped_shap_beeswarm(
-                df,
+                plot_data,
                 time_unit='week_minute',
                 save_path=f'experiments/results/shap_analysis/{name}_week_minute.png'
             )
             plot_grouped_shap_beeswarm(
-                df,
+                plot_data,
                 time_unit='all_time',
                 save_path=f'experiments/results/shap_analysis/{name}_all_time.png'
             )
