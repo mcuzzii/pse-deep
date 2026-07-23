@@ -601,6 +601,7 @@ def plot_text_scores(text_scores: dict, out_dir, top_n: int = 20, figsize=None, 
 
 def stratified_beeswarm_sample(
     data,
+    time_unit='all_time',
     max_points_per_row=1_500,
     time_bins=12,
     random_state=42,
@@ -608,6 +609,28 @@ def stratified_beeswarm_sample(
     data = data.copy()
 
     # Assumes week_minute was created earlier.
+
+    data["week_minute"] = (
+        data["timestamp"].dt.dayofweek * 24 * 60
+        + data["timestamp"].dt.hour * 60
+        + data["timestamp"].dt.minute
+        + data["timestamp"].dt.second / 60
+    )
+    data['day_minute'] = (
+        data["timestamp"].dt.hour * 60
+        + data["timestamp"].dt.minute
+        + data["timestamp"].dt.second / 60
+    )
+
+    data['timestamp_num'] = (
+        mdates.date2num(data["timestamp"])
+        if time_unit == 'all_time'
+        else (
+            data["week_minute"]
+            if time_unit == 'week'
+            else data['day_minute']
+        )
+    )
     data["time_bin"] = pd.cut(
         data["week_minute"],
         bins=time_bins,
@@ -746,27 +769,7 @@ def plot_grouped_shap_beeswarm(
     data["row_id"] = data["group"] + "___" + data["setting"]
 
     # A numeric timestamp allows a continuous, shared colormap.
-    data["week_minute"] = (
-        data["timestamp"].dt.dayofweek * 24 * 60
-        + data["timestamp"].dt.hour * 60
-        + data["timestamp"].dt.minute
-        + data["timestamp"].dt.second / 60
-    )
-    data['day_minute'] = (
-        data["timestamp"].dt.hour * 60
-        + data["timestamp"].dt.minute
-        + data["timestamp"].dt.second / 60
-    )
-
-    timestamp_num = (
-        mdates.date2num(data["timestamp"])
-        if time_unit == 'all_time'
-        else (
-            data["week_minute"]
-            if time_unit == 'week'
-            else data['day_minute']
-        )
-    )
+    timestamp_num = data['timestamp_num']
     norm = Normalize(vmin=timestamp_num.min(), vmax=timestamp_num.max())
     cmap = plt.get_cmap("viridis")
 
@@ -2493,25 +2496,34 @@ class Eval:
                 print(tfm_dfs.tail())
 
         for df, name in zip((mlp_dfs, tfm_dfs), ('mlp', 'tfm')):
-
-            plot_data = stratified_beeswarm_sample(
-                df,
-                max_points_per_row=1500,
-                time_bins=12,
-            )
             
             plot_grouped_shap_beeswarm(
-                plot_data,
+                stratified_beeswarm_sample(
+                    df,
+                    time_unit='day_minute',
+                    max_points_per_row=1500,
+                    time_bins=12,
+                ),
                 time_unit='day_minute',
                 save_path=f'experiments/results/shap_analysis/{name}_day_minute.png'
             )
             plot_grouped_shap_beeswarm(
-                plot_data,
+                stratified_beeswarm_sample(
+                    df,
+                    time_unit='week_minute',
+                    max_points_per_row=1500,
+                    time_bins=12,
+                ),
                 time_unit='week_minute',
                 save_path=f'experiments/results/shap_analysis/{name}_week_minute.png'
             )
             plot_grouped_shap_beeswarm(
-                plot_data,
+                stratified_beeswarm_sample(
+                    df,
+                    time_unit='all_time',
+                    max_points_per_row=1500,
+                    time_bins=12,
+                ),
                 time_unit='all_time',
                 save_path=f'experiments/results/shap_analysis/{name}_all_time.png'
             )
