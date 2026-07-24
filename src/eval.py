@@ -2818,13 +2818,31 @@ class Eval:
                         snapshot[ind] = snapshot[ind][reorder][:, reorder]
                 
                 if ts[i].time() <= pd.Timestamp('10:00').time():
-                    update_dict(summary_tensors[dir.name], 'market_open', snapshot)
+                    update_dict(summary_tensors[dir.name], 'Market Open', snapshot)
                 elif ts[i].time() <= pd.Timestamp('12:00').time():
-                    update_dict(summary_tensors[dir.name], 'am_session', snapshot)
+                    update_dict(summary_tensors[dir.name], 'AM Session', snapshot)
                 elif ts[i].time() <= pd.Timestamp('14:15').time():
-                    update_dict(summary_tensors[dir.name], 'pm_session', snapshot)
+                    update_dict(summary_tensors[dir.name], 'PM Session', snapshot)
                 else:
-                    update_dict(summary_tensors[dir.name], 'market_close', snapshot)
+                    update_dict(summary_tensors[dir.name], 'Market Close', snapshot)
+
+                if ts[i].strftime("%a") == 'Mon':
+                    update_dict(summary_tensors[dir.name], 'Mon', snapshot)
+                elif ts[i].strftime("%a") == 'Tue':
+                    update_dict(summary_tensors[dir.name], 'Tue', snapshot)
+                elif ts[i].strftime("%a") == 'Wed':
+                    update_dict(summary_tensors[dir.name], 'Wed', snapshot)                
+                elif ts[i].strftime("%a") == 'Thu':
+                    update_dict(summary_tensors[dir.name], 'Thu', snapshot)
+                else:
+                    update_dict(summary_tensors[dir.name], 'Fri', snapshot) 
+
+                if ts[i] <= pd.Timestamp('2026-03-17'):
+                    update_dict(summary_tensors[dir.name], 'Mar 4-16, 2026', snapshot)
+                elif ts[i] <= pd.Timestamp('2026-03-28'):
+                    update_dict(summary_tensors[dir.name], 'Mar 17-27, 2026', snapshot)
+                else:
+                    update_dict(summary_tensors[dir.name], 'Mar 30-Apr 15, 2026', snapshot)
                 
                 update_dict(summary_tensors[dir.name], str(ts[i]), snapshot)
                 update_dict(summary_tensors[dir.name], 'overall', snapshot)
@@ -2989,3 +3007,303 @@ class Eval:
                 max_points_overview=6000,
                 max_points_per_setting=6000,
             )
+
+    def plot_attention_summary_grid(self):
+        """
+        Creates one grid per:
+            - category group: intraday / weekday / period
+            - cross-attention module: tst, ist, nft, sft, nintr, sintr
+
+        Grid layout:
+            rows    = model configurations
+            columns = categories in the selected category group
+            cell    = attention heatmap for that configuration/category/module
+        """
+        attn_summary = torch.load(
+            self.results_path / "attn_analysis" / "summary_tensors.pt",
+            map_location="cpu",
+            weights_only=False,
+        )
+
+        output_dir = self.results_path / "attn_analysis" / "summary_grids"
+        output_dir.mkdir(parents=True, exist_ok=True)
+
+        # Adjust these strings if the category names in your saved tensor differ.
+        category_groups = {
+            "intraday": [
+                "Market Open",
+                "AM Session",
+                "PM Session",
+                "Market Close",
+            ],
+            "weekday": ["Mon", "Tue", "Wed", "Thu", "Fri"],
+            "time_period": [
+                "Mar 4-16",
+                "Mar 17-27",
+                "Mar 30-Apr 15",
+            ],
+        }
+
+        # `sintr`, rather than the repeated `nintr` in the request.
+        cross_attention_modules = ("tst", "ist", "nft", "sft", "nintr", "sintr")
+
+        # Use only configurations that are actually present in the saved summary.
+        # Sorted here for deterministic output; replace with a custom list if desired.
+        model_names = sorted(attn_summary.keys())
+
+        viridis_cmap = mcolors.LinearSegmentedColormap.from_list(
+            "custom_viridis",
+            [
+                COLORS["purple"],
+                COLORS["indigo"],
+                COLORS["teal"],
+                COLORS["seafoam"],
+                COLORS["green"],
+                COLORS["yellow"],
+            ],
+        )
+        viridis_cmap.set_bad(color=(0, 0, 0, 0))
+
+        def format_attention_matrix(item, module, model_name):
+            """
+            Apply the same transformations and return:
+                matrix, x tick labels, y tick labels, x label, y label
+            """
+            item = item.detach().cpu().clone().float()
+
+            if module == "ist":
+                item = item.T
+                stock_labels = [stock.upper() for stock in self.stock_map[model_name]["stocks"]]
+
+                return (
+                    item,
+                    stock_labels,
+                    stock_labels,
+                    "Stocks (Q)",
+                    "Stocks (KV)",
+                )
+
+            if module == "tst":
+                item = item.T
+
+                # Applies the future-step multiplier exactly as in your original code.
+                factors = torch.arange(1, item.shape[1] + 1).unsqueeze(0)
+                item = item * factors
+
+                # Mask lower triangle; query can only attend to its past.
+                mask = (1 - torch.triu(torch.ones_like(item))).bool()
+                item[mask] = float("nan")
+
+                step = max(1, item.shape[1] // 20)
+                full_labels = list(range(item.shape[1], 0, -1))
+                tick_labels = [
+                    label if i % step == 0 else ""
+                    for i, label in enumerate(full_labels)
+                ]
+
+                return (
+                    item,
+                    tick_labels,
+                    tick_labels,
+                    "Minutes Ago (Q)",
+                    "Minutes Ago (KV)",
+                )
+
+            if module in ("nft", "sft"):
+                item = item.T
+
+                step = max(1, item.shape[1] // 20)
+                full_labels = list(range(item.shape[1], 0, -1))
+                x_ticks = [
+                    label if i % step == 0 else ""
+                    for i, label in enumerate(full_labels)
+                ]
+                y_ticks = [f"Top {i}" for i in range(1, item.shape[0] + 1)]
+
+                source_name = "News" if module == "nft" else "X Posts"
+
+                return (
+                    item,
+                    x_ticks,
+                    y_ticks,
+                    "Minutes Ago (Q)",
+                    f"Selected {source_name} (KV)",
+                )
+
+            if module in ("nintr", "sintr"):
+                n_cols = item.shape[1]
+                step = max(1, n_cols // 20)
+
+                full_labels = [ordinal(n) for n in range(n_cols, 0, -1)]
+                x_ticks = [
+                    label if i % step == 0 else ""
+                    for i, label in enumerate(full_labels)
+                ]
+                y_ticks = [f"Top {i}" for i in range(1, item.shape[0] + 1)]
+
+                item_type = "Article" if module == "nintr" else "Post"
+                source_name = "News" if module == "nintr" else "X Posts"
+
+                return (
+                    item,
+                    x_ticks,
+                    y_ticks,
+                    f"{item_type} Recency",
+                    f"Selected {source_name}",
+                )
+
+            raise ValueError(f"Unsupported attention module: {module}")
+
+        for group_name, categories in category_groups.items():
+            for module in cross_attention_modules:
+                # First collect existing matrices. This lets all visible cells share
+                # a figure-level color range.
+                cells = {}
+                finite_values = []
+
+                for model_name in model_names:
+                    for category in categories:
+                        item = attn_summary.get(model_name, {}).get(category, {}).get(module)
+
+                        # The Counter-based `nin` / `sin` summaries are intentionally
+                        # excluded from this cross-attention grid.
+                        if item is None or isinstance(item, Counter):
+                            continue
+
+                        matrix, x_ticks, y_ticks, x_label, y_label = format_attention_matrix(
+                            item=item,
+                            module=module,
+                            model_name=model_name,
+                        )
+
+                        cells[(model_name, category)] = {
+                            "matrix": matrix,
+                            "x_ticks": x_ticks,
+                            "y_ticks": y_ticks,
+                            "x_label": x_label,
+                            "y_label": y_label,
+                        }
+
+                        valid = matrix[torch.isfinite(matrix)]
+                        if valid.numel():
+                            finite_values.append(valid.numpy())
+
+                # For example, do not create an sft plot for a group where no model
+                # contains social-media inputs.
+                if not cells:
+                    continue
+
+                all_values = np.concatenate(finite_values)
+                vmin = float(np.nanmin(all_values))
+                vmax = float(np.nanmax(all_values))
+
+                # Prevent Seaborn warnings/errors if every attention value is identical.
+                if np.isclose(vmin, vmax):
+                    vmax = vmin + 1e-8
+
+                n_rows = len(model_names)
+                n_cols = len(categories)
+
+                # Tune these two values if you want substantially larger/smaller cells.
+                fig_width = max(4 * n_cols, 10)
+                fig_height = max(3.5 * n_rows, 6)
+
+                fig, axes = plt.subplots(
+                    nrows=n_rows,
+                    ncols=n_cols,
+                    figsize=(fig_width, fig_height),
+                    squeeze=False,
+                    constrained_layout=True,
+                )
+
+                heatmap_artist = None
+
+                for row, model_name in enumerate(model_names):
+                    for col, category in enumerate(categories):
+                        ax = axes[row, col]
+                        cell = cells.get((model_name, category))
+
+                        if cell is None:
+                            ax.set_facecolor("#f5f5f5")
+                            ax.text(
+                                0.5,
+                                0.5,
+                                "Not present\nin this configuration",
+                                ha="center",
+                                va="center",
+                                fontsize=9,
+                                color="gray",
+                                transform=ax.transAxes,
+                            )
+                            ax.set_xticks([])
+                            ax.set_yticks([])
+                        else:
+                            matrix = cell["matrix"]
+
+                            heatmap_artist = sns.heatmap(
+                                matrix.numpy(),
+                                ax=ax,
+                                cmap=viridis_cmap,
+                                vmin=vmin,
+                                vmax=vmax,
+                                mask=torch.isnan(matrix).numpy(),
+                                xticklabels=cell["x_ticks"],
+                                yticklabels=cell["y_ticks"],
+                                linewidths=0,
+                                cbar=False,
+                            )
+
+                            ax.set_xlabel(cell["x_label"], fontsize=8)
+                            ax.set_ylabel(cell["y_label"], fontsize=8)
+                            ax.tick_params(axis="both", labelsize=6)
+                            plt.setp(ax.get_xticklabels(), rotation=90)
+                            plt.setp(ax.get_yticklabels(), rotation=0)
+
+                        # Column headers are categories.
+                        if row == 0:
+                            ax.set_title(category, fontsize=12, pad=12)
+
+                        # Model configuration label on the leftmost panel.
+                        if col == 0:
+                            ax.annotate(
+                                model_name,
+                                xy=(-0.38, 0.5),
+                                xycoords="axes fraction",
+                                ha="right",
+                                va="center",
+                                rotation=90,
+                                fontsize=10,
+                                fontweight="bold",
+                            )
+
+                # Shared colorbar for all real heatmaps in the grid.
+                if heatmap_artist is not None:
+                    colorbar = fig.colorbar(
+                        heatmap_artist.collections[0],
+                        ax=axes.ravel().tolist(),
+                        shrink=0.7,
+                        pad=0.02,
+                    )
+                    colorbar.set_label("Attention Scores", fontsize=10)
+                    colorbar.set_ticks([])
+
+                module_title = {
+                    "tst": "Time-Series Transformer Attention",
+                    "ist": "Inter-Stock Transformer Attention",
+                    "nft": "News Fusion Transformer Attention",
+                    "sft": "Social-Media Fusion Transformer Attention",
+                    "nintr": "News Top-K Selection Attention",
+                    "sintr": "Social-Media Top-K Selection Attention",
+                }[module]
+
+                fig.suptitle(
+                    f"{module_title}\nGrouped by {group_name.replace('_', ' ')}",
+                    fontsize=16,
+                    fontweight="bold",
+                )
+
+                file_path = output_dir / f"{group_name}__{module}.png"
+                fig.savefig(file_path, dpi=300, bbox_inches="tight")
+                plt.close(fig)
+
+                print(f"Saved: {file_path}")
