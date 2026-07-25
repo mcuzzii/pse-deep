@@ -16,6 +16,9 @@ from experiments import Experiment
 from eval import Eval
 from dotenv import load_dotenv
 import gc
+import warnings
+
+warnings.filterwarnings("ignore")
 
 load_dotenv()
 
@@ -218,7 +221,7 @@ def main():
     #evaluator.get_embeddings()
     #evaluator.interpret_attention_scores()
     #evaluator.plot_attention_scores()
-    evaluator.plot_shap_scores()
+    #evaluator.plot_shap_scores()
     evaluator.plot_attention_summary_grid()
 
 if __name__ == '__main__':

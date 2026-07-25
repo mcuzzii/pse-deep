@@ -2699,6 +2699,7 @@ class Eval:
         social_df = joblib.load('data/processed/social_media.joblib')
 
         summary_tensors = dict()
+        counters = dict()
 
         for dir in self.experiments_path.iterdir():
             if dir.name in ('data', 'results') or 'mlp' in dir.name:
@@ -2733,6 +2734,25 @@ class Eval:
                 social_ts = social_data['timestamps']
 
             summary_tensors[dir.name] = dict()
+            counters[dir.name] = {
+                'Market Open': 0,
+                'AM Session': 0,
+                'PM Session': 0,
+                'Market Close': 0,
+                'Mon': 0,
+                'Tue': 0,
+                'Wed': 0,
+                'Thu': 0,
+                'Fri': 0,
+                'Week 1': 0,
+                'Week 2': 0,
+                'Week 3': 0,
+                'Week 4': 0,
+                'Week 5': 0,
+                'Week 6': 0,
+                'Week 7': 0,
+                'Overall': 0
+            }
             
             for batch in tqdm(batches_dir.iterdir()):
                 tensors = torch.load(batch, map_location=device, weights_only=False)
@@ -2748,7 +2768,14 @@ class Eval:
                 else:
                     keys = ('tst', 'ist')
                 
-                snapshot = {k: v for k, v in zip(keys, tensors)}
+                snapshot = {
+                    k: (
+                        v
+                        if k in ('sin', 'nin')
+                        else v / 20.0
+                    )
+                    for k, v in zip(keys, tensors)
+                }
 
                 if social or news:
                     cutoff, _ = get_text_window(ts[i], ts, pred_horizon)
@@ -2778,7 +2805,7 @@ class Eval:
 
                     snapshot[ind] = snapshot[ind][..., :mask.sum()]                      # S, Ts, K, d
 
-                    snapshot[f'{ind}tr'] = snapshot[ind][:, -1, :, :].sum(dim=0)         # K, d
+                    snapshot[f'{ind}tr'] = snapshot[ind][:, -1, :, :].mean(dim=0)         # K, d
 
                     selected = torch.einsum("stkn,ne->stke", snapshot[ind], sample)      # S, Ts, K, En
 
@@ -2801,6 +2828,7 @@ class Eval:
                         closest_idx.reshape(-1),
                         torch.ones_like(closest_idx.reshape(-1), device=device, dtype=scores.dtype)
                     )
+                    scores = scores / (30 * 60)
 
                     text = text_df.df.loc[
                         (cutoff < text_df.df.index) & (text_df.df.index <= ts[i]),
@@ -2812,139 +2840,172 @@ class Eval:
                 for ind in ('tst', 'sft', 'nft', 'ist'):
                     if ind not in snapshot:
                         continue
-                    snapshot[ind] = snapshot[ind].sum(dim=0)
+                    snapshot[ind] = snapshot[ind].mean(dim=0)
                     if ind == 'ist':
                         reorder = torch.argmax(self.stock_map[dir.name]['stock_map'], dim=-1)
                         snapshot[ind] = snapshot[ind][reorder][:, reorder]
                 
                 if ts[i].time() <= pd.Timestamp('10:00').time():
                     update_dict(summary_tensors[dir.name], 'Market Open', snapshot)
+                    counters[dir.name]['Market Open'] += 1
                 elif ts[i].time() <= pd.Timestamp('12:00').time():
                     update_dict(summary_tensors[dir.name], 'AM Session', snapshot)
+                    counters[dir.name]['AM Session'] += 1
                 elif ts[i].time() <= pd.Timestamp('14:15').time():
                     update_dict(summary_tensors[dir.name], 'PM Session', snapshot)
+                    counters[dir.name]['PM Session'] += 1
                 else:
                     update_dict(summary_tensors[dir.name], 'Market Close', snapshot)
+                    counters[dir.name]['Market Close'] += 1
 
                 if ts[i].strftime("%a") == 'Mon':
                     update_dict(summary_tensors[dir.name], 'Mon', snapshot)
+                    counters[dir.name]['Mon'] += 1
                 elif ts[i].strftime("%a") == 'Tue':
                     update_dict(summary_tensors[dir.name], 'Tue', snapshot)
+                    counters[dir.name]['Tue'] += 1
                 elif ts[i].strftime("%a") == 'Wed':
-                    update_dict(summary_tensors[dir.name], 'Wed', snapshot)                
+                    update_dict(summary_tensors[dir.name], 'Wed', snapshot)
+                    counters[dir.name]['Wed'] += 1           
                 elif ts[i].strftime("%a") == 'Thu':
                     update_dict(summary_tensors[dir.name], 'Thu', snapshot)
+                    counters[dir.name]['Thu'] += 1
                 else:
-                    update_dict(summary_tensors[dir.name], 'Fri', snapshot) 
+                    update_dict(summary_tensors[dir.name], 'Fri', snapshot)
+                    counters[dir.name]['Fri'] += 1 
 
-                if ts[i] <= pd.Timestamp('2026-03-17'):
-                    update_dict(summary_tensors[dir.name], 'Mar 4-16, 2026', snapshot)
+                if ts[i] <= pd.Timestamp('2026-03-07'):
+                    update_dict(summary_tensors[dir.name], 'Week 1', snapshot)
+                    counters[dir.name]['Week 1'] += 1
+                elif ts[i] <= pd.Timestamp('2026-03-14'):
+                    update_dict(summary_tensors[dir.name], 'Week 2', snapshot)
+                    counters[dir.name]['Week 2'] += 1
+                elif ts[i] <= pd.Timestamp('2026-03-21'):
+                    update_dict(summary_tensors[dir.name], 'Week 3', snapshot)
+                    counters[dir.name]['Week 3'] += 1
                 elif ts[i] <= pd.Timestamp('2026-03-28'):
-                    update_dict(summary_tensors[dir.name], 'Mar 17-27, 2026', snapshot)
+                    update_dict(summary_tensors[dir.name], 'Week 4', snapshot)
+                    counters[dir.name]['Week 4'] += 1
+                elif ts[i] <= pd.Timestamp('2026-04-04'):
+                    update_dict(summary_tensors[dir.name], 'Week 5', snapshot)
+                    counters[dir.name]['Week 5'] += 1
+                elif ts[i] <= pd.Timestamp('2026-04-11'):
+                    update_dict(summary_tensors[dir.name], 'Week 6', snapshot)
+                    counters[dir.name]['Week 6'] += 1
                 else:
-                    update_dict(summary_tensors[dir.name], 'Mar 30-Apr 15, 2026', snapshot)
+                    update_dict(summary_tensors[dir.name], 'Week 7', snapshot)
+                    counters[dir.name]['Week 7'] += 1
+
+                for w in snapshot:
+                    self.plot_attention_scores(str(ts[i]), snapshot, w)
+                    if w in ('sin', 'nin'):
+                        vals = np.array(list(snapshot[w].values()))
+                    else:
+                        vals = snapshot[w].cpu().tonumpy()
+                    print(f"Processed snapshot for {dir.name}_{str(ts[i])}_{w} with range {(vals.min(), vals.max())}")
                 
-                update_dict(summary_tensors[dir.name], str(ts[i]), snapshot)
                 update_dict(summary_tensors[dir.name], 'overall', snapshot)
-            
+                counters[dir.name]['Overall'] += 1
+
+        for dir in self.experiments_path.iterdir():
+            if dir.name in ('data', 'results') or 'mlp' in dir.name:
+                continue
+
+            for category in counters[dir.name]:
+                for k, v in summary_tensors[dir.name][category]:
+                    summary_tensors[dir.name][category][k] = v / counters[dir.name][category]
+                    self.plot_attention_scores(category, summary_tensors[dir.name][category], k)
+                    if k in ('sin', 'nin'):
+                        vals = np.array(list(summary_tensors[dir.name][category][k].values()))
+                    else:
+                        vals = summary_tensors[dir.name][category][k].cpu().tonumpy()
+                    print(f"Processed summary for {dir.name}_{category}_{k} with range {(vals.min(), vals.max())}")
+
         torch.save(summary_tensors, self.results_path / 'attn_analysis' / 'summary_tensors.pt')
 
-    def plot_attention_scores(self):
+    def plot_attention_scores(self, cat, snapshot, w):
+        item = snapshot[w]
+        if isinstance(item, Counter):
+            out_dir = self.results_path / 'attn_analysis' / f'{dir.name}_{cat}_{w}'
+            plot_text_scores(item, out_dir)
+        else:
+            if w == 'ist':
+                item = item.T
+                xtick = [s.upper() for s in self.stock_map[dir.name]['stocks']]
+                ytick = xtick
+                xlab = 'Stocks (Q)'
+                ylab = 'Stocks (KV)'
+                figsize = (7, 6)
+            if w == 'tst':
+                item = item.T
+                fct = torch.arange(1, 61).unsqueeze(0)
+                item = item * fct
+                mask = (1 - torch.triu(torch.ones_like(item))).to(bool).to(item.device)
+                item[mask] = float('nan')
+                step = 3
+                full_labels = range(60, 0, -1)
+                xtick = [label if i % step == 0 else '' for i, label in enumerate(full_labels)]
+                ytick = xtick
+                xlab = 'Minutes Ago (Q)'
+                ylab = 'Minutes Ago (KV)'
+                figsize = (7, 6)
+            if w in ('nft', 'sft'):
+                item = item.T
+                step = 3
+                full_labels = range(60, 0, -1)
+                xtick = [label if i % step == 0 else '' for i, label in enumerate(full_labels)]
+                ytick = [f'Top {i}' for i in range(1, 6)]
+                xlab = 'Minutes Ago (Q)'
+                ylab = f'Selected {'News' if w == 'nft' else 'X Posts'} (KV)'
+                figsize = (14, 4)
+            if w in ('nintr', 'sintr'):
+                n_cols = item.shape[1]
+                step = max(1, n_cols // 20)  # aim for ~20 visible labels regardless of n_cols
 
-        attn_summary = torch.load(
-            self.results_path / 'attn_analysis' / 'summary_tensors.pt',
-            map_location=torch.device('cpu'),
-            weights_only=False
-        )
-        
-        for dir in self.experiments_path.iterdir():
-            if dir.name in ('results', 'data') or 'mlp' in dir.name:
-                continue
-            
-            for cat in attn_summary[dir.name]:
-                for w in attn_summary[dir.name][cat]:
-                    item = attn_summary[dir.name][cat][w]
-                    if isinstance(item, Counter):
-                        out_dir = self.results_path / 'attn_analysis' / f'{dir.name}_{cat}_{w}'
-                        plot_text_scores(item, out_dir)
-                    else:
-                        if w == 'ist':
-                            item = item.T
-                            xtick = [s.upper() for s in self.stock_map[dir.name]['stocks']]
-                            ytick = xtick
-                            xlab = 'Stocks (Q)'
-                            ylab = 'Stocks (KV)'
-                            figsize = (7, 6)
-                        if w == 'tst':
-                            item = item.T
-                            fct = torch.arange(1, 61).unsqueeze(0)
-                            item = item * fct
-                            mask = (1 - torch.triu(torch.ones_like(item))).to(bool).to(item.device)
-                            item[mask] = float('nan')
-                            step = 3
-                            full_labels = range(60, 0, -1)
-                            xtick = [label if i % step == 0 else '' for i, label in enumerate(full_labels)]
-                            ytick = xtick
-                            xlab = 'Minutes Ago (Q)'
-                            ylab = 'Minutes Ago (KV)'
-                            figsize = (7, 6)
-                        if w in ('nft', 'sft'):
-                            item = item.T
-                            step = 3
-                            full_labels = range(60, 0, -1)
-                            xtick = [label if i % step == 0 else '' for i, label in enumerate(full_labels)]
-                            ytick = [f'Top {i}' for i in range(1, 6)]
-                            xlab = 'Minutes Ago (Q)'
-                            ylab = f'Selected {'News' if w == 'nft' else 'X Posts'} (KV)'
-                            figsize = (14, 4)
-                        if w in ('nintr', 'sintr'):
-                            n_cols = item.shape[1]
-                            step = max(1, n_cols // 20)  # aim for ~20 visible labels regardless of n_cols
+                full_labels = [ordinal(n) for n in range(n_cols, 0, -1)]
+                xtick = [label if i % step == 0 else '' for i, label in enumerate(full_labels)]
 
-                            full_labels = [ordinal(n) for n in range(n_cols, 0, -1)]
-                            xtick = [label if i % step == 0 else '' for i, label in enumerate(full_labels)]
+                ytick = [f'Top {i}' for i in range(1, 6)]
+                xlab = f'{"Article" if w == "nintr" else "Post"} Recency'
+                ylab = f'Selected {"News" if w == "nintr" else "X Posts"}'
+                figsize = (14, 4)  # let width scale with n_cols too
 
-                            ytick = [f'Top {i}' for i in range(1, 6)]
-                            xlab = f'{"Article" if w == "nintr" else "Post"} Recency'
-                            ylab = f'Selected {"News" if w == "nintr" else "X Posts"}'
-                            figsize = (14, 4)  # let width scale with n_cols too
+            viridis_cmap = mcolors.LinearSegmentedColormap.from_list(
+                'custom_viridis',
+                [COLORS['purple'], COLORS['indigo'], COLORS['teal'],
+                COLORS['seafoam'], COLORS['green'], COLORS['yellow']]
+            )
+            viridis_cmap.set_bad(color=(0, 0, 0, 0))
 
-                        viridis_cmap = mcolors.LinearSegmentedColormap.from_list(
-                            'custom_viridis',
-                            [COLORS['purple'], COLORS['indigo'], COLORS['teal'],
-                            COLORS['seafoam'], COLORS['green'], COLORS['yellow']]
-                        )
-                        viridis_cmap.set_bad(color=(0, 0, 0, 0))
+            fig, ax = plt.subplots(figsize=figsize)
 
-                        fig, ax = plt.subplots(figsize=figsize)
+            sns.heatmap(
+                item.numpy(),
+                xticklabels=xtick,
+                yticklabels=ytick,
+                mask=torch.isnan(item).numpy(),
+                cmap=viridis_cmap,
+                linewidths=0,
+                cbar_kws={'label': 'Attention Scores', 'shrink': 0.8},
+                ax=ax
+            )
 
-                        sns.heatmap(
-                            item.numpy(),
-                            xticklabels=xtick,
-                            yticklabels=ytick,
-                            mask=torch.isnan(item).numpy(),
-                            cmap=viridis_cmap,
-                            linewidths=0,
-                            cbar_kws={'label': 'Attention Scores', 'shrink': 0.8},
-                            ax=ax
-                        )
+            cbar = ax.collections[0].colorbar
+            cbar.set_ticks([])
 
-                        cbar = ax.collections[0].colorbar
-                        cbar.set_ticks([])
+            ax.set_title("Attention Scores", fontsize=16, pad=16)
+            ax.tick_params(axis='both', labelsize=8)
+            ax.set_xlabel(xlab)
+            ax.set_ylabel(ylab)
+            plt.setp(ax.get_xticklabels(), rotation=90)
+            plt.setp(ax.get_yticklabels(), rotation=0)
 
-                        ax.set_title("Attention Scores", fontsize=16, pad=16)
-                        ax.tick_params(axis='both', labelsize=8)
-                        ax.set_xlabel(xlab)
-                        ax.set_ylabel(ylab)
-                        plt.setp(ax.get_xticklabels(), rotation=90)
-                        plt.setp(ax.get_yticklabels(), rotation=0)
-
-                        plt.tight_layout()
-                        plt.savefig(
-                            self.results_path / 'attn_analysis' / f'{dir.name}_{cat}_{w}',
-                            dpi=300, bbox_inches='tight'
-                        )
-                        plt.close()
+            plt.tight_layout()
+            plt.savefig(
+                self.results_path / 'attn_analysis' / f'{dir.name}_{cat}_{w}',
+                dpi=300, bbox_inches='tight'
+            )
+            plt.close()
     
     def plot_shap_scores(self):
         mlp_dfs = pd.DataFrame(columns=['group', 'timestamp', 'setting', 'shap'])
@@ -3037,11 +3098,7 @@ class Eval:
                 "Market Close",
             ],
             "weekday": ["Mon", "Tue", "Wed", "Thu", "Fri"],
-            "time_period": [
-                "Mar 4-16",
-                "Mar 17-27",
-                "Mar 30-Apr 15",
-            ],
+            "time_period": [f"Week {i}" for i in range(1, 8)]
         }
 
         # `sintr`, rather than the repeated `nintr` in the request.
