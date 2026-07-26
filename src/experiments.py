@@ -36,6 +36,7 @@ from models import (
     _build_group_map
 )
 from processing import DataSource, get_stocks, get_text_window, get_elapsed_time
+from eval import Eval
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -1159,7 +1160,7 @@ class Experiment:
         torch.save(checkpoint, tmp_path)
         os.replace(tmp_path, best_path)
     
-    def run_testing(self, force=False, mode=None, recompute_only=False):
+    def run_testing(self, force=False, recompute_only=False, evaluator=None):
 
         if (self.experiment_path / 'test_outputs.pt').exists() and not force:
             print("Test results already saved. Skipping...")
@@ -1207,7 +1208,7 @@ class Experiment:
 
         out_dict['shap_group_names'] = list(group_to_indices.keys())
 
-        for split in (('test',) if mode == 'no_train' else (('train',) if mode == 'train_only' else ('test', 'train'))):
+        for split in (('test',) if evaluator is not None else ('test', 'train')):
 
             if not recompute_only:
                 total_test_loss = 0
@@ -1222,7 +1223,6 @@ class Experiment:
 
                 with tqdm(total=len(self.loaders[split]), desc=f"Testing {split}") as pbar:
 
-                    accumulated_weights = list()
                     for i, (*args, target) in enumerate(self.loaders[split]):
                         if interrupted:
                             raise KeyboardInterrupt
@@ -1236,22 +1236,8 @@ class Experiment:
                                 results = model(*args, return_weights=True)
                                 logits = results[0]
 
-                                indicators = list()
-                                attn_blocks = list()
-                                for tensor in results[1:]:
-                                    if len(tensor.shape) < 5:
-                                        attn_blocks.append(tensor)
-                                    else:
-                                        indicators.append(tensor)
-                                
-                                accumulated_weights.append(attn_blocks)
-
-                                if (i + 1) % 10 == 0:
-                                    accumulated_weights = list(zip(*accumulated_weights))
-                                    accumulated_weights = [torch.cat(attn_blocks).sum(dim=0) for attn_blocks in accumulated_weights]
-                                    indicators = [tensor[-1] for tensor in indicators]
-                                    torch.save(tuple(accumulated_weights + indicators), weights_dir / f'batch_{i}.pt')
-                                    accumulated_weights = list()
+                                if evaluator is not None:
+                                    evaluator.interpret_attention_scores(results[1:], i)
                                 
                             else:
                                 logits = model(*args)
@@ -1264,7 +1250,12 @@ class Experiment:
                             out_dict[f'{split}_all_targets'].append(target)
 
                         # --- SHAP: test split only ---
-                        if split == 'test' and i % (6 if 'mlp' in self.experiment_name else 44) == 0 and i < len(self.loaders[split]) - 1:
+                        if (
+                            split == 'test' and
+                            evaluator is None and
+                            i % (6 if 'mlp' in self.experiment_name else 44) == 0 and
+                            i < len(self.loaders[split]) - 1
+                        ):
                             with torch.enable_grad():
                                 shap_wrapper.args = [a.detach() for a in args]
                                 gates = torch.ones(args[0].shape[0], num_groups, device=device)
@@ -1287,7 +1278,7 @@ class Experiment:
 
                 out_dict[f'{split}_all_targets']  = torch.cat(out_dict[f'{split}_all_targets'])
                 out_dict[f'{split}_logit_scores'] = torch.cat(out_dict[f'{split}_logit_scores'])
-                if split == 'test':
+                if split == 'test' and evaluator is None:
                     out_dict[f'{split}_shap_values'] = torch.cat(out_dict[f'{split}_shap_values'])   # (N, num_groups)
 
                 if 'transformer' in self.experiment_name:
@@ -1328,4 +1319,5 @@ class Experiment:
             )
 
         print('Saving outputs...')
-        torch.save(out_dict, self.experiment_path / 'test_outputs.pt')
+        if evaluator is None:
+            torch.save(out_dict, self.experiment_path / 'test_outputs.pt')
