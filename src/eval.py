@@ -2703,8 +2703,8 @@ class Eval:
 
         for X, df, name in zip(
             (
-                np.vstack(self.news_df.df.loc["embeddings"].values).astype(np.float32),
-                np.vstack(self.social_df.df.loc["embeddings"].values).astype(np.float32)
+                np.vstack(self.news_df.df["embeddings"].values).astype(np.float32),
+                np.vstack(self.social_df.df["embeddings"].values).astype(np.float32)
             ),
             (self.news_df, self.social_df),
             ('news', 'social_media')
@@ -2713,7 +2713,7 @@ class Eval:
                 if NORMALIZE_EMBEDDINGS:
                     X = normalize(X)
 
-                print(f"Embedding matrix shape: {X.shape}")
+                print(f"Adding UMAP scores...")
 
                 reducer = umap.UMAP(
                     n_components=1,
