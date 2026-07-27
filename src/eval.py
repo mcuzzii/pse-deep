@@ -15,6 +15,7 @@ from sklearn.metrics import (
     precision_score,
     recall_score,
     f1_score,
+    silhouette_score,
     davies_bouldin_score,
     calinski_harabasz_score,
     adjusted_rand_score
@@ -35,8 +36,7 @@ import re
 from sklearn.linear_model import LogisticRegression
 from sklearn.svm import LinearSVC
 from sklearn.ensemble import RandomForestClassifier
-from cuml.cluster import KMeans
-from cuml.metrics.cluster import silhouette_score
+from sklearn.cluster import KMeans
 from sklearn.preprocessing import normalize
 from xgboost import XGBClassifier
 from scipy.special import expit
@@ -55,7 +55,6 @@ import seaborn as sns
 import itertools
 from statsmodels.stats.multitest import multipletests
 from patsy import build_design_matrices
-import cupy as cp
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -2743,8 +2742,6 @@ class Eval:
                 if NORMALIZE_EMBEDDINGS:
                     X = normalize(X)
 
-                X = cp.asarray(X)
-
                 print(f"Embedding matrix shape: {X.shape}")
 
                 results = []
@@ -2761,7 +2758,6 @@ class Eval:
                         n_init=N_INIT
                     )
                     labels = km.fit_predict(X)
-                    labels_cpu = cp.asnumpy(labels)
 
                     # Diagnostics
                     silhouette = float(
@@ -2771,8 +2767,8 @@ class Eval:
                             sample_size=3000
                         )
                     )
-                    db = davies_bouldin_score(cp.asnumpy(X), labels_cpu)
-                    ch = calinski_harabasz_score(cp.asnumpy(X), labels_cpu)
+                    db = davies_bouldin_score(X, labels)
+                    ch = calinski_harabasz_score(X, labels)
                     inertia = km.inertia_
 
                     # Stability across random seeds
@@ -2783,7 +2779,7 @@ class Eval:
                             random_state=seed,
                             n_init=N_INIT
                         )
-                        all_labels.append(cp.asnumpy(km_seed.fit_predict(X)))
+                        all_labels.append(km_seed.fit_predict(X))
 
                     ari_scores = []
                     for i in range(len(all_labels)):
@@ -2867,9 +2863,7 @@ class Eval:
                     n_init=N_INIT
                 )
 
-                df.df.loc[df.df.index > ts, f"{name}_cluster_{ts_name}"] = cp.asnumpy(
-                    final_kmeans.fit_predict(X)
-                )
+                df.df.loc[df.df.index > ts, f"{name}_cluster_{ts_name}"] = final_kmeans.fit_predict(X)
 
                 cluster_sizes = (
                     df.df.loc[df.df.index > ts, f"{name}_cluster_{ts_name}"]
