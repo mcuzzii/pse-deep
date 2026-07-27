@@ -2692,16 +2692,13 @@ class Eval:
                     'timestamps': timestamps.squeeze(0)
                 }, out_dir / f'{dir.name}_{mode}.pt')
 
-    def add_clusters(self):
+    def add_umap(self):
 
         print("Loading news")
         self.news_df = joblib.load('data/processed/news.joblib')
         print("Loading social media")
         self.social_df = joblib.load('data/processed/social_media.joblib')
 
-        K_RANGE = range(5, 31)          # Candidate numbers of clusters
-        N_INIT = 20                     # KMeans initializations
-        N_STABILITY_RUNS = 5            # Number of random seeds for stability analysis
         RANDOM_SEED = 42
         NORMALIZE_EMBEDDINGS = True     # Recommended for sentence embeddings
 
@@ -2725,25 +2722,11 @@ class Eval:
 
         for X, df, name in zip(
             (
-                np.vstack(
-                    self.news_df.df.loc[
-                        self.news_df.df.index > pd.Timestamp('2026-03-02'),
-                        "embeddings"
-                    ].values
-                ).astype(np.float32),
-                np.vstack(
-                    self.social_df.df.loc[
-                        self.social_df.df.index > pd.Timestamp('2026-03-02'),
-                        "embeddings"
-                    ].values
-                ).astype(np.float32),
-                self.social_df.df.loc[
-                    self.social_df.df.index > pd.Timestamp('2026-03-02'),
-                    imp_inf_features
-                ].values.astype(np.float32)
+                np.vstack(self.news_df.df.loc["embeddings"].values).astype(np.float32),
+                np.vstack(self.social_df.df.loc["embeddings"].values).astype(np.float32)
             ),
-            (self.news_df, self.social_df, self.social_df),
-            ('news_content', 'social_content', 'social_influence')
+            (self.news_df, self.social_df),
+            ('news', 'social_media')
         ):
 
                 if NORMALIZE_EMBEDDINGS:
@@ -2751,141 +2734,21 @@ class Eval:
 
                 print(f"Embedding matrix shape: {X.shape}")
 
-                results = []
-
-                print("Evaluating candidate K values...")
-
-                for k in K_RANGE:
-                    print(f"  K = {k}")
-
-                    # Main clustering
-                    km = KMeans(
-                        n_clusters=k,
-                        random_state=RANDOM_SEED,
-                        n_init=N_INIT
-                    )
-                    labels = km.fit_predict(X)
-
-                    # Diagnostics
-                    silhouette = float(
-                        silhouette_score(
-                            X,
-                            labels,
-                            sample_size=3000
-                        )
-                    )
-                    db = davies_bouldin_score(X, labels)
-                    ch = calinski_harabasz_score(X, labels)
-                    inertia = km.inertia_
-
-                    # Stability across random seeds
-                    all_labels = []
-                    for seed in range(N_STABILITY_RUNS):
-                        km_seed = KMeans(
-                            n_clusters=k,
-                            random_state=seed,
-                            n_init=N_INIT
-                        )
-                        all_labels.append(km_seed.fit_predict(X))
-
-                    ari_scores = []
-                    for i in range(len(all_labels)):
-                        for j in range(i + 1, len(all_labels)):
-                            ari_scores.append(
-                                adjusted_rand_score(all_labels[i], all_labels[j])
-                            )
-
-                    stability = np.mean(ari_scores)
-
-                    results.append({
-                        "K": k,
-                        "Silhouette": silhouette,
-                        "Davies-Bouldin": db,
-                        "Calinski-Harabasz": ch,
-                        "Inertia": inertia,
-                        "ARI Stability": stability
-                    })
-
-                diagnostics = pd.DataFrame(results)
-
-                print("\n================ CLUSTER DIAGNOSTICS ================\n")
-                print(diagnostics.round(4).to_string(index=False))
-
-                fig, axes = plt.subplots(2, 2, figsize=(12, 8))
-
-                axes[0,0].plot(diagnostics["K"], diagnostics["Silhouette"], marker="o")
-                axes[0,0].set_title("Silhouette Score (Higher Better)")
-                axes[0,0].set_xlabel("K")
-
-                axes[0,1].plot(diagnostics["K"], diagnostics["Davies-Bouldin"], marker="o")
-                axes[0,1].set_title("Davies-Bouldin Index (Lower Better)")
-                axes[0,1].set_xlabel("K")
-
-                axes[1,0].plot(diagnostics["K"], diagnostics["Calinski-Harabasz"], marker="o")
-                axes[1,0].set_title("Calinski-Harabasz Score (Higher Better)")
-                axes[1,0].set_xlabel("K")
-
-                axes[1,1].plot(diagnostics["K"], diagnostics["ARI Stability"], marker="o")
-                axes[1,1].set_title("Clustering Stability (Higher Better)")
-                axes[1,1].set_xlabel("K")
-
-                plt.tight_layout()
-                plt.savefig(
-                    diagnostics_dir / f'{name}_cluster_diagnostics',
-                    dpi=300, bbox_inches='tight'
-                )
-                plt.close()
-
-                plt.figure(figsize=(6,4))
-                plt.plot(diagnostics["K"], diagnostics["Inertia"], marker="o")
-                plt.title("Elbow Plot")
-                plt.xlabel("K")
-                plt.ylabel("Within-Cluster Sum of Squares")
-                plt.tight_layout()
-                plt.savefig(
-                    diagnostics_dir / f'{name}_elbow_plot',
-                    dpi=300, bbox_inches='tight'
-                )
-
-                sil_best = diagnostics.loc[diagnostics["Silhouette"].idxmax(), "K"]
-                db_best = diagnostics.loc[diagnostics["Davies-Bouldin"].idxmin(), "K"]
-                ch_best = diagnostics.loc[diagnostics["Calinski-Harabasz"].idxmax(), "K"]
-                stability_best = diagnostics.loc[diagnostics["ARI Stability"].idxmax(), "K"]
-
-                votes = pd.Series([sil_best, db_best, ch_best, stability_best])
-                recommended_k = int(votes.mode().iloc[0])
-
-                print("\n====================================================")
-                print(f"Best Silhouette K         : {sil_best}")
-                print(f"Best Davies-Bouldin K     : {db_best}")
-                print(f"Best Calinski-Harabasz K  : {ch_best}")
-                print(f"Best Stability K          : {stability_best}")
-                print("----------------------------------------------------")
-                print(f"Recommended K (majority): {recommended_k}")
-                print("====================================================")
-
-                final_kmeans = KMeans(
-                    n_clusters=recommended_k,
+                reducer = umap.UMAP(
+                    n_components=1,
+                    n_neighbors=30,
+                    min_dist=0.05,
+                    metric="cosine",
                     random_state=RANDOM_SEED,
-                    n_init=N_INIT
                 )
 
-                df.df.loc[df.df.index > pd.Timestamp('2026-03-02'), f"{name}_cluster"] = final_kmeans.fit_predict(X)
+                umap_1d = reducer.fit_transform(X).flatten()
 
-                cluster_sizes = (
-                    df.df.loc[df.df.index > pd.Timestamp('2026-03-02'), f"{name}_cluster"]
-                    .value_counts()
-                    .sort_index()
-                )
-
-                print("\nCluster sizes:")
-                print(cluster_sizes)
-
-                diagnostics.to_csv(diagnostics_dir / f"{name}_cluster_diagnostics.csv", index=False)
+                df.df[f"{name}_umap"] = umap_1d
 
                 print("\nDone.")
-                print(f"'{name}_cluster' column appended.")
-                joblib.dump(df, diagnostics_dir / f"{'news' if 'news' in name else 'social_media'}.joblib")
+                print(f"'{name}_umap' column appended.")
+                joblib.dump(df, diagnostics_dir / f"{name}.joblib")
     
     def run_attn_analysis(self):
 

@@ -35,6 +35,7 @@ dependencies = [
     "torch>=2.11",
     "tqdm>=4.67.3",
     "transformers>=5.6.2",
+    "umap-learn>=0.5.12",
     "xgboost>=3.3.0",
     "zarr>=3.2.1",
 ]
