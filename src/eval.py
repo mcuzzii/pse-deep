@@ -14,11 +14,7 @@ from sklearn.metrics import (
     accuracy_score,
     precision_score,
     recall_score,
-    f1_score,
-    silhouette_score,
-    davies_bouldin_score,
-    calinski_harabasz_score,
-    adjusted_rand_score
+    f1_score
 )
 
 sys.path.append(str(Path.cwd() / 'src'))
@@ -36,7 +32,6 @@ import re
 from sklearn.linear_model import LogisticRegression
 from sklearn.svm import LinearSVC
 from sklearn.ensemble import RandomForestClassifier
-from sklearn.cluster import KMeans
 from sklearn.preprocessing import normalize
 from xgboost import XGBClassifier
 from scipy.special import expit
@@ -55,6 +50,7 @@ import seaborn as sns
 import itertools
 from statsmodels.stats.multitest import multipletests
 from patsy import build_design_matrices
+import umap
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -2701,21 +2697,6 @@ class Eval:
 
         RANDOM_SEED = 42
         NORMALIZE_EMBEDDINGS = True     # Recommended for sentence embeddings
-
-        imp_inf_features = [
-            'retweet_count',
-            'reply_count',
-            'like_count',
-            'quote_count',
-            'view_count',
-            'bookmark_count',
-            'author_is_blue_verified',
-            'author_followers',
-            'author_following',
-            'author_favourites_count',
-            'author_media_count',
-            'author_statuses_count'
-        ]
 
         diagnostics_dir = self.results_path / 'clustering_diagnostics'
         diagnostics_dir.mkdir(parents=True, exist_ok=True)

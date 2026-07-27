@@ -219,7 +219,7 @@ def main():
     #evaluator.interpret_baseline_models_trading_sim()
     #evaluator.interpret_shap_values()
     #evaluator.get_embeddings()
-    evaluator.add_clusters()
+    evaluator.add_umap()
     #evaluator.run_attn_analysis()
     #evaluator.plot_shap_scores()
     #evaluator.plot_attention_summary_grid()
