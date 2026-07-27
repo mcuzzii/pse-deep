@@ -15,7 +15,6 @@ from sklearn.metrics import (
     precision_score,
     recall_score,
     f1_score,
-    silhouette_score,
     davies_bouldin_score,
     calinski_harabasz_score,
     adjusted_rand_score
@@ -36,7 +35,8 @@ import re
 from sklearn.linear_model import LogisticRegression
 from sklearn.svm import LinearSVC
 from sklearn.ensemble import RandomForestClassifier
-from sklearn.cluster import KMeans
+from cuml.cluster import KMeans
+from cuml.metrics.cluster import silhouette_score
 from sklearn.preprocessing import normalize
 from xgboost import XGBClassifier
 from scipy.special import expit
@@ -55,6 +55,7 @@ import seaborn as sns
 import itertools
 from statsmodels.stats.multitest import multipletests
 from patsy import build_design_matrices
+import cupy as cp
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -2699,6 +2700,9 @@ class Eval:
         print("Loading social media")
         self.social_df = joblib.load('data/processed/social_media.joblib')
 
+        ts_30 = joblib.load('data/processed/ac_30m.joblib').filtered_date_times
+        ts_10 = joblib.load('data/processed/ac_10m.joblib').filtered_date_times
+
         K_RANGE = range(5, 31)          # Candidate numbers of clusters
         N_INIT = 20                     # KMeans initializations
         N_STABILITY_RUNS = 5            # Number of random seeds for stability analysis
@@ -2729,143 +2733,158 @@ class Eval:
                 np.vstack(self.social_df.df["embeddings"].values).astype(np.float32),
                 self.social_df.df[imp_inf_features].values.astype(np.float32)
             ),
-            (self.news_df.df, self.social_df.df, self.social_df.df),
+            (self.news_df, self.social_df, self.social_df),
             ('news_content', 'social_content', 'social_influence')
         ):
+            for timestamps, ts_name in zip((ts_30, ts_10), ('30m', '10m')):
+                ts = timestamps[int(len(timestamps) * 0.9) + 1:]
+                X = X[int(len(timestamps) * 0.9) + 1:]
 
-            if NORMALIZE_EMBEDDINGS:
-                X = normalize(X)
+                if NORMALIZE_EMBEDDINGS:
+                    X = normalize(X)
 
-            print(f"Embedding matrix shape: {X.shape}")
+                X = cp.asarray(X)
 
-            results = []
+                print(f"Embedding matrix shape: {X.shape}")
 
-            print("Evaluating candidate K values...")
+                results = []
 
-            for k in K_RANGE:
-                print(f"  K = {k}")
+                print("Evaluating candidate K values...")
 
-                # Main clustering
-                km = KMeans(
-                    n_clusters=k,
+                for k in K_RANGE:
+                    print(f"  K = {k}")
+
+                    # Main clustering
+                    km = KMeans(
+                        n_clusters=k,
+                        random_state=RANDOM_SEED,
+                        n_init=N_INIT
+                    )
+                    labels = km.fit_predict(X)
+                    labels_cpu = cp.asnumpy(labels)
+
+                    # Diagnostics
+                    silhouette = float(
+                        silhouette_score(
+                            X,
+                            labels,
+                            sample_size=3000
+                        )
+                    )
+                    db = davies_bouldin_score(cp.asnumpy(X), labels_cpu)
+                    ch = calinski_harabasz_score(cp.asnumpy(X), labels_cpu)
+                    inertia = km.inertia_
+
+                    # Stability across random seeds
+                    all_labels = []
+                    for seed in range(N_STABILITY_RUNS):
+                        km_seed = KMeans(
+                            n_clusters=k,
+                            random_state=seed,
+                            n_init=N_INIT
+                        )
+                        all_labels.append(cp.asnumpy(km_seed.fit_predict(X)))
+
+                    ari_scores = []
+                    for i in range(len(all_labels)):
+                        for j in range(i + 1, len(all_labels)):
+                            ari_scores.append(
+                                adjusted_rand_score(all_labels[i], all_labels[j])
+                            )
+
+                    stability = np.mean(ari_scores)
+
+                    results.append({
+                        "K": k,
+                        "Silhouette": silhouette,
+                        "Davies-Bouldin": db,
+                        "Calinski-Harabasz": ch,
+                        "Inertia": inertia,
+                        "ARI Stability": stability
+                    })
+
+                diagnostics = pd.DataFrame(results)
+
+                print("\n================ CLUSTER DIAGNOSTICS ================\n")
+                print(diagnostics.round(4).to_string(index=False))
+
+                fig, axes = plt.subplots(2, 2, figsize=(12, 8))
+
+                axes[0,0].plot(diagnostics["K"], diagnostics["Silhouette"], marker="o")
+                axes[0,0].set_title("Silhouette Score (Higher Better)")
+                axes[0,0].set_xlabel("K")
+
+                axes[0,1].plot(diagnostics["K"], diagnostics["Davies-Bouldin"], marker="o")
+                axes[0,1].set_title("Davies-Bouldin Index (Lower Better)")
+                axes[0,1].set_xlabel("K")
+
+                axes[1,0].plot(diagnostics["K"], diagnostics["Calinski-Harabasz"], marker="o")
+                axes[1,0].set_title("Calinski-Harabasz Score (Higher Better)")
+                axes[1,0].set_xlabel("K")
+
+                axes[1,1].plot(diagnostics["K"], diagnostics["ARI Stability"], marker="o")
+                axes[1,1].set_title("Clustering Stability (Higher Better)")
+                axes[1,1].set_xlabel("K")
+
+                plt.tight_layout()
+                plt.savefig(
+                    diagnostics_dir / f'{name}_cluster_diagnostics_{ts_name}',
+                    dpi=300, bbox_inches='tight'
+                )
+                plt.close()
+
+                plt.figure(figsize=(6,4))
+                plt.plot(diagnostics["K"], diagnostics["Inertia"], marker="o")
+                plt.title("Elbow Plot")
+                plt.xlabel("K")
+                plt.ylabel("Within-Cluster Sum of Squares")
+                plt.tight_layout()
+                plt.savefig(
+                    diagnostics_dir / f'{name}_elbow_plot_{ts_name}',
+                    dpi=300, bbox_inches='tight'
+                )
+
+                sil_best = diagnostics.loc[diagnostics["Silhouette"].idxmax(), "K"]
+                db_best = diagnostics.loc[diagnostics["Davies-Bouldin"].idxmin(), "K"]
+                ch_best = diagnostics.loc[diagnostics["Calinski-Harabasz"].idxmax(), "K"]
+                stability_best = diagnostics.loc[diagnostics["ARI Stability"].idxmax(), "K"]
+
+                votes = pd.Series([sil_best, db_best, ch_best, stability_best])
+                recommended_k = int(votes.mode().iloc[0])
+
+                print("\n====================================================")
+                print(f"Best Silhouette K         : {sil_best}")
+                print(f"Best Davies-Bouldin K     : {db_best}")
+                print(f"Best Calinski-Harabasz K  : {ch_best}")
+                print(f"Best Stability K          : {stability_best}")
+                print("----------------------------------------------------")
+                print(f"Recommended K (majority): {recommended_k}")
+                print("====================================================")
+
+                final_kmeans = KMeans(
+                    n_clusters=recommended_k,
                     random_state=RANDOM_SEED,
                     n_init=N_INIT
                 )
-                labels = km.fit_predict(X)
 
-                # Diagnostics
-                silhouette = silhouette_score(X, labels)
-                db = davies_bouldin_score(X, labels)
-                ch = calinski_harabasz_score(X, labels)
-                inertia = km.inertia_
+                df.df.loc[df.df.index > ts, f"{name}_cluster_{ts_name}"] = cp.asnumpy(
+                    final_kmeans.fit_predict(X)
+                )
 
-                # Stability across random seeds
-                all_labels = []
-                for seed in range(N_STABILITY_RUNS):
-                    km_seed = KMeans(
-                        n_clusters=k,
-                        random_state=seed,
-                        n_init=N_INIT
-                    )
-                    all_labels.append(km_seed.fit_predict(X))
+                cluster_sizes = (
+                    df.df.loc[df.df.index > ts, f"{name}_cluster_{ts_name}"]
+                    .value_counts()
+                    .sort_index()
+                )
 
-                ari_scores = []
-                for i in range(len(all_labels)):
-                    for j in range(i + 1, len(all_labels)):
-                        ari_scores.append(
-                            adjusted_rand_score(all_labels[i], all_labels[j])
-                        )
+                print("\nCluster sizes:")
+                print(cluster_sizes)
 
-                stability = np.mean(ari_scores)
+                diagnostics.to_csv(diagnostics_dir / f"{name}_cluster_diagnostics_{ts_name}.csv", index=False)
 
-                results.append({
-                    "K": k,
-                    "Silhouette": silhouette,
-                    "Davies-Bouldin": db,
-                    "Calinski-Harabasz": ch,
-                    "Inertia": inertia,
-                    "ARI Stability": stability
-                })
-
-            diagnostics = pd.DataFrame(results)
-
-            print("\n================ CLUSTER DIAGNOSTICS ================\n")
-            print(diagnostics.round(4).to_string(index=False))
-
-            fig, axes = plt.subplots(2, 2, figsize=(12, 8))
-
-            axes[0,0].plot(diagnostics["K"], diagnostics["Silhouette"], marker="o")
-            axes[0,0].set_title("Silhouette Score (Higher Better)")
-            axes[0,0].set_xlabel("K")
-
-            axes[0,1].plot(diagnostics["K"], diagnostics["Davies-Bouldin"], marker="o")
-            axes[0,1].set_title("Davies-Bouldin Index (Lower Better)")
-            axes[0,1].set_xlabel("K")
-
-            axes[1,0].plot(diagnostics["K"], diagnostics["Calinski-Harabasz"], marker="o")
-            axes[1,0].set_title("Calinski-Harabasz Score (Higher Better)")
-            axes[1,0].set_xlabel("K")
-
-            axes[1,1].plot(diagnostics["K"], diagnostics["ARI Stability"], marker="o")
-            axes[1,1].set_title("Clustering Stability (Higher Better)")
-            axes[1,1].set_xlabel("K")
-
-            plt.tight_layout()
-            plt.savefig(
-                diagnostics_dir / f'{name}_cluster_diagnostics',
-                dpi=300, bbox_inches='tight'
-            )
-            plt.close()
-
-            plt.figure(figsize=(6,4))
-            plt.plot(diagnostics["K"], diagnostics["Inertia"], marker="o")
-            plt.title("Elbow Plot")
-            plt.xlabel("K")
-            plt.ylabel("Within-Cluster Sum of Squares")
-            plt.tight_layout()
-            plt.savefig(
-                diagnostics_dir / f'{name}_elbow_plot',
-                dpi=300, bbox_inches='tight'
-            )
-
-            sil_best = diagnostics.loc[diagnostics["Silhouette"].idxmax(), "K"]
-            db_best = diagnostics.loc[diagnostics["Davies-Bouldin"].idxmin(), "K"]
-            ch_best = diagnostics.loc[diagnostics["Calinski-Harabasz"].idxmax(), "K"]
-            stability_best = diagnostics.loc[diagnostics["ARI Stability"].idxmax(), "K"]
-
-            votes = pd.Series([sil_best, db_best, ch_best, stability_best])
-            recommended_k = int(votes.mode().iloc[0])
-
-            print("\n====================================================")
-            print(f"Best Silhouette K         : {sil_best}")
-            print(f"Best Davies-Bouldin K     : {db_best}")
-            print(f"Best Calinski-Harabasz K  : {ch_best}")
-            print(f"Best Stability K          : {stability_best}")
-            print("----------------------------------------------------")
-            print(f"Recommended K (majority): {recommended_k}")
-            print("====================================================")
-
-            final_kmeans = KMeans(
-                n_clusters=recommended_k,
-                random_state=RANDOM_SEED,
-                n_init=N_INIT
-            )
-
-            df[f"{name}_cluster"] = final_kmeans.fit_predict(X)
-
-            cluster_sizes = (
-                df[f"{name}_cluster"]
-                .value_counts()
-                .sort_index()
-            )
-
-            print("\nCluster sizes:")
-            print(cluster_sizes)
-
-            diagnostics.to_csv(diagnostics_dir / f"{name}_cluster_diagnostics.csv", index=False)
-
-            print("\nDone.")
-            print(f"'{name}_cluster' column appended.")
+                print("\nDone.")
+                print(f"'{name}_cluster_{ts_name}' column appended.")
+                joblib.dump(df, diagnostics_dir / f"{'news' if 'news' in name else 'social_media'}.joblib")
     
     def run_attn_analysis(self):
 

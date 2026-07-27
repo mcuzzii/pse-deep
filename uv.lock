@@ -493,6 +493,22 @@ nvtx = [
 ]
 
 [[package]]
+name = "cuml"
+version = "0.6.1.post1"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/3a/e5/5fba6753b720154fe6590f2a826e8185448dc5cbb4a570a350336d9788c9/cuml-0.6.1.post1.tar.gz", hash = "sha256:a537927e014a5ea3361e951a4464f84599d5ad2c2188c62b7fd21f24b27ec742", size = 1137, upload-time = "2020-06-01T20:09:10.595Z" }
+
+[[package]]
+name = "cupy"
+version = "14.1.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "cuda-pathfinder" },
+    { name = "numpy" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/85/86/e99f52f4a50e5faaf4932cf3574d64d870bce224314be7fca91a6d02cda7/cupy-14.1.1.tar.gz", hash = "sha256:3d4d193a5b028e1823d1d44fe6268364d8fb76c3793ad4e28e1427c56ceb2f80", size = 3953009, upload-time = "2026-06-01T04:55:30.379Z" }
+
+[[package]]
 name = "cycler"
 version = "0.12.1"
 source = { registry = "https://pypi.org/simple" }
@@ -3092,6 +3108,8 @@ dependencies = [
     { name = "altair" },
     { name = "beautifulsoup4" },
     { name = "cohere" },
+    { name = "cuml" },
+    { name = "cupy" },
     { name = "datasets" },
     { name = "dotenv" },
     { name = "fast-langdetect" },
@@ -3128,6 +3146,8 @@ requires-dist = [
     { name = "altair", specifier = ">=6.1.0" },
     { name = "beautifulsoup4", specifier = ">=4.15.0" },
     { name = "cohere", specifier = ">=6.1.0" },
+    { name = "cuml", specifier = ">=0.6.1.post1" },
+    { name = "cupy", specifier = ">=14.1.1" },
     { name = "datasets", specifier = "<4.0.0" },
     { name = "dotenv", specifier = ">=0.9.9" },
     { name = "fast-langdetect", specifier = ">=1.0.0" },
