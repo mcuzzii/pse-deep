@@ -211,7 +211,7 @@ def main():
     #evaluator.compute_experiment_data()
     #evaluator.get_closing_prices()
     #evaluator.trading_simulations()
-    evaluator.main_and_interaction_effects()
+    #evaluator.main_and_interaction_effects()
     #evaluator.train_baseline_models()
     #evaluator.main_baseline_comparison()
     #evaluator.interpret_trading_sim()
@@ -219,9 +219,10 @@ def main():
     #evaluator.interpret_baseline_models_trading_sim()
     #evaluator.interpret_shap_values()
     #evaluator.get_embeddings()
-    evaluator.run_attn_analysis()
+    evaluator.add_clusters()
+    #evaluator.run_attn_analysis()
     #evaluator.plot_shap_scores()
-    evaluator.plot_attention_summary_grid()
+    #evaluator.plot_attention_summary_grid()
 
 if __name__ == '__main__':
     main()
