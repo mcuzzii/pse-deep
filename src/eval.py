@@ -2699,9 +2699,6 @@ class Eval:
         print("Loading social media")
         self.social_df = joblib.load('data/processed/social_media.joblib')
 
-        ts_30 = joblib.load('data/processed/ac_30m.joblib').filtered_date_times
-        ts_10 = joblib.load('data/processed/ac_10m.joblib').filtered_date_times
-
         K_RANGE = range(5, 31)          # Candidate numbers of clusters
         N_INIT = 20                     # KMeans initializations
         N_STABILITY_RUNS = 5            # Number of random seeds for stability analysis
@@ -2728,16 +2725,26 @@ class Eval:
 
         for X, df, name in zip(
             (
-                np.vstack(self.news_df.df["embeddings"].values).astype(np.float32),
-                np.vstack(self.social_df.df["embeddings"].values).astype(np.float32),
-                self.social_df.df[imp_inf_features].values.astype(np.float32)
+                np.vstack(
+                    self.news_df.df.loc[
+                        self.news_df.df.index > pd.Timestamp('2026-03-02'),
+                        "embeddings"
+                    ].values
+                ).astype(np.float32),
+                np.vstack(
+                    self.social_df.df.loc[
+                        self.social_df.df.index > pd.Timestamp('2026-03-02'),
+                        "embeddings"
+                    ].values
+                ).astype(np.float32),
+                self.social_df.df.loc[
+                    self.social_df.df.index > pd.Timestamp('2026-03-02'),
+                    imp_inf_features
+                ].values.astype(np.float32)
             ),
             (self.news_df, self.social_df, self.social_df),
             ('news_content', 'social_content', 'social_influence')
         ):
-            for timestamps, ts_name in zip((ts_30, ts_10), ('30m', '10m')):
-                ts = timestamps[int(len(timestamps) * 0.9) + 1:]
-                X = X[int(len(timestamps) * 0.9) + 1:]
 
                 if NORMALIZE_EMBEDDINGS:
                     X = normalize(X)
@@ -2824,7 +2831,7 @@ class Eval:
 
                 plt.tight_layout()
                 plt.savefig(
-                    diagnostics_dir / f'{name}_cluster_diagnostics_{ts_name}',
+                    diagnostics_dir / f'{name}_cluster_diagnostics',
                     dpi=300, bbox_inches='tight'
                 )
                 plt.close()
@@ -2836,7 +2843,7 @@ class Eval:
                 plt.ylabel("Within-Cluster Sum of Squares")
                 plt.tight_layout()
                 plt.savefig(
-                    diagnostics_dir / f'{name}_elbow_plot_{ts_name}',
+                    diagnostics_dir / f'{name}_elbow_plot',
                     dpi=300, bbox_inches='tight'
                 )
 
@@ -2863,10 +2870,10 @@ class Eval:
                     n_init=N_INIT
                 )
 
-                df.df.loc[df.df.index > ts, f"{name}_cluster_{ts_name}"] = final_kmeans.fit_predict(X)
+                df.df.loc[df.df.index > pd.Timestamp('2026-03-02'), f"{name}_cluster"] = final_kmeans.fit_predict(X)
 
                 cluster_sizes = (
-                    df.df.loc[df.df.index > ts, f"{name}_cluster_{ts_name}"]
+                    df.df.loc[df.df.index > pd.Timestamp('2026-03-02'), f"{name}_cluster"]
                     .value_counts()
                     .sort_index()
                 )
@@ -2874,10 +2881,10 @@ class Eval:
                 print("\nCluster sizes:")
                 print(cluster_sizes)
 
-                diagnostics.to_csv(diagnostics_dir / f"{name}_cluster_diagnostics_{ts_name}.csv", index=False)
+                diagnostics.to_csv(diagnostics_dir / f"{name}_cluster_diagnostics.csv", index=False)
 
                 print("\nDone.")
-                print(f"'{name}_cluster_{ts_name}' column appended.")
+                print(f"'{name}_cluster' column appended.")
                 joblib.dump(df, diagnostics_dir / f"{'news' if 'news' in name else 'social_media'}.joblib")
     
     def run_attn_analysis(self):
