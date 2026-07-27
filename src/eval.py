@@ -2721,13 +2721,13 @@ class Eval:
         ]
 
         diagnostics_dir = self.results_path / 'clustering_diagnostics'
-        diagnostics_dir.mdkir(parents=True, exist_ok=True)
+        diagnostics_dir.mkdir(parents=True, exist_ok=True)
 
         for X, df, name in zip(
             (
-                np.vstack(self.news_df["embeddings"].values).astype(np.float32),
-                np.vstack(self.social_df["embeddings"].values).astype(np.float32),
-                self.social_df[imp_inf_features].values.astype(np.float32)
+                np.vstack(self.news_df.df["embeddings"].values).astype(np.float32),
+                np.vstack(self.social_df.df["embeddings"].values).astype(np.float32),
+                self.social_df.df[imp_inf_features].values.astype(np.float32)
             ),
             (self.news_df.df, self.social_df.df, self.social_df.df),
             ('news_content', 'social_content', 'social_influence')
