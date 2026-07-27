@@ -36,7 +36,6 @@ from models import (
     _build_group_map
 )
 from processing import DataSource, get_stocks, get_text_window, get_elapsed_time
-from eval import Eval
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
