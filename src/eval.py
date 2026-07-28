@@ -533,20 +533,25 @@ def plot_correlation_heatmap(df, labels, out_path, title):
 
 def update_dict(d, key, v):
     if not (old_v := d.get(key, None)):
-        d[key] = v
+        d[key] = dict()
+        for k in v:
+            if k in ('tst', 'sft', 'nft', 'ist', 'sintr', 'nintr'):
+                d[key][k] = v[k]
+            else:
+                d[key]['sinc' if k == 'sin' else 'nin'] = v[k][:, :, :2]            # S, K, 1+1+E -> S, K, 2
+                if k == 'sin':
+                    d[key]['sinm'] = (v[k][:, :, :1] * v[k][:, :, 2:]).sum(dim=1)   # S, K, 1+1+E -> S, K, E -> S, E
     else:
         for k in old_v:
-            try:
+            if k in ('tst', 'sft', 'nft', 'ist'):
                 d[key][k] += v[k]
-            except Exception as _:
-                d[key][k] = pad_sequence(
-                    [
-                        d[key][k].transpose(0, 1),
-                        v[k].transpose(0, 1)
-                    ],
-                    batch_first=True,
-                    padding_side='left'
-                ).transpose(1, 2).sum(dim=0)
+            elif k in ('sin', 'nin'):
+                c = d[key]['sinc' if k == 'sin' else 'nin']
+                d[key]['sinc' if k == 'sin' else 'nin'] = torch.cat([c, v[k][:, :, :2]], dim=1)                 # S, N*K, 2
+                if k == 'sin':
+                    d[key]['sinm'] += (v[k][:, :, :1] * v[k][:, :, 2:]).sum(dim=1)                              # S, E
+            elif k in ('sintr', 'nintr'):
+                d[key][k] = torch.cat([d[key][k], v[k]], dim=1)                                                 # S, N*K, 2
 
 def ordinal(n):
     if 11 <= (n % 100) <= 13:
@@ -2740,8 +2745,8 @@ class Eval:
 
         print("Loading text datasets..")
 
-        self.news_df = joblib.load('data/processed/news.joblib')
-        self.social_df = joblib.load('data/processed/social_media.joblib')
+        self.news_df = joblib.load('experiments/results/clustering_diagnostics/news.joblib')
+        self.social_df = joblib.load('experiments/results/clustering_diagnostics/social_media.joblib')
 
         self.summary_tensors = dict()
         self.counters = dict()
@@ -2750,9 +2755,11 @@ class Eval:
             if dir.name in ('data', 'results') or 'mlp' in dir.name:
                 continue
 
-            pred_30 = '30' in dir.name
-            self.news = 'news' in dir.name
-            self.social = 'social' in dir.name
+            self.dir_name = dir.name
+
+            pred_30 = '30' in self.dir_name
+            self.news = 'news' in self.dir_name
+            self.social = 'social' in self.dir_name
             self.pred_horizon = 30 if pred_30 else 10
             transformer = True
 
@@ -2761,7 +2768,7 @@ class Eval:
 
             if self.news:
                 news_data = torch.load(
-                    self.results_path / 'attn_analysis' / 'embeds' / f'{dir.name}_news.pt',
+                    self.results_path / 'attn_analysis' / 'embeds' / f'{self.dir_name}_news.pt',
                     map_location=device,
                     weights_only=False
                 )
@@ -2770,32 +2777,71 @@ class Eval:
             
             if self.social:
                 social_data = torch.load(
-                    self.results_path / 'attn_analysis' / 'embeds' / f'{dir.name}_social.pt',
+                    self.results_path / 'attn_analysis' / 'embeds' / f'{self.dir_name}_social.pt',
                     map_location=device,
                     weights_only=False
                 )
                 self.social_embeds = social_data['out']
                 self.social_ts = social_data['timestamps']
 
-            self.summary_tensors[dir.name] = dict()
-            self.counters[dir.name] = {
-                'Market Open': 0,
-                'AM Session': 0,
-                'PM Session': 0,
-                'Market Close': 0,
-                'Mon': 0,
-                'Tue': 0,
-                'Wed': 0,
-                'Thu': 0,
-                'Fri': 0,
-                'Week 1': 0,
-                'Week 2': 0,
-                'Week 3': 0,
-                'Week 4': 0,
-                'Week 5': 0,
-                'Week 6': 0,
-                'Week 7': 0,
-                'Overall': 0
+                social_features = DataSource()
+                social_features.create_df(f'social_media_{self.pred_horizon}m')
+        
+                selected_features = set(social_features.selected_features)
+        
+                keywords = {
+                    'retweet_count',
+                    'reply_count',
+                    'like_count',
+                    'quote_count',
+                    'view_count',
+                    'bookmark_count',
+                    'author_is_blue_verified',
+                    'author_followers',
+                    'author_following',
+                    'author_favourites_count',
+                    'author_media_count',
+                    'author_statuses_count'
+                }
+        
+                impact_features = set()
+                for key in keywords:
+                    if any(s.startswith(key) for s in selected_features):
+                        impact_features.add(key)
+                if any('follower_weighted_mean' in s for s in selected_features):
+                    impact_features.add('author_followers')
+                if any('viral_coeff' in s for s in selected_features):
+                    impact_features.add('reply_count')
+                
+                self.impact_features = list(impact_features)
+
+            self.summary_tensors[self.dir_name] = dict()
+            counter_keys = [
+                'Market Open',
+                'AM Session',
+                'PM Session',
+                'Market Close',
+                'Mon',
+                'Tue',
+                'Wed',
+                'Thu',
+                'Fri',
+                'Week 1',
+                'Week 2',
+                'Week 3',
+                'Week 4',
+                'Week 5',
+                'Week 6',
+                'Week 7'
+            ]
+            self.counters[self.dir_name] = {
+                k: {
+                    'nsamples': 0,
+                    'sft_attn': np.zeros(30),
+                    'nft_attn': np.zeros(30),
+                    'sin_min': np.full((30, len(self.impact_features)), np.inf),
+                    'sin_max': np.full((30, len(self.impact_features)), -np.inf)
+                } for k in counter_keys
             }
 
             if self.news and self.social:
@@ -2808,7 +2854,7 @@ class Eval:
                 self.keys = ('tst', 'ist')
 
             experiment = Experiment(
-                experiment_name=dir.name,
+                experiment_name=self.dir_name,
                 transformer=transformer,
                 pred_30=pred_30,
                 news=self.news,
@@ -2843,10 +2889,30 @@ class Eval:
                     if k in ('sin', 'nin'):
                         vals = np.array(list(self.summary_tensors[dir.name][category][k].values()))
                     else:
-                        vals = self.summary_tensors[dir.name][category][k].cpu().tonumpy()
+                        vals = self.summary_tensors[dir.name][category][k].cpu().numpy()
                     print(f"Processed summary for {dir.name}_{category}_{k} with range {(vals.min(), vals.max())}")
 
         torch.save(self.summary_tensors, self.results_path / 'attn_analysis' / 'summary_tensors.pt')
+
+    def update_counter(self, snapshot, key):
+        self.counters[self.dir_name][key]['nsamples'] += 1
+        if self.social:
+            self.counters[self.dir_name][key]['sft_attn'] += snapshot['sft'].sum(dim=-1)
+            for min_or_max in ('min', 'max'):
+                vals = torch.cat(
+                    [
+                        self.counters[self.dir_name][key][f'sin_{min_or_max}'].unsqueeze(1),       # S, 1, E
+                        snapshot['sin'][:, :, 2:]                                                  # S, K, E
+                    ],
+                    dim=1
+                )
+                self.counters[self.dir_name][key][f'sin_{min_or_max}'] = (
+                    vals.min(dim=1)
+                    if min_or_max == 'min'
+                    else vals.max(dim=1)
+                )                                                                                               # S, E
+        if self.news:
+            self.counters[self.dir_name][key]['nft_attn'] += snapshot['nft'].sum(dim=-1)
 
     def interpret_attention_scores(self, tensors, batch_idx):
         batch_ub = (batch_idx + 1) * 2
@@ -2885,110 +2951,122 @@ class Eval:
                 mask = (cutoff_scaled < text_ts) & (text_ts <= ts_scaled)
                 sample = text_embeds[mask]             # Tn, En
 
-                snapshot[ind] = snapshot[ind][..., :mask.sum()]                      # S, Ts, K, d
+                snapshot[ind] = snapshot[ind][:, -1, :, :mask.sum()]                      # S, K, d
 
-                selected = torch.einsum("stkn,ne->stke", snapshot[ind], sample)      # S, Ts, K, En
+                selected = torch.einsum("skn,ne->ske", snapshot[ind], sample)      # S, K, En
 
-                selected_norm = F.normalize(selected, dim=-1)      # S, Ts, K, En
+                selected_norm = F.normalize(selected, dim=-1)      # S, K, En
                 sample_norm   = F.normalize(sample, dim=-1)        # Tn, En
 
-                sim = torch.einsum("stke,ne->stkn", selected_norm, sample_norm)  # S, Ts, K, Tn
+                sim = torch.einsum("ske,ne->skn", selected_norm, sample_norm)  # S, K, Tn
 
                 if mask.sum().item() == 0:
                     snapshot[ind] = Counter()
                     continue
 
-                closest_idx = sim.argmax(dim=-1)   # S, Ts, K
-
-                Tn = sample.shape[0]
-
-                scores = torch.zeros(Tn, device=device)
-                scores = scores.scatter_add_(
-                    0,
-                    closest_idx.reshape(-1),
-                    torch.ones_like(closest_idx.reshape(-1), device=device, dtype=scores.dtype)
-                )
-                scores = scores / (30 * 60)
+                closest_idx = sim.argmax(dim=-1)   # S, K
 
                 text = text_df.df.loc[
                     (cutoff < text_df.df.index) & (text_df.df.index <= self.ts[i]),
-                    text_col
+                    ['news_umap']
+                    if self.news
+                    else ['social_media_umap'] + self.impact_features
                 ]
+                text['minutes_ago'] = (self.ts[i] - text.index).total_seconds() / 60
+                text = text.values                                                      # S, K, 1+E+1
 
-                snapshot[ind] = Counter(dict(zip(text, scores.tolist())))
+                txt_attn = snapshot[attn][:, -1, :].unsqueeze(-1)                       # S, K, 1
+
+                snapshot[ind] = torch.cat([txt_attn, text[closest_idx, :-1]], dim=-1)                           # S, K, 1+1+E
+                snapshot[f"{ind}tr"] = torch.cat([txt_attn, text[closest_idx, -1].unsqueeze(-1)])               # S, K, 2
+
+                reorder = torch.argmax(self.stock_map[self.dir_name]['stock_map'], dim=-1)
+                snapshot[ind] = snapshot[ind][reorder]
+                snapshot[f"{ind}tr"] = snapshot[f"{ind}tr"][reorder]
 
             for ind in ('tst', 'sft', 'nft', 'ist'):
                 if ind not in snapshot:
                     continue
-                snapshot[ind] = snapshot[ind].mean(dim=0)
+                reorder = torch.argmax(self.stock_map[self.dir_name]['stock_map'], dim=-1)
                 if ind == 'ist':
-                    reorder = torch.argmax(self.stock_map[dir.name]['stock_map'], dim=-1)
+                    snapshot[ind] = snapshot[ind][-1, :, :]                                 # S, S
                     snapshot[ind] = snapshot[ind][reorder][:, reorder]
+                else:
+                    snapshot[ind] = snapshot[ind][:, -1, :]                                 # S, Ts or K
+                    snapshot[ind] = snapshot[ind][reorder]
             
             if self.ts[i].time() <= pd.Timestamp('10:00').time():
-                update_dict(self.summary_tensors[dir.name], 'Market Open', snapshot)
-                self.counters[dir.name]['Market Open'] += 1
+                update_dict(self.summary_tensors[self.dir_name], 'Market Open', snapshot)
+                self.update_counter(snapshot, 'Market Open')
             elif self.ts[i].time() <= pd.Timestamp('12:00').time():
-                update_dict(self.summary_tensors[dir.name], 'AM Session', snapshot)
-                self.counters[dir.name]['AM Session'] += 1
+                update_dict(self.summary_tensors[self.dir_name], 'AM Session', snapshot)
+                self.update_counter(snapshot, 'AM Session')
             elif self.ts[i].time() <= pd.Timestamp('14:15').time():
-                update_dict(self.summary_tensors[dir.name], 'PM Session', snapshot)
-                self.counters[dir.name]['PM Session'] += 1
+                update_dict(self.summary_tensors[self.dir_name], 'PM Session', snapshot)
+                self.counters[self.dir_name]['PM Session'] += 1
             else:
-                update_dict(self.summary_tensors[dir.name], 'Market Close', snapshot)
-                self.counters[dir.name]['Market Close'] += 1
+                update_dict(self.summary_tensors[self.dir_name], 'Market Close', snapshot)
+                self.update_counter(snapshot, 'Market Close')
 
             if self.ts[i].strftime("%a") == 'Mon':
-                update_dict(self.summary_tensors[dir.name], 'Mon', snapshot)
-                self.counters[dir.name]['Mon'] += 1
+                update_dict(self.summary_tensors[self.dir_name], 'Mon', snapshot)
+                self.update_counter(snapshot, 'Mon')
             elif self.ts[i].strftime("%a") == 'Tue':
-                update_dict(self.summary_tensors[dir.name], 'Tue', snapshot)
-                self.counters[dir.name]['Tue'] += 1
+                update_dict(self.summary_tensors[self.dir_name], 'Tue', snapshot)
+                self.update_counter(snapshot, 'Tue')
             elif self.ts[i].strftime("%a") == 'Wed':
-                update_dict(self.summary_tensors[dir.name], 'Wed', snapshot)
-                self.counters[dir.name]['Wed'] += 1           
+                update_dict(self.summary_tensors[self.dir_name], 'Wed', snapshot)
+                self.update_counter(snapshot, 'Wed')           
             elif self.ts[i].strftime("%a") == 'Thu':
-                update_dict(self.summary_tensors[dir.name], 'Thu', snapshot)
-                self.counters[dir.name]['Thu'] += 1
+                update_dict(self.summary_tensors[self.dir_name], 'Thu', snapshot)
+                self.update_counter(snapshot, 'Thu')
             else:
-                update_dict(self.summary_tensors[dir.name], 'Fri', snapshot)
-                self.counters[dir.name]['Fri'] += 1 
+                update_dict(self.summary_tensors[self.dir_name], 'Fri', snapshot)
+                self.update_counter(snapshot, 'Fri') 
 
             if self.ts[i] <= pd.Timestamp('2026-03-07'):
-                update_dict(self.summary_tensors[dir.name], 'Week 1', snapshot)
-                self.counters[dir.name]['Week 1'] += 1
+                update_dict(self.summary_tensors[self.dir_name], 'Week 1', snapshot)
+                self.update_counter(snapshot, 'Week 1')
             elif self.ts[i] <= pd.Timestamp('2026-03-14'):
-                update_dict(self.summary_tensors[dir.name], 'Week 2', snapshot)
-                self.counters[dir.name]['Week 2'] += 1
+                update_dict(self.summary_tensors[self.dir_name], 'Week 2', snapshot)
+                self.update_counter(snapshot, 'Week 2')
             elif self.ts[i] <= pd.Timestamp('2026-03-21'):
-                update_dict(self.summary_tensors[dir.name], 'Week 3', snapshot)
-                self.counters[dir.name]['Week 3'] += 1
+                update_dict(self.summary_tensors[self.dir_name], 'Week 3', snapshot)
+                self.update_counter(snapshot, 'Week 3')
             elif self.ts[i] <= pd.Timestamp('2026-03-28'):
-                update_dict(self.summary_tensors[dir.name], 'Week 4', snapshot)
-                self.counters[dir.name]['Week 4'] += 1
+                update_dict(self.summary_tensors[self.dir_name], 'Week 4', snapshot)
+                self.update_counter(snapshot, 'Week 4')
             elif self.ts[i] <= pd.Timestamp('2026-04-04'):
-                update_dict(self.summary_tensors[dir.name], 'Week 5', snapshot)
-                self.counters[dir.name]['Week 5'] += 1
+                update_dict(self.summary_tensors[self.dir_name], 'Week 5', snapshot)
+                self.update_counter(snapshot, 'Week 5')
             elif self.ts[i] <= pd.Timestamp('2026-04-11'):
-                update_dict(self.summary_tensors[dir.name], 'Week 6', snapshot)
-                self.counters[dir.name]['Week 6'] += 1
+                update_dict(self.summary_tensors[self.dir_name], 'Week 6', snapshot)
+                self.update_counter(snapshot, 'Week 6')
             else:
-                update_dict(self.summary_tensors[dir.name], 'Week 7', snapshot)
-                self.counters[dir.name]['Week 7'] += 1
+                update_dict(self.summary_tensors[self.dir_name], 'Week 7', snapshot)
+                self.update_counter(snapshot, 'Week 7')
 
             for w in snapshot:
-                self.plot_attention_scores(dir.name, str(self.ts[i]), snapshot, w)
+                if w == 'sin':
+                    self.plot_attention_scores(self.dir_name, str(self.ts[i]), snapshot, 'sinc')
+                    self.plot_attention_scores(self.dir_name, str(self.ts[i]), snapshot, 'sinm')
+                else:
+                    self.plot_attention_scores(self.dir_name, str(self.ts[i]), snapshot, w)
                 if w in ('sin', 'nin'):
                     vals = np.array(list(snapshot[w].values()))
                 else:
-                    vals = snapshot[w].cpu().tonumpy()
-                print(f"Processed snapshot for {dir.name}_{str(self.ts[i])}_{w} with range {(vals.min(), vals.max())}")
+                    vals = snapshot[w].cpu().numpy()
+                print(f"Processed snapshot for {self.dir_name}_{str(self.ts[i])}_{w} with range {(vals.min(), vals.max())}")
             
-            update_dict(self.summary_tensors[dir.name], 'overall', snapshot)
-            self.counters[dir.name]['Overall'] += 1
+            update_dict(self.summary_tensors[self.dir_name], 'overall', snapshot)
+            self.update_counter(snapshot, 'Overall')
 
     def plot_attention_scores(self, model, cat, snapshot, w):
-        item = snapshot[w]
+        if w in ('sinc', 'sinm'):
+            item = snapshot['sin']
+        else:
+            item = snapshot[w]
+        
         if isinstance(item, Counter):
             out_dir = self.results_path / 'attn_analysis' / f'{model}_{cat}_{w}'
             plot_text_scores(item, out_dir)
@@ -3001,38 +3079,39 @@ class Eval:
                 ylab = 'Stocks (KV)'
                 figsize = (7, 6)
             if w == 'tst':
-                item = item.T
-                fct = torch.arange(1, 61).unsqueeze(0)
-                item = item * fct
-                mask = (1 - torch.triu(torch.ones_like(item))).to(bool).to(item.device)
-                item[mask] = float('nan')
+                item = item.T                                                   # Ts, S
+                xtick = [s.upper() for s in self.stock_map[model]['stocks']]
                 step = 3
                 full_labels = range(60, 0, -1)
-                xtick = [label if i % step == 0 else '' for i, label in enumerate(full_labels)]
-                ytick = xtick
-                xlab = 'Minutes Ago (Q)'
+                ytick = [label if i % step == 0 else '' for i, label in enumerate(full_labels)]
+                xlab = 'Most Recent Stock Price Representations (Q)'
                 ylab = 'Minutes Ago (KV)'
-                figsize = (7, 6)
+                figsize = (5, 8)
             if w in ('nft', 'sft'):
-                item = item.T
-                step = 3
-                full_labels = range(60, 0, -1)
-                xtick = [label if i % step == 0 else '' for i, label in enumerate(full_labels)]
-                ytick = [f'Top {i}' for i in range(1, 6)]
-                xlab = 'Minutes Ago (Q)'
-                ylab = f'Selected {'News' if w == 'nft' else 'X Posts'} (KV)'
-                figsize = (14, 4)
+                ytick = [s.upper() for s in self.stock_map[model]['stocks']]
+                xtick = [f'Slot {i}' for i in range(1, 6)]
+                ylab = 'Most Recent Stock Price Representations (Q)'
+                xlab = f'Selected {'News' if w == 'nft' else 'X Posts'} (KV)'
+                figsize = (4, 14)
             if w in ('nintr', 'sintr'):
-                n_cols = item.shape[1]
-                step = max(1, n_cols // 20)  # aim for ~20 visible labels regardless of n_cols
-
-                full_labels = [ordinal(n) for n in range(n_cols, 0, -1)]
-                xtick = [label if i % step == 0 else '' for i, label in enumerate(full_labels)]
-
-                ytick = [f'Top {i}' for i in range(1, 6)]
-                xlab = f'{"Article" if w == "nintr" else "Post"} Recency'
-                ylab = f'Selected {"News" if w == "nintr" else "X Posts"}'
-                figsize = (14, 4)  # let width scale with n_cols too
+                # item: S, K, 2
+                ytick = [s.upper() for s in self.stock_map[model]['stocks']]
+                ylab = f'Stocks'
+                xlab = f'Time since Publication (in Minutes)'
+                figsize = (5, 8)
+            if w in ('nin', 'sinc'):
+                # item: S, K, 2
+                ytick = [s.upper() for s in self.stock_map[model]['stocks']]
+                ylab = f'Stocks'
+                xlab = f'1-dim UMAP Semantic Space'
+                figsize = (5, 8)
+            if w in ('sinm'):
+                # item: S, E
+                xlab = 'Impact Features'
+                ylab = 'Stocks'
+                xtick = self.impact_features
+                ytick = [s.upper() for s in self.stock_map[model]['stocks']]
+                figsize = (5, 8)
 
             viridis_cmap = mcolors.LinearSegmentedColormap.from_list(
                 'custom_viridis',
@@ -3043,33 +3122,51 @@ class Eval:
 
             fig, ax = plt.subplots(figsize=figsize)
 
-            sns.heatmap(
-                item.numpy(),
-                xticklabels=xtick,
-                yticklabels=ytick,
-                mask=torch.isnan(item).numpy(),
-                cmap=viridis_cmap,
-                linewidths=0,
-                cbar_kws={'label': 'Attention Scores', 'shrink': 0.8},
-                ax=ax
-            )
+            if w in ('ist', 'tst', 'sft', 'nft', 'sinm'):
+                sns.heatmap(
+                    item.numpy(),
+                    xticklabels=xtick,
+                    yticklabels=ytick,
+                    mask=torch.isnan(item).numpy(),
+                    cmap=viridis_cmap,
+                    linewidths=0,
+                    cbar_kws={'label': 'Attention Scores', 'shrink': 0.8},
+                    ax=ax
+                )
 
-            cbar = ax.collections[0].colorbar
-            cbar.set_ticks([])
+                cbar = ax.collections[0].colorbar
+                cbar.set_ticks([])
 
-            ax.set_title("Attention Scores", fontsize=16, pad=16)
-            ax.tick_params(axis='both', labelsize=8)
-            ax.set_xlabel(xlab)
-            ax.set_ylabel(ylab)
-            plt.setp(ax.get_xticklabels(), rotation=90)
-            plt.setp(ax.get_yticklabels(), rotation=0)
+                ax.set_title("Attention Scores", fontsize=16, pad=16)
+                ax.tick_params(axis='both', labelsize=8)
+                ax.set_xlabel(xlab)
+                ax.set_ylabel(ylab)
+                plt.setp(ax.get_xticklabels(), rotation=90)
+                plt.setp(ax.get_yticklabels(), rotation=0)
 
-            plt.tight_layout()
-            plt.savefig(
-                self.results_path / 'attn_analysis' / f'{model}_{cat}_{w}',
-                dpi=300, bbox_inches='tight'
-            )
-            plt.close()
+                plt.tight_layout()
+                plt.savefig(
+                    self.results_path / 'attn_analysis' / f'{model}_{cat}_{w}',
+                    dpi=300, bbox_inches='tight'
+                )
+                plt.close()
+
+            else:
+                S, K, _ = item.shape
+                ax.scatter(
+                    item[..., 1].ravel(),
+                    np.repeat(np.arange(S), K),
+                    c=item[..., 0].ravel(),
+                    cmap="viridis",
+                )
+                ax.set_yticks(np.arange(len(ytick)))
+                ax.set_yticklabels(ytick)
+
+                ax.set_xlabel(xlab)
+                ax.set_ylabel(ylab)
+
+                plt.colorbar(sc, ax=ax, label="Attention Weight")
+
     
     def plot_shap_scores(self):
         mlp_dfs = pd.DataFrame(columns=['group', 'timestamp', 'setting', 'shap'])
