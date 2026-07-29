@@ -542,7 +542,7 @@ def update_dict(d, key, v):
                 if k == 'sin':
                     d[key]['sinm'] = (v[k][:, :, :1] * v[k][:, :, 2:]).sum(dim=1)   # S, K, 1+1+E -> S, K, E -> S, E
     else:
-        for k in old_v:
+        for k in v:
             if k in ('tst', 'sft', 'nft', 'ist'):
                 d[key][k] += v[k]
             elif k in ('sin', 'nin'):
@@ -2920,7 +2920,8 @@ class Eval:
                     'sin_max': torch.full((30, len(self.impact_features)), -np.inf)
                 })
             self.counters[self.dir_name] = {
-                k: key_init for k in counter_keys
+                k: {kk: (vv.clone() if torch.is_tensor(vv) else vv) for kk, vv in key_init.items()}
+                for k in counter_keys
             }
 
             if self.news and self.social:
@@ -3171,14 +3172,6 @@ class Eval:
             else:
                 update_dict(self.summary_tensors[self.dir_name], 'Week 7', snapshot)
                 self.update_counter(snapshot, 'Week 7')
-
-            #for w in snapshot:
-            #    if w == 'sin':
-            #        self.plot_attention_scores(self.dir_name, str(self.ts[i]), snapshot, 'sinc')
-            #        self.plot_attention_scores(self.dir_name, str(self.ts[i]), snapshot, 'sinm')
-            #    else:
-            #        self.plot_attention_scores(self.dir_name, str(self.ts[i]), snapshot, w)
-            #    print(f"Processed snapshot for {self.dir_name}_{str(self.ts[i])}_{w}")
             
             update_dict(self.summary_tensors[self.dir_name], 'Overall', snapshot)
             self.update_counter(snapshot, 'Overall')
