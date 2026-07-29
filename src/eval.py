@@ -2975,6 +2975,8 @@ class Eval:
 
                 closest_idx = sim.argmax(dim=-1)   # S, K
 
+                print(text_df.df.columns)
+
                 text = text_df.df.loc[
                     (cutoff < text_df.df.index) & (text_df.df.index <= self.ts[i]),
                     ['news_umap']
