@@ -2931,7 +2931,7 @@ class Eval:
             
             snapshot = {
                 k: v[s]
-                for k, v in zip(self.keys, tensors.cpu())
+                for k, v in zip(self.keys, (a.cpu() for a in tensors))
             }
 
             if self.social or self.news:
