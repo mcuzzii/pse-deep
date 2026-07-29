@@ -3301,7 +3301,7 @@ class Eval:
                     permute_x[perm],
                     permute_y[perm],
                     c=permute_c[perm],
-                    s=0.5,
+                    s=0.25,
                     cmap="viridis",
                 )
 
