@@ -2988,6 +2988,7 @@ class Eval:
 
                 snapshot[ind] = torch.cat([txt_attn, text[closest_idx, :-1]], dim=-1)                           # S, K, 1+1+E
                 snapshot[f"{ind}tr"] = torch.cat([txt_attn, text[closest_idx, -1].unsqueeze(-1)])               # S, K, 2
+                print(snapshot[f'{ind}tr'].shape)
 
                 reorder = torch.argmax(self.stock_map[self.dir_name]['stock_map'], dim=-1).cpu()
                 snapshot[ind] = snapshot[ind][reorder]
