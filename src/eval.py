@@ -3184,6 +3184,8 @@ class Eval:
             self.update_counter(snapshot, 'Overall')
 
     def plot_attention_scores(self, model, cat, snapshot, w):
+
+        item = snapshot[w]
         
         if isinstance(item, Counter):
             out_dir = self.results_path / 'attn_analysis' / f'{model}_{cat}_{w}'
