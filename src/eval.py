@@ -1321,7 +1321,7 @@ def generate_shap_beeswarm_plots(
 
     return figures
 
-def beeswarm_y(x, row_height=0.9, nbins=100):
+def beeswarm_y(x, row_height=0.9, nbins=100, seed=42):
     """
     Produce SHAP-style beeswarm vertical offsets.
 
@@ -1330,58 +1330,65 @@ def beeswarm_y(x, row_height=0.9, nbins=100):
     x : (N,) array
         Horizontal positions.
     row_height : float
-        Fraction of a row occupied by the swarm.
+        Fraction of one row occupied by the swarm.
     nbins : int
         Number of x bins.
+    seed : int
+        Random seed used to break ties within bins.
 
     Returns
     -------
-    offsets : (N,)
+    offsets : (N,) array
     """
 
-    x = np.asarray(x)
+    x = np.asarray(x, dtype=float)
     n = len(x)
-
-    if n <= 1:
-        return np.zeros(n)
-
-    xmin = x.min()
-    xmax = x.max()
-
-    if xmax == xmin:
-        return np.zeros(n)
-
-    # Assign each point to a bin
-    bins = np.floor((x - xmin) / (xmax - xmin + 1e-12) * nbins).astype(int)
-    bins = np.clip(bins, 0, nbins - 1)
 
     offsets = np.zeros(n)
 
-    # Process each bin independently
-    for b in np.unique(bins):
+    if n <= 1:
+        return offsets
 
-        idx = np.where(bins == b)[0]
+    xmin = np.nanmin(x)
+    xmax = np.nanmax(x)
 
-        # Preserve horizontal ordering
-        idx = idx[np.argsort(x[idx])]
+    if np.isclose(xmin, xmax):
+        bins = np.zeros(n, dtype=int)
+    else:
+        bins = np.round(
+            nbins * (x - xmin) / (xmax - xmin)
+        ).astype(int)
 
-        m = len(idx)
+    rng = np.random.default_rng(seed)
 
-        levels = np.empty(m)
+    # Randomly break ties while grouping by bin.
+    order = np.argsort(
+        bins + rng.normal(0, 1e-6, size=n)
+    )
 
-        levels[0] = 0
+    current_bin = None
+    layer = 0
 
-        for i in range(1, m):
-            k = (i + 1) // 2
-            levels[i] = k if i % 2 else -k
+    for idx in order:
 
-        offsets[idx] = levels
+        if bins[idx] != current_bin:
+            current_bin = bins[idx]
+            layer = 0
 
-    # Scale to requested row height
-    max_abs = np.abs(offsets).max()
+        if layer == 0:
+            offsets[idx] = 0
+        else:
+            offsets[idx] = (
+                ((layer + 1) // 2)
+                * (1 if layer % 2 else -1)
+            )
 
-    if max_abs > 0:
-        offsets *= (row_height / 2) / max_abs
+        layer += 1
+
+    max_offset = np.max(np.abs(offsets))
+
+    if max_offset > 0:
+        offsets *= (0.45 * row_height) / max_offset
 
     return offsets
 
@@ -3177,10 +3184,6 @@ class Eval:
             self.update_counter(snapshot, 'Overall')
 
     def plot_attention_scores(self, model, cat, snapshot, w):
-        if w in ('sinc', 'sinm'):
-            item = snapshot['sin']
-        else:
-            item = snapshot[w]
         
         if isinstance(item, Counter):
             out_dir = self.results_path / 'attn_analysis' / f'{model}_{cat}_{w}'
