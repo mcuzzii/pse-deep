@@ -3227,7 +3227,6 @@ class Eval:
                 figsize = (5, 8)
             if w in ('sinm'):
                 # item: S, E
-                item = (item[:, :, :1] * item[:, :, 2:]).sum(dim=1)
                 xlab = 'Impact Features'
                 ylab = 'Stocks'
                 xtick = self.impact_features
