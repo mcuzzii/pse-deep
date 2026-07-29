@@ -2769,7 +2769,7 @@ class Eval:
             if self.news:
                 news_data = torch.load(
                     self.results_path / 'attn_analysis' / 'embeds' / f'{self.dir_name}_news.pt',
-                    map_location=device,
+                    map_location=torch.device('cpu'),
                     weights_only=False
                 )
                 self.news_embeds = news_data['out']
@@ -2778,7 +2778,7 @@ class Eval:
             if self.social:
                 social_data = torch.load(
                     self.results_path / 'attn_analysis' / 'embeds' / f'{self.dir_name}_social.pt',
-                    map_location=device,
+                    map_location=torch.device('cpu'),
                     weights_only=False
                 )
                 self.social_embeds = social_data['out']
