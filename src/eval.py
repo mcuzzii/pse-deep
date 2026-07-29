@@ -2975,12 +2975,10 @@ class Eval:
 
                 closest_idx = sim.argmax(dim=-1)   # S, K
 
-                print(text_df.df.columns)
-
                 text = text_df.df.loc[
                     (cutoff < text_df.df.index) & (text_df.df.index <= self.ts[i]),
                     ['news_umap']
-                    if self.news
+                    if ind == 'nin'
                     else ['social_media_umap'] + self.impact_features
                 ]
                 text['minutes_ago'] = (self.ts[i] - text.index).total_seconds() / 60
