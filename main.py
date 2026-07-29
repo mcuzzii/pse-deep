@@ -235,4 +235,4 @@ def main():
     #evaluator.plot_attention_summary_grid()
 
 if __name__ == '__main__':
-    main()
+    preprocess()
