@@ -2993,15 +2993,15 @@ class Eval:
                 self.impact_features = list(impact_features)
 
             for category in self.counters[dir.name]:
-                for k, v in self.summary_tensors[dir.name][category]:
+                for k, v in self.summary_tensors[dir.name][category].items():
                     if k in ('tst', 'sft', 'nft', 'ist'):
                         self.summary_tensors[dir.name][category][k] = v / self.counters[dir.name][category]['nsamples']
                         vals = self.summary_tensors[dir.name][category][k].cpu().numpy()
                     elif k == 'sinm':
                         weighted_means = v / self.counters[dir.name][category]['sft_attn'].unsqueeze(-1)
                         self.summary_tensors[dir.name][category]['sinm'] = (
-                            weighted_means - self.counters[self.dir_name][key]['sin_min']
-                        ) / (self.counters[self.dir_name][key]['sin_max'] - self.counters[self.dir_name][key]['sin_min'])
+                            weighted_means - self.counters[dir.name][category]['sin_min']
+                        ) / (self.counters[dir.name][category]['sin_max'] - self.counters[dir.name][category]['sin_min'])
                         vals = self.summary_tensors[dir.name][category][k].cpu().numpy()
                     else:
                         vals = self.summary_tensors[dir.name][category][k][:, :, 0].cpu().numpy()
