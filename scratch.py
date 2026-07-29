@@ -59,7 +59,8 @@ for dir in Path('experiments').iterdir():
     for category in (
         ['Market Open', 'AM Session', 'PM Session', 'Market Close'] +
         ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'] +
-        [f'Week {i}' for i in range(1, 8)]
+        [f'Week {i}' for i in range(1, 8)] +
+        ['Overall']
     ):
         for k, v in summary_tensors[dir.name][category].items():
             if k in ('tst', 'sft', 'nft', 'ist'):

@@ -3291,11 +3291,17 @@ class Eval:
                     all_y.append(offset + s)
                     all_c.append(weights[s])
 
+                    permute_x = np.concatenate(all_x)
+                    permute_y = np.concatenate(all_y)
+                    permute_c = np.concatenate(all_c)
+
+                    perm = np.random.permutation(len(permute_x))
+
                 sc = ax.scatter(
-                    np.concatenate(all_x),
-                    np.concatenate(all_y),
-                    c=np.concatenate(all_c),
-                    s=1,
+                    np.concatenate(permute_x[perm]),
+                    np.concatenate(permute_y[perm]),
+                    c=np.concatenate(permute_c[perm]),
+                    s=0.5,
                     cmap="viridis",
                 )
 
