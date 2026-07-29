@@ -3153,16 +3153,9 @@ class Eval:
                 plt.setp(ax.get_xticklabels(), rotation=90)
                 plt.setp(ax.get_yticklabels(), rotation=0)
 
-                plt.tight_layout()
-                plt.savefig(
-                    self.results_path / 'attn_analysis' / f'{model}_{cat}_{w}',
-                    dpi=300, bbox_inches='tight'
-                )
-                plt.close()
-
             else:
                 S, K, _ = item.shape
-                ax.scatter(
+                sc = ax.scatter(
                     item[..., 1].ravel(),
                     np.repeat(np.arange(S), K),
                     c=item[..., 0].ravel(),
@@ -3175,6 +3168,13 @@ class Eval:
                 ax.set_ylabel(ylab)
 
                 plt.colorbar(sc, ax=ax, label="Attention Weight")
+
+            plt.tight_layout()
+            plt.savefig(
+                self.results_path / 'attn_analysis' / f'{model}_{cat}_{w}',
+                dpi=300, bbox_inches='tight'
+            )
+            plt.close()
 
     
     def plot_shap_scores(self):
