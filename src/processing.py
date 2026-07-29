@@ -1414,6 +1414,24 @@ class DataSource:
 
         print('Standardizing...')
 
+        if self._medium != 'news_sentiment':
+            log_features = [
+                'retweet_count_sum',
+                'reply_count_sum',
+                'like_count_sum',
+                'quote_count_sum',
+                'bookmark_count_sum',
+                'view_count_mean',
+                'author_followers_mean',
+                'author_following_mean',
+                'author_favourites_count_mean',
+                'author_media_count_mean',
+                'author_statuses_count_mean',
+                'retweet_count_viral_coeff'
+            ]
+
+            self.df[log_features] = np.log1p(self.df[log_features])
+
         self.scaler = StandardScaler()
 
         train_mask = self.df.index.get_level_values('local_time') <= self.train_cutoff
@@ -1455,6 +1473,8 @@ class DataSource:
         self,
         ignore_history: bool = False
     ):
+        from sklearn.preprocessing import StandardScaler
+
         self.df.index = pd.to_datetime(self.df.index)
 
         if self.df.index.tz is not None:
@@ -1462,6 +1482,41 @@ class DataSource:
 
         self.df.index.name = 'local_time'
         self._add_elapsed_time()
+
+        if self._target is not None:
+            ref_df = DataSource()
+            if self._target == 30:
+                ref_df.create_df('ac_30m')
+            else:
+                ref_df.create_df('ac_10m')
+    
+            train_mask = self.df.index.get_level_values('local_time') <= ref_df.train_cutoff
+            print(f'{self._target}m: {ref_df.train_cutoff}')
+
+            self.scaler = StandardScaler()
+
+            log_features = [
+                'retweet_count',
+                'reply_count',
+                'like_count',
+                'quote_count',
+                'view_count',
+                'bookmark_count',
+                'author_followers',
+                'author_following',
+                'author_favourites_count',
+                'author_media_count',
+                'author_statuses_count'
+            ]
+
+            self.df[log_features] = np.log1p(self.df[log_features])
+
+            self.df.loc[train_mask, log_features] = self.scaler.fit_transform(self.df.loc[train_mask, log_features]).astype('float32')
+            self.df.loc[~train_mask, log_features] = self.scaler.transform(self.df.loc[~train_mask, log_features]).astype('float32')
+
+            self.file_name = f'std_{self.file_name}_{self._target}m'
+            self.data_source_path = self.processed_path / f'{self.file_name}.joblib'
+
     
     @record_history
     def _recover_timestamps(

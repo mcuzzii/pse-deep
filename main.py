@@ -48,7 +48,7 @@ def preprocess():
     stocks = get_unique_instruments('data/raw/stock')
     for stock in stocks:
         stock_data = DataSource()
-        stock_data.create_df(raw_folder_name='stock', file_name=stock, medium='stock', ignore_history=True)
+        stock_data.create_df(raw_folder_name='stock', file_name=stock, medium='stock')
         del stock_data
         gc.collect()
     
@@ -56,37 +56,37 @@ def preprocess():
     bonds = get_unique_instruments('data/raw/bond')
     for bond in bonds:
         bond_data = DataSource()
-        bond_data.create_df(raw_folder_name='bond', file_name=bond, medium='bond', ignore_history=True)
+        bond_data.create_df(raw_folder_name='bond', file_name=bond, medium='bond')
         del bond_data
         gc.collect()
     
     print("Creating copper price data...")
     copper = DataSource()
-    copper.create_df(raw_folder_name='copper', file_name='copper', medium='copper', ignore_history=True)
+    copper.create_df(raw_folder_name='copper', file_name='copper', medium='copper')
     del copper
     gc.collect()
 
     print("Creating oil price data...")
     oil = DataSource()
-    oil.create_df(raw_folder_name='crude', file_name='lcoc1', medium='oil', ignore_history=True)
+    oil.create_df(raw_folder_name='crude', file_name='lcoc1', medium='oil')
     del oil
     gc.collect()
 
     print("Creating USD price data...")
     usd = DataSource()
-    usd.create_df(raw_folder_name='forex', file_name='usd', medium='fx', ignore_history=True)
+    usd.create_df(raw_folder_name='forex', file_name='usd', medium='fx')
     del usd
     gc.collect()
 
     print("Creating XAU price data...")
     xau = DataSource()
-    xau.create_df(raw_folder_name='xau', file_name='xau', medium='fx', ignore_history=True)
+    xau.create_df(raw_folder_name='xau', file_name='xau', medium='fx')
     del xau
     gc.collect()
 
     print("Combining government bonds...")
     bond_master = DataSource()
-    bond_master.create_df(file_name='bond_master', medium='bonds', ignore_history=True)
+    bond_master.create_df(file_name='bond_master', medium='bonds')
     del bond_master
     gc.collect()
 
@@ -96,19 +96,19 @@ def preprocess():
     for stock in stocks:
         print(f"Combining instruments for {stock}...")
         stock_data = DataSource()
-        stock_data.create_df(file_name=stock, medium='combined', ignore_history=True)
+        stock_data.create_df(file_name=stock, medium='combined')
         del stock_data
         gc.collect()
     
     print("Selecting features...")
     features_30 = DataSource()
-    features_30.create_df(file_name='features_30m', medium='features', target=30, stocks=stocks, ignore_history=True)
+    features_30.create_df(file_name='features_30m', medium='features', target=30, stocks=stocks)
     features_30.save_selected_features()
     del features_30
     gc.collect()
 
     features_10 = DataSource()
-    features_10.create_df(file_name='features_10m', medium='features', target=10, stocks=stocks, ignore_history=True)
+    features_10.create_df(file_name='features_10m', medium='features', target=10, stocks=stocks)
     features_10.save_selected_features()
     del features_10
     gc.collect()
@@ -116,24 +116,34 @@ def preprocess():
     print("Finalizing datasets...")
     for stock in stocks:
         stock_data = DataSource()
-        stock_data.create_df(file_name=stock, medium='final', target=30, ignore_history=True)
+        stock_data.create_df(file_name=stock, medium='final', target=30)
         del stock_data
         gc.collect()
     
     for stock in stocks:
         stock_data = DataSource()
-        stock_data.create_df(file_name=stock, medium='final', target=10, ignore_history=True)
+        stock_data.create_df(file_name=stock, medium='final', target=10)
         del stock_data
         gc.collect()
     
     lseg_news_data = DataSource()
-    lseg_news_data.create_df(file_name='news', medium='final_text', ignore_history=True)
+    lseg_news_data.create_df(file_name='news', medium='final_text')
     del lseg_news_data
     gc.collect()
 
     social_media_data = DataSource()
-    social_media_data.create_df(file_name='social_media', medium='final_text', ignore_history=True)
+    social_media_data.create_df(file_name='social_media', medium='final_text')
     del social_media_data
+    gc.collect()
+
+    std_social_media_30 = DataSource()
+    std_social_media_30.create_df(file_name='social_media', medium='final_text', target=30, ignore_history=True)
+    del std_social_media_30
+    gc.collect()
+
+    std_social_media_10 = DataSource()
+    std_social_media_10.create_df(file_name='social_media', medium='final_text', target=10, ignore_history=True)
+    del std_social_media_10
     gc.collect()
 
     social_indicators_30 = DataSource()
@@ -147,12 +157,12 @@ def preprocess():
     gc.collect()
 
     news_indicators_30 = DataSource()
-    news_indicators_30.create_df('news', medium='news_sentiment', target=30, ignore_history=True)
+    news_indicators_30.create_df('news', medium='news_sentiment', target=30)
     del news_indicators_30
     gc.collect()
 
     news_indicators_10 = DataSource()
-    news_indicators_10.create_df('news', medium='news_sentiment', target=10, ignore_history=True)
+    news_indicators_10.create_df('news', medium='news_sentiment', target=10)
     del news_indicators_10
     gc.collect()
 
