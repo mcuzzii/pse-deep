@@ -2896,14 +2896,21 @@ class Eval:
                 'Week 7',
                 'Overall'
             ]
-            self.counters[self.dir_name] = {
-                k: {
-                    'nsamples': 0,
+            key_init = {
+                'nsamples': 0
+            }
+            if self.news:
+                key_init.update({
+                    'nft_attn': torch.zeros(30)
+                })
+            if self.social:
+                key_init.update({
                     'sft_attn': torch.zeros(30),
-                    'nft_attn': torch.zeros(30),
                     'sin_min': torch.full((30, len(self.impact_features)), np.inf),
                     'sin_max': torch.full((30, len(self.impact_features)), -np.inf)
-                } for k in counter_keys
+                })
+            self.counters[self.dir_name] = {
+                k: key_init for k in counter_keys
             }
 
             if self.news and self.social:
