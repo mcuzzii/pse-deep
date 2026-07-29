@@ -2996,7 +2996,7 @@ class Eval:
             for ind in ('tst', 'sft', 'nft', 'ist'):
                 if ind not in snapshot:
                     continue
-                reorder = torch.argmax(self.stock_map[self.dir_name]['stock_map'], dim=-1)
+                reorder = torch.argmax(self.stock_map[self.dir_name]['stock_map'], dim=-1).cpu()
                 if ind == 'ist':
                     snapshot[ind] = snapshot[ind][-1, :, :]                                 # S, S
                     snapshot[ind] = snapshot[ind][reorder][:, reorder]
