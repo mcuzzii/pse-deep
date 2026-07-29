@@ -3298,9 +3298,9 @@ class Eval:
                     perm = np.random.permutation(len(permute_x))
 
                 sc = ax.scatter(
-                    np.concatenate(permute_x[perm]),
-                    np.concatenate(permute_y[perm]),
-                    c=np.concatenate(permute_c[perm]),
+                    permute_x[perm],
+                    permute_y[perm],
+                    c=permute_c[perm],
                     s=0.5,
                     cmap="viridis",
                 )
