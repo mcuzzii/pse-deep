@@ -2917,9 +2917,9 @@ class Eval:
                     dim=1
                 )
                 self.counters[self.dir_name][key][f'sin_{min_or_max}'] = (
-                    vals.min(dim=1)
+                    vals.min(dim=1).values
                     if min_or_max == 'min'
-                    else vals.max(dim=1)
+                    else vals.max(dim=1).values
                 )                                                                                               # S, E
         if self.news:
             self.counters[self.dir_name][key]['nft_attn'] += snapshot['nft'].sum(dim=-1)
