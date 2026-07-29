@@ -2971,7 +2971,7 @@ class Eval:
             if dir.name in ('data', 'results') or 'mlp' in dir.name:
                 continue
 
-            pred_30 = '30' in self.dir_name
+            pred_30 = '30' in dir.name
             self.pred_horizon = 30 if pred_30 else 10
 
             if 'social' in dir.name:
