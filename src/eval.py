@@ -3221,7 +3221,7 @@ class Eval:
                 ylab = f'Stocks'
                 xlab = f'Time since Publication (in Minutes)'
                 figsize = (5, 8)
-                title = 'Age of Selected Documents'
+                title = f'Age of Selected {"News Articles" if w == 'nintr' else "X Posts"}'
                 legend_title = 'Attention Weights'
             if w in ('nin', 'sinc'):
                 # item: S, K, 2
@@ -3229,7 +3229,7 @@ class Eval:
                 ylab = f'Stocks'
                 xlab = f'1-dim UMAP Semantic Space'
                 figsize = (5, 8)
-                title = 'Selected Document Semantics'
+                title = f'Selected {"News Article" if w == 'nin' else "X Post"} Semantics'
                 legend_title = 'Attention Weights'
             if w in ('sinm'):
                 # item: S, E
