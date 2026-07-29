@@ -1321,66 +1321,69 @@ def generate_shap_beeswarm_plots(
 
     return figures
 
-def beeswarm_y(x, r=0.08):
+def beeswarm_y(x, row_height=0.9, nbins=100):
     """
+    Produce SHAP-style beeswarm vertical offsets.
+
     Parameters
     ----------
     x : (N,) array
-        Horizontal coordinates.
-    r : float
-        Circle radius in x/y axis units.
+        Horizontal positions.
+    row_height : float
+        Fraction of a row occupied by the swarm.
+    nbins : int
+        Number of x bins.
 
     Returns
     -------
-    y : (N,) array
-        Vertical offsets centered around zero.
+    offsets : (N,)
     """
 
     x = np.asarray(x)
-    order = np.argsort(x)
+    n = len(x)
 
-    y = np.zeros(len(x))
+    if n <= 1:
+        return np.zeros(n)
 
-    placed = []
+    xmin = x.min()
+    xmax = x.max()
 
-    # alternating offsets:
-    #
-    # 0
-    # +1
-    # -1
-    # +2
-    # -2
-    # ...
+    if xmax == xmin:
+        return np.zeros(n)
 
-    candidates = [0.]
+    # Assign each point to a bin
+    bins = np.floor((x - xmin) / (xmax - xmin + 1e-12) * nbins).astype(int)
+    bins = np.clip(bins, 0, nbins - 1)
 
-    for k in range(1, len(x)):
-        candidates.append(k * 2 * r)
-        candidates.append(-k * 2 * r)
+    offsets = np.zeros(n)
 
-    for idx in order:
+    # Process each bin independently
+    for b in np.unique(bins):
 
-        xi = x[idx]
+        idx = np.where(bins == b)[0]
 
-        for yi in candidates:
+        # Preserve horizontal ordering
+        idx = idx[np.argsort(x[idx])]
 
-            valid = True
+        m = len(idx)
 
-            for xj, yj in placed:
+        levels = np.empty(m)
 
-                dx = xi - xj
-                dy = yi - yj
+        levels[0] = 0
 
-                if dx * dx + dy * dy < (2 * r) ** 2:
-                    valid = False
-                    break
+        for i in range(1, m):
+            k = (i + 1) // 2
+            levels[i] = k if i % 2 else -k
 
-            if valid:
-                y[idx] = yi
-                placed.append((xi, yi))
-                break
+        offsets[idx] = levels
 
-    return y
+    # Scale to requested row height
+    max_abs = np.abs(offsets).max()
+
+    if max_abs > 0:
+        offsets *= (row_height / 2) / max_abs
+
+    return offsets
 
 class Eval:
     def __init__(self):
@@ -3170,7 +3173,7 @@ class Eval:
             #        self.plot_attention_scores(self.dir_name, str(self.ts[i]), snapshot, w)
             #    print(f"Processed snapshot for {self.dir_name}_{str(self.ts[i])}_{w}")
             
-            update_dict(self.summary_tensors[self.dir_name], 'overall', snapshot)
+            update_dict(self.summary_tensors[self.dir_name], 'Overall', snapshot)
             self.update_counter(snapshot, 'Overall')
 
     def plot_attention_scores(self, model, cat, snapshot, w):
@@ -3270,12 +3273,7 @@ class Eval:
 
                     x = xs[s]
 
-                    offset = beeswarm_y(x, r=0.05)
-
-                    max_abs = np.abs(offset).max()
-                    target_half_height = 0.4
-                    if max_abs > 0:
-                        offset *= target_half_height / max_abs
+                    offset = beeswarm_y(x)
 
                     all_x.append(x)
                     all_y.append(offset + s)
@@ -3285,6 +3283,7 @@ class Eval:
                     np.concatenate(all_x),
                     np.concatenate(all_y),
                     c=np.concatenate(all_c),
+                    s=1,
                     cmap="viridis",
                 )
                 ax.set_yticks(np.arange(len(ytick)))
