@@ -1321,6 +1321,67 @@ def generate_shap_beeswarm_plots(
 
     return figures
 
+def beeswarm_y(x, r=0.08):
+    """
+    Parameters
+    ----------
+    x : (N,) array
+        Horizontal coordinates.
+    r : float
+        Circle radius in x/y axis units.
+
+    Returns
+    -------
+    y : (N,) array
+        Vertical offsets centered around zero.
+    """
+
+    x = np.asarray(x)
+    order = np.argsort(x)
+
+    y = np.zeros(len(x))
+
+    placed = []
+
+    # alternating offsets:
+    #
+    # 0
+    # +1
+    # -1
+    # +2
+    # -2
+    # ...
+
+    candidates = [0.]
+
+    for k in range(1, len(x)):
+        candidates.append(k * 2 * r)
+        candidates.append(-k * 2 * r)
+
+    for idx in order:
+
+        xi = x[idx]
+
+        for yi in candidates:
+
+            valid = True
+
+            for xj, yj in placed:
+
+                dx = xi - xj
+                dy = yi - yj
+
+                if dx * dx + dy * dy < (2 * r) ** 2:
+                    valid = False
+                    break
+
+            if valid:
+                y[idx] = yi
+                placed.append((xi, yi))
+                break
+
+    return y
+
 class Eval:
     def __init__(self):
         self.experiments_path = Path('experiments')
@@ -2892,14 +2953,52 @@ class Eval:
             if dir.name in ('data', 'results') or 'mlp' in dir.name:
                 continue
 
+            if 'social' in dir.name:
+                social_features = DataSource()
+                social_features.create_df(f'social_media_{self.pred_horizon}m')
+        
+                selected_features = set(social_features.selected_features)
+        
+                keywords = {
+                    'retweet_count',
+                    'reply_count',
+                    'like_count',
+                    'quote_count',
+                    'view_count',
+                    'bookmark_count',
+                    'author_is_blue_verified',
+                    'author_followers',
+                    'author_following',
+                    'author_favourites_count',
+                    'author_media_count',
+                    'author_statuses_count'
+                }
+        
+                impact_features = set()
+                for key in keywords:
+                    if any(s.startswith(key) for s in selected_features):
+                        impact_features.add(key)
+                if any('follower_weighted_mean' in s for s in selected_features):
+                    impact_features.add('author_followers')
+                if any('viral_coeff' in s for s in selected_features):
+                    impact_features.add('reply_count')
+                
+                self.impact_features = list(impact_features)
+
             for category in self.counters[dir.name]:
                 for k, v in self.summary_tensors[dir.name][category]:
-                    self.summary_tensors[dir.name][category][k] = v / self.counters[dir.name][category]
-                    self.plot_attention_scores(dir.name, category, self.summary_tensors[dir.name][category], k)
-                    if k in ('sin', 'nin'):
-                        vals = np.array(list(self.summary_tensors[dir.name][category][k].values()))
-                    else:
+                    if k in ('tst', 'sft', 'nft', 'ist'):
+                        self.summary_tensors[dir.name][category][k] = v / self.counters[dir.name][category]['nsamples']
                         vals = self.summary_tensors[dir.name][category][k].cpu().numpy()
+                    elif k == 'sinm':
+                        weighted_means = v / self.counters[dir.name][category]['sft_attn'].unsqueeze(-1)
+                        self.summary_tensors[dir.name][category]['sinm'] = (
+                            weighted_means - self.counters[self.dir_name][key]['sin_min']
+                        ) / (self.counters[self.dir_name][key]['sin_max'] - self.counters[self.dir_name][key]['sin_min'])
+                        vals = self.summary_tensors[dir.name][category][k].cpu().numpy()
+                    else:
+                        vals = self.summary_tensors[dir.name][category][k][:, :, 0].cpu().numpy()
+                    self.plot_attention_scores(dir.name, category, self.summary_tensors[dir.name][category], k)
                     print(f"Processed summary for {dir.name}_{category}_{k} with range {(vals.min(), vals.max())}")
 
         torch.save(self.summary_tensors, self.results_path / 'attn_analysis' / 'summary_tensors.pt')
@@ -3013,7 +3112,7 @@ class Eval:
                 self.update_counter(snapshot, 'AM Session')
             elif self.ts[i].time() <= pd.Timestamp('14:15').time():
                 update_dict(self.summary_tensors[self.dir_name], 'PM Session', snapshot)
-                self.counters[self.dir_name]['PM Session'] += 1
+                self.update_counter(snapshot, 'PM Session')
             else:
                 update_dict(self.summary_tensors[self.dir_name], 'Market Close', snapshot)
                 self.update_counter(snapshot, 'Market Close')
@@ -3056,13 +3155,13 @@ class Eval:
                 update_dict(self.summary_tensors[self.dir_name], 'Week 7', snapshot)
                 self.update_counter(snapshot, 'Week 7')
 
-            for w in snapshot:
-                if w == 'sin':
-                    self.plot_attention_scores(self.dir_name, str(self.ts[i]), snapshot, 'sinc')
-                    self.plot_attention_scores(self.dir_name, str(self.ts[i]), snapshot, 'sinm')
-                else:
-                    self.plot_attention_scores(self.dir_name, str(self.ts[i]), snapshot, w)
-                print(f"Processed snapshot for {self.dir_name}_{str(self.ts[i])}_{w}")
+            #for w in snapshot:
+            #    if w == 'sin':
+            #        self.plot_attention_scores(self.dir_name, str(self.ts[i]), snapshot, 'sinc')
+            #        self.plot_attention_scores(self.dir_name, str(self.ts[i]), snapshot, 'sinm')
+            #    else:
+            #        self.plot_attention_scores(self.dir_name, str(self.ts[i]), snapshot, w)
+            #    print(f"Processed snapshot for {self.dir_name}_{str(self.ts[i])}_{w}")
             
             update_dict(self.summary_tensors[self.dir_name], 'overall', snapshot)
             self.update_counter(snapshot, 'Overall')
@@ -3098,7 +3197,7 @@ class Eval:
                 xtick = [f'Slot {i}' for i in range(1, 6)]
                 ylab = 'Most Recent Stock Price Representations (Q)'
                 xlab = f'Selected {'News' if w == 'nft' else 'X Posts'} (KV)'
-                figsize = (4, 14)
+                figsize = (4, 8)
             if w in ('nintr', 'sintr'):
                 # item: S, K, 2
                 ytick = [s.upper() for s in self.stock_map[model]['stocks']]
@@ -3153,10 +3252,32 @@ class Eval:
 
             else:
                 S, K, _ = item.shape
+                xs = item[...,1].numpy()
+                weights = item[...,0].numpy()
+
+                all_x = []
+                all_y = []
+                all_c = []
+
+                for s in range(S):
+
+                    x = xs[s]
+
+                    offset = beeswarm_y(x, r=0.05)
+
+                    max_abs = np.abs(offset).max()
+                    target_half_height = 0.4
+                    if max_abs > 0:
+                        offset *= target_half_height / max_abs
+
+                    all_x.append(x)
+                    all_y.append(offset + s)
+                    all_c.append(weights[s])
+
                 sc = ax.scatter(
-                    item[..., 1].ravel(),
-                    np.repeat(np.arange(S), K),
-                    c=item[..., 0].ravel(),
+                    np.concatenate(all_x),
+                    np.concatenate(all_y),
+                    c=np.concatenate(all_c),
                     cmap="viridis",
                 )
                 ax.set_yticks(np.arange(len(ytick)))
