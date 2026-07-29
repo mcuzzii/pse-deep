@@ -2837,10 +2837,10 @@ class Eval:
             self.counters[self.dir_name] = {
                 k: {
                     'nsamples': 0,
-                    'sft_attn': np.zeros(30),
-                    'nft_attn': np.zeros(30),
-                    'sin_min': np.full((30, len(self.impact_features)), np.inf),
-                    'sin_max': np.full((30, len(self.impact_features)), -np.inf)
+                    'sft_attn': torch.zeros(30),
+                    'nft_attn': torch.zeros(30),
+                    'sin_min': torch.full((30, len(self.impact_features)), np.inf),
+                    'sin_max': torch.full((30, len(self.impact_features)), -np.inf)
                 } for k in counter_keys
             }
 
