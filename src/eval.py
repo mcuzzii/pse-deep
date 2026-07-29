@@ -3235,7 +3235,7 @@ class Eval:
                 # item: S, E
                 xlab = 'Impact Features'
                 ylab = 'Stocks'
-                xtick = [tick.capitalize() for tick in self.impact_features]
+                xtick = [tick.replace('_', ' ').capitalize() for tick in self.impact_features]
                 ytick = [s.upper() for s in self.stock_map[model]['stocks']]
                 figsize = (5, 8)
                 title = 'Highly-Attended Feature Values'
