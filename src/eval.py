@@ -2971,6 +2971,9 @@ class Eval:
             if dir.name in ('data', 'results') or 'mlp' in dir.name:
                 continue
 
+            pred_30 = '30' in self.dir_name
+            self.pred_horizon = 30 if pred_30 else 10
+
             if 'social' in dir.name:
                 social_features = DataSource()
                 social_features.create_df(f'social_media_{self.pred_horizon}m')
@@ -3191,6 +3194,8 @@ class Eval:
                 xlab = 'Stocks (Q)'
                 ylab = 'Stocks (KV)'
                 figsize = (7, 6)
+                title = 'Attention Scores'
+                legend_title = 'Attention Weights'
             if w == 'tst':
                 item = item.T                                                   # Ts, S
                 xtick = [s.upper() for s in self.stock_map[model]['stocks']]
@@ -3200,31 +3205,41 @@ class Eval:
                 xlab = 'Most Recent Stock Price Representations (Q)'
                 ylab = 'Minutes Ago (KV)'
                 figsize = (5, 8)
+                title = 'Attention Scores'
+                legend_title = 'Attention Weights'
             if w in ('nft', 'sft'):
                 ytick = [s.upper() for s in self.stock_map[model]['stocks']]
                 xtick = [f'Slot {i}' for i in range(1, 6)]
                 ylab = 'Most Recent Stock Price Representations (Q)'
                 xlab = f'Selected {'News' if w == 'nft' else 'X Posts'} (KV)'
                 figsize = (4, 8)
+                title = 'Attention Scores'
+                legend_title = 'Attention Weights'
             if w in ('nintr', 'sintr'):
                 # item: S, K, 2
                 ytick = [s.upper() for s in self.stock_map[model]['stocks']]
                 ylab = f'Stocks'
                 xlab = f'Time since Publication (in Minutes)'
                 figsize = (5, 8)
+                title = 'Age of Selected Documents'
+                legend_title = 'Attention Weights'
             if w in ('nin', 'sinc'):
                 # item: S, K, 2
                 ytick = [s.upper() for s in self.stock_map[model]['stocks']]
                 ylab = f'Stocks'
                 xlab = f'1-dim UMAP Semantic Space'
                 figsize = (5, 8)
+                title = 'Selected Document Semantics'
+                legend_title = 'Attention Weights'
             if w in ('sinm'):
                 # item: S, E
                 xlab = 'Impact Features'
                 ylab = 'Stocks'
-                xtick = self.impact_features
+                xtick = [tick.capitalize() for tick in self.impact_features]
                 ytick = [s.upper() for s in self.stock_map[model]['stocks']]
                 figsize = (5, 8)
+                title = 'Highly-Attended Feature Values'
+                legend_title = 'Feature Values'
 
             viridis_cmap = mcolors.LinearSegmentedColormap.from_list(
                 'custom_viridis',
@@ -3243,14 +3258,14 @@ class Eval:
                     mask=torch.isnan(item).numpy(),
                     cmap=viridis_cmap,
                     linewidths=0,
-                    cbar_kws={'label': 'Attention Scores', 'shrink': 0.8},
+                    cbar_kws={'label': legend_title, 'shrink': 0.8},
                     ax=ax
                 )
 
                 cbar = ax.collections[0].colorbar
                 cbar.set_ticks([])
 
-                ax.set_title("Attention Scores", fontsize=16, pad=16)
+                ax.set_title(title, fontsize=13, fontweight='bold')
                 ax.tick_params(axis='both', labelsize=8)
                 ax.set_xlabel(xlab)
                 ax.set_ylabel(ylab)
@@ -3283,13 +3298,16 @@ class Eval:
                     s=1,
                     cmap="viridis",
                 )
+
+                ax.set_title(title, fontsize=13, fontweight='bold')
+
                 ax.set_yticks(np.arange(len(ytick)))
                 ax.set_yticklabels(ytick)
 
                 ax.set_xlabel(xlab)
                 ax.set_ylabel(ylab)
 
-                plt.colorbar(sc, ax=ax, label="Attention Weight")
+                plt.colorbar(sc, ax=ax, label=legend_title)
 
             plt.tight_layout()
             plt.savefig(
@@ -3297,7 +3315,6 @@ class Eval:
                 dpi=300, bbox_inches='tight'
             )
             plt.close()
-
     
     def plot_shap_scores(self):
         mlp_dfs = pd.DataFrame(columns=['group', 'timestamp', 'setting', 'shap'])
@@ -3394,7 +3411,7 @@ class Eval:
         }
 
         # `sintr`, rather than the repeated `nintr` in the request.
-        cross_attention_modules = ("tst", "ist", "nft", "sft", "nintr", "sintr")
+        cross_attention_modules = ("tst", "ist", "nft", "sft", "sinm")
 
         # Use only configurations that are actually present in the saved summary.
         # Sorted here for deterministic output; replace with a custom list if desired.
