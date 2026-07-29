@@ -1222,9 +1222,13 @@ class Experiment:
 
                 with tqdm(total=len(self.loaders[split]), desc=f"Testing {split}") as pbar:
 
+                    interrupt_counter = 0
                     for i, (*args, target) in enumerate(self.loaders[split]):
+                        interrupt_counter += 1
                         if interrupted:
                             raise KeyboardInterrupt
+                        if interrupt_counter == 60:
+                            break
 
                         args   = [a.to(device) for a in args]
                         target = target.argmax(dim=-1).to(device)
