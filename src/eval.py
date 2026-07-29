@@ -2832,7 +2832,8 @@ class Eval:
                 'Week 4',
                 'Week 5',
                 'Week 6',
-                'Week 7'
+                'Week 7',
+                'Overall'
             ]
             self.counters[self.dir_name] = {
                 k: {
