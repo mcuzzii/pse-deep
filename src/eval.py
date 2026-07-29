@@ -2982,7 +2982,7 @@ class Eval:
                     else ['social_media_umap'] + self.impact_features
                 ]
                 text['minutes_ago'] = (self.ts[i] - text.index).total_seconds() / 60
-                text = torch.from_numpy(text.values)                                                      # S, K, 1+E+1
+                text = torch.from_numpy(text.values.astype(np.float32))                                         # S, K, 1+E+1
 
                 txt_attn = snapshot[attn][:, -1, :].unsqueeze(-1)                       # S, K, 1
 
