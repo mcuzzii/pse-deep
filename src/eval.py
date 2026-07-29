@@ -3061,11 +3061,7 @@ class Eval:
                     self.plot_attention_scores(self.dir_name, str(self.ts[i]), snapshot, 'sinm')
                 else:
                     self.plot_attention_scores(self.dir_name, str(self.ts[i]), snapshot, w)
-                if w in ('sin', 'nin'):
-                    vals = np.array(list(snapshot[w].values()))
-                else:
-                    vals = snapshot[w].cpu().numpy()
-                print(f"Processed snapshot for {self.dir_name}_{str(self.ts[i])}_{w} with range {(vals.min(), vals.max())}")
+                print(f"Processed snapshot for {self.dir_name}_{str(self.ts[i])}_{w}")
             
             update_dict(self.summary_tensors[self.dir_name], 'overall', snapshot)
             self.update_counter(snapshot, 'Overall')
