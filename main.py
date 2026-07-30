@@ -207,7 +207,7 @@ def run_experiments():
                         batch_size=32,
                         accumulation_steps=1,
                         lr=1e-4,
-                        val_every=lambda x: (8 * x) ** 2 / 16,
+                        val_every=lambda x: ((8 * x) ** 2) / 16,
                         patience=20,
                         sigma_end=1e-5
                     )
