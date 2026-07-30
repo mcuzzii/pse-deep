@@ -141,7 +141,7 @@ class SelfAttentionBlock(nn.Module):
         out = out.contiguous().view(orig_shape)
 
         if attn_weights is not None:
-            attn_weights = attn_weights.reshape(orig_shape[0], orig_shape[1], orig_shape[2], orig_shape[2])
+            attn_weights = attn_weights.reshape(orig_shape[0], orig_shape[1], orig_shape[1])
             return out, attn_weights.to(torch.float32)
         else:
             return out
