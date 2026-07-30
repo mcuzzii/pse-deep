@@ -169,8 +169,8 @@ def preprocess():
 def run_experiments():
 
     for transformer in (True, False):
-        for social in (False, True):
-            for news in (False, True):
+        for social in (True, False):
+            for news in (True, False):
                 for pred_30 in (False, True):
 
                     news_prefix = 'news_' if news else ''
