@@ -592,7 +592,7 @@ class Experiment:
             return
         
         social_df = DataSource()
-        social_df.create_df('social_media')
+        social_df.create_df(f'std_social_media_{self.pred_horizon}m')
 
         social_features = DataSource()
         social_features.create_df(f'social_media_{self.pred_horizon}m')
