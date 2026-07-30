@@ -230,9 +230,9 @@ def main():
     #evaluator.interpret_shap_values()
     #evaluator.get_embeddings()
     #evaluator.add_umap()
-    evaluator.run_attn_analysis()
+    #evaluator.run_attn_analysis()
     #evaluator.plot_shap_scores()
-    #evaluator.plot_attention_summary_grid()
+    evaluator.plot_summary_grids()
 
 if __name__ == '__main__':
     preprocess()
