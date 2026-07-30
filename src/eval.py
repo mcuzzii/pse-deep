@@ -3459,6 +3459,17 @@ class Eval:
         """
         summary_path = self.results_path / "attn_analysis" / "summary_tensors.pt"
         summary_tensors = torch.load(summary_path)
+
+        for model_dict in summary_tensors.values():
+            for cat_dict in model_dict.values():
+                for key in ("tst", "sft", "nft", 'ist'):
+                    if key not in cat_dict:
+                        continue
+
+                    t = cat_dict[key]                     # S x N
+                    denom = t.sum(dim=-1, keepdim=True)
+                    denom = torch.where(denom == 0, torch.ones_like(denom), denom)
+                    cat_dict[key] = t / denom
     
         out_dir = self.results_path / "attn_analysis" / "summary_grids"
         out_dir.mkdir(parents=True, exist_ok=True)
