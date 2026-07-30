@@ -378,7 +378,7 @@ class Experiment:
     def _get_test_split(self, df):
         last_val_idx = self.filtered_date_times.get_loc(self.val_cutoff)
 
-        if df.file_name in ('news', 'social_media'):
+        if df.file_name in ('news', 'std_social_media_10m', 'std_social_media_30m'):
             cutoff, _ = get_text_window(
                 self.time_vec_input.index[last_val_idx + 1],
                 self.filtered_date_times,
