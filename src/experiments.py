@@ -360,7 +360,7 @@ class Experiment:
     def _get_val_split(self, df):
         last_train_idx = self.filtered_date_times.get_loc(self.train_cutoff)
 
-        if df.file_name in ('news', 'social_media'):
+        if df.file_name in ('news', 'std_social_media_10m', 'std_social_media_30m'):
             cutoff, _ = get_text_window(
                 self.time_vec_input.index[last_train_idx + 1],
                 self.filtered_date_times,
@@ -368,7 +368,6 @@ class Experiment:
                 24
             )
             non_train_split = df.df.loc[df.df.index.get_level_values('local_time') > cutoff]
-            print(cutoff)
 
         else:
             non_train_split = df.df.iloc[last_train_idx - self.stock_lookback + 2:]
