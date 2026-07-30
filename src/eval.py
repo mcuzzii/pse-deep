@@ -56,6 +56,71 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 setup_plot_style()
 
+CATEGORY_GROUPS = {
+    "intraday": ["Market Open", "AM Session", "PM Session", "Market Close"],
+    "weekday": ["Mon", "Tue", "Wed", "Thu", "Fri"],
+    "time_period": [f"Week {i}" for i in range(1, 8)],
+}
+ 
+# keys whose cell is a single mini heatmap
+HEATMAP_KEYS = ("tst", "nft", "sft", "ist", "sinm")
+# keys whose "cell" is a beeswarm scatter, stacked as sub-rows within a model block
+SCATTER_KEYS = ("nin", "sinc", "nintr", "sintr")
+ 
+KEY_TITLES = {
+    "tst": "Temporal Self-Attention (Stock vs. Past Minutes)",
+    "nft": "News Filter Attention",
+    "sft": "Social Filter Attention",
+    "ist": "Inter-Stock Self-Attention",
+    "sinm": "Highly-Attended Social Impact Feature Values",
+    "nin": "Selected News Article Semantics (UMAP)",
+    "sinc": "Selected X Post Semantics (UMAP)",
+    "nintr": "Age of Selected News Articles",
+    "sintr": "Age of Selected X Posts",
+}
+ 
+SCATTER_XLABELS = {
+    "nin": "1-dim UMAP Semantic Space",
+    "sinc": "1-dim UMAP Semantic Space",
+    "nintr": "Time since Publication (Minutes)",
+    "sintr": "Time since Publication (Minutes)",
+}
+ 
+ 
+# ----------------------------------------------------------------------------
+# free helper functions
+# ----------------------------------------------------------------------------
+ 
+def _parse_model_label(model_key):
+    """
+    'stock_news_social_transformer_30' -> ('30m-Tf | S+ N+', has_news=True, has_social=True)
+    'stock_mlp_10'                     -> ('10m-Mlp | S- N-', has_news=False, has_social=False)
+    """
+    has_news = "news_" in model_key
+    has_social = "social_" in model_key
+    is_transformer = "transformer_" in model_key
+    horizon = 30 if model_key.endswith("30") else 10
+    arch = "Tf" if is_transformer else "Mlp"
+    label = f"{horizon}m-{arch} | S{'+' if has_social else '-'} N{'+' if has_news else '-'}"
+    return label, has_news, has_social
+ 
+ 
+def _make_viridis_cmap():
+    cmap = mcolors.LinearSegmentedColormap.from_list(
+        "custom_viridis",
+        [COLORS["purple"], COLORS["indigo"], COLORS["teal"],
+         COLORS["seafoam"], COLORS["green"], COLORS["yellow"]],
+    )
+    cmap.set_bad(color=(0, 0, 0, 0))
+    return cmap
+ 
+ 
+def _heatmap_matrix(key, tensor):
+    """Orient the same way the existing single-plot function does."""
+    if key in ("tst", "ist"):
+        return tensor.T.numpy()
+    return tensor.numpy()
+
 def expanding_window_thresholds(val_targets, val_scores, test_targets, test_scores):
     """
     val_targets, val_scores: (N_val, S) numpy arrays
@@ -3384,298 +3449,204 @@ class Eval:
                 max_points_per_setting=6000,
             )
 
-    def plot_attention_summary_grid(self):
+    def plot_summary_grids(self):
         """
-        Creates one grid per:
-            - category group: intraday / weekday / period
-            - cross-attention module: tst, ist, nft, sft, nintr, sintr
-
-        Grid layout:
-            rows    = model configurations
-            columns = categories in the selected category group
-            cell    = attention heatmap for that configuration/category/module
+        Loads self.results_path / 'attn_analysis' / 'summary_tensors.pt' and, for
+        each of the 9 summary keys, produces one grid figure per category group
+        (intraday / weekday / time_period) — 27 figures total (fewer if a key/
+        group combo has no data). Saved to
+        self.results_path / 'attn_analysis' / 'summary_grids'.
         """
-        attn_summary = torch.load(
-            self.results_path / "attn_analysis" / "summary_tensors.pt",
-            map_location="cpu",
-            weights_only=False,
+        summary_path = self.results_path / "attn_analysis" / "summary_tensors.pt"
+        summary_tensors = torch.load(summary_path)
+    
+        out_dir = self.results_path / "attn_analysis" / "summary_grids"
+        out_dir.mkdir(parents=True, exist_ok=True)
+    
+        cmap = _make_viridis_cmap()
+    
+        parsed = {}
+        for model_key in summary_tensors:
+            label, has_news, has_social = _parse_model_label(model_key)
+            parsed[model_key] = {"label": label, "has_news": has_news, "has_social": has_social}
+    
+        sorted_models = sorted(
+            summary_tensors.keys(),
+            key=lambda m: (
+                parsed[m]["label"].split(" | ")[0],  # horizon+arch, e.g. "30m-Tf"
+                not parsed[m]["has_social"],
+                not parsed[m]["has_news"],
+            ),
         )
-
-        output_dir = self.results_path / "attn_analysis" / "summary_grids"
-        output_dir.mkdir(parents=True, exist_ok=True)
-
-        # Adjust these strings if the category names in your saved tensor differ.
-        category_groups = {
-            "intraday": [
-                "Market Open",
-                "AM Session",
-                "PM Session",
-                "Market Close",
-            ],
-            "weekday": ["Mon", "Tue", "Wed", "Thu", "Fri"],
-            "time_period": [f"Week {i}" for i in range(1, 8)]
-        }
-
-        # `sintr`, rather than the repeated `nintr` in the request.
-        cross_attention_modules = ("tst", "ist", "nft", "sft", "sinm")
-
-        # Use only configurations that are actually present in the saved summary.
-        # Sorted here for deterministic output; replace with a custom list if desired.
-        model_names = sorted(attn_summary.keys())
-
-        viridis_cmap = mcolors.LinearSegmentedColormap.from_list(
-            "custom_viridis",
-            [
-                COLORS["purple"],
-                COLORS["indigo"],
-                COLORS["teal"],
-                COLORS["seafoam"],
-                COLORS["green"],
-                COLORS["yellow"],
-            ],
-        )
-        viridis_cmap.set_bad(color=(0, 0, 0, 0))
-
-        def format_attention_matrix(item, module, model_name):
-            """
-            Apply the same transformations and return:
-                matrix, x tick labels, y tick labels, x label, y label
-            """
-            item = item.detach().cpu().clone().float()
-
-            if module == "ist":
-                item = item.T
-                stock_labels = [stock.upper() for stock in self.stock_map[model_name]["stocks"]]
-
-                return (
-                    item,
-                    stock_labels,
-                    stock_labels,
-                    "Stocks (Q)",
-                    "Stocks (KV)",
-                )
-
-            if module == "tst":
-                item = item.T
-
-                # Applies the future-step multiplier exactly as in your original code.
-                factors = torch.arange(1, item.shape[1] + 1).unsqueeze(0)
-                item = item * factors
-
-                # Mask lower triangle; query can only attend to its past.
-                mask = (1 - torch.triu(torch.ones_like(item))).bool()
-                item[mask] = float("nan")
-
-                step = max(1, item.shape[1] // 20)
-                full_labels = list(range(item.shape[1], 0, -1))
-                tick_labels = [
-                    label if i % step == 0 else ""
-                    for i, label in enumerate(full_labels)
-                ]
-
-                return (
-                    item,
-                    tick_labels,
-                    tick_labels,
-                    "Minutes Ago (Q)",
-                    "Minutes Ago (KV)",
-                )
-
-            if module in ("nft", "sft"):
-                item = item.T
-
-                step = max(1, item.shape[1] // 20)
-                full_labels = list(range(item.shape[1], 0, -1))
-                x_ticks = [
-                    label if i % step == 0 else ""
-                    for i, label in enumerate(full_labels)
-                ]
-                y_ticks = [f"Top {i}" for i in range(1, item.shape[0] + 1)]
-
-                source_name = "News" if module == "nft" else "X Posts"
-
-                return (
-                    item,
-                    x_ticks,
-                    y_ticks,
-                    "Minutes Ago (Q)",
-                    f"Selected {source_name} (KV)",
-                )
-
-            if module in ("nintr", "sintr"):
-                n_cols = item.shape[1]
-                step = max(1, n_cols // 20)
-
-                full_labels = [ordinal(n) for n in range(n_cols, 0, -1)]
-                x_ticks = [
-                    label if i % step == 0 else ""
-                    for i, label in enumerate(full_labels)
-                ]
-                y_ticks = [f"Top {i}" for i in range(1, item.shape[0] + 1)]
-
-                item_type = "Article" if module == "nintr" else "Post"
-                source_name = "News" if module == "nintr" else "X Posts"
-
-                return (
-                    item,
-                    x_ticks,
-                    y_ticks,
-                    f"{item_type} Recency",
-                    f"Selected {source_name}",
-                )
-
-            raise ValueError(f"Unsupported attention module: {module}")
-
-        for group_name, categories in category_groups.items():
-            for module in cross_attention_modules:
-                # First collect existing matrices. This lets all visible cells share
-                # a figure-level color range.
-                cells = {}
-                finite_values = []
-
-                for model_name in model_names:
-                    for category in categories:
-                        item = attn_summary.get(model_name, {}).get(category, {}).get(module)
-
-                        # The Counter-based `nin` / `sin` summaries are intentionally
-                        # excluded from this cross-attention grid.
-                        if item is None or isinstance(item, Counter):
+    
+        for summary_key in HEATMAP_KEYS + SCATTER_KEYS:
+            # only models where this key is present for at least one category
+            relevant_models = [
+                m for m in sorted_models
+                if any(summary_key in cat_dict for cat_dict in summary_tensors[m].values())
+            ]
+            if not relevant_models:
+                continue
+    
+            # ---- global color scale across ALL models/categories for this key,
+            # so the legend is comparable across all three group figures ----
+            color_vals = []
+            for m in relevant_models:
+                for cat_dict in summary_tensors[m].values():
+                    if summary_key not in cat_dict:
+                        continue
+                    t = cat_dict[summary_key]
+                    if summary_key in HEATMAP_KEYS:
+                        color_vals.append(t[~torch.isnan(t)].flatten())
+                    else:
+                        w = t[..., 0]
+                        color_vals.append(w[~torch.isnan(w)].flatten())
+            color_vals = torch.cat(color_vals)
+            vmin, vmax = float(color_vals.min()), float(color_vals.max())
+    
+            xmin = xmax = None
+            if summary_key in SCATTER_KEYS:
+                x_vals = []
+                for m in relevant_models:
+                    for cat_dict in summary_tensors[m].values():
+                        if summary_key not in cat_dict:
                             continue
-
-                        matrix, x_ticks, y_ticks, x_label, y_label = format_attention_matrix(
-                            item=item,
-                            module=module,
-                            model_name=model_name,
-                        )
-
-                        cells[(model_name, category)] = {
-                            "matrix": matrix,
-                            "x_ticks": x_ticks,
-                            "y_ticks": y_ticks,
-                            "x_label": x_label,
-                            "y_label": y_label,
-                        }
-
-                        valid = matrix[torch.isfinite(matrix)]
-                        if valid.numel():
-                            finite_values.append(valid.numpy())
-
-                # For example, do not create an sft plot for a group where no model
-                # contains social-media inputs.
-                if not cells:
-                    continue
-
-                all_values = np.concatenate(finite_values)
-                vmin = float(np.nanmin(all_values))
-                vmax = float(np.nanmax(all_values))
-
-                # Prevent Seaborn warnings/errors if every attention value is identical.
-                if np.isclose(vmin, vmax):
-                    vmax = vmin + 1e-8
-
-                n_rows = len(model_names)
-                n_cols = len(categories)
-
-                # Tune these two values if you want substantially larger/smaller cells.
-                fig_width = max(4 * n_cols, 10)
-                fig_height = max(3.5 * n_rows, 6)
-
-                fig, axes = plt.subplots(
-                    nrows=n_rows,
-                    ncols=n_cols,
-                    figsize=(fig_width, fig_height),
-                    squeeze=False,
-                    constrained_layout=True,
-                )
-
-                heatmap_artist = None
-
-                for row, model_name in enumerate(model_names):
-                    for col, category in enumerate(categories):
-                        ax = axes[row, col]
-                        cell = cells.get((model_name, category))
-
-                        if cell is None:
-                            ax.set_facecolor("#f5f5f5")
-                            ax.text(
-                                0.5,
-                                0.5,
-                                "Not present\nin this configuration",
-                                ha="center",
-                                va="center",
-                                fontsize=9,
-                                color="gray",
-                                transform=ax.transAxes,
-                            )
-                            ax.set_xticks([])
-                            ax.set_yticks([])
-                        else:
-                            matrix = cell["matrix"]
-
-                            heatmap_artist = sns.heatmap(
-                                matrix.numpy(),
-                                ax=ax,
-                                cmap=viridis_cmap,
-                                vmin=vmin,
-                                vmax=vmax,
-                                mask=torch.isnan(matrix).numpy(),
-                                xticklabels=cell["x_ticks"],
-                                yticklabels=cell["y_ticks"],
-                                linewidths=0,
-                                cbar=False,
-                            )
-
-                            ax.set_xlabel(cell["x_label"], fontsize=8)
-                            ax.set_ylabel(cell["y_label"], fontsize=8)
-                            ax.tick_params(axis="both", labelsize=6)
-                            plt.setp(ax.get_xticklabels(), rotation=90)
-                            plt.setp(ax.get_yticklabels(), rotation=0)
-
-                        # Column headers are categories.
-                        if row == 0:
-                            ax.set_title(category, fontsize=12, pad=12)
-
-                        # Model configuration label on the leftmost panel.
-                        if col == 0:
-                            ax.annotate(
-                                model_name,
-                                xy=(-0.38, 0.5),
-                                xycoords="axes fraction",
-                                ha="right",
-                                va="center",
-                                rotation=90,
-                                fontsize=10,
-                                fontweight="bold",
-                            )
-
-                # Shared colorbar for all real heatmaps in the grid.
-                if heatmap_artist is not None:
-                    colorbar = fig.colorbar(
-                        heatmap_artist.collections[0],
-                        ax=axes.ravel().tolist(),
-                        shrink=0.7,
-                        pad=0.02,
+                        x = cat_dict[summary_key][..., 1]
+                        x_vals.append(x[~torch.isnan(x)].flatten())
+                x_vals = torch.cat(x_vals)
+                xmin, xmax = float(x_vals.min()), float(x_vals.max())
+    
+            for group_name, categories in CATEGORY_GROUPS.items():
+                cats_present = [
+                    c for c in categories
+                    if any(
+                        c in summary_tensors[m] and summary_key in summary_tensors[m][c]
+                        for m in relevant_models
                     )
-                    colorbar.set_label("Attention Scores", fontsize=10)
-                    colorbar.set_ticks([])
-
-                module_title = {
-                    "tst": "Time-Series Transformer Attention",
-                    "ist": "Inter-Stock Transformer Attention",
-                    "nft": "News Fusion Transformer Attention",
-                    "sft": "Social-Media Fusion Transformer Attention",
-                    "nintr": "News Top-K Selection Attention",
-                    "sintr": "Social-Media Top-K Selection Attention",
-                }[module]
-
-                fig.suptitle(
-                    f"{module_title}\nGrouped by {group_name.replace('_', ' ')}",
-                    fontsize=16,
-                    fontweight="bold",
-                )
-
-                file_path = output_dir / f"{group_name}__{module}.png"
-                fig.savefig(file_path, dpi=300, bbox_inches="tight")
-                plt.close(fig)
-
-                print(f"Saved: {file_path}")
+                ]
+                if not cats_present:
+                    continue
+    
+                save_path = out_dir / f"{summary_key}_{group_name}.png"
+    
+                if summary_key in HEATMAP_KEYS:
+                    self._plot_summary_heatmap_grid(
+                        summary_tensors, relevant_models, parsed, cats_present,
+                        summary_key, cmap, vmin, vmax, save_path,
+                    )
+                else:
+                    self._plot_summary_scatter_grid(
+                        summary_tensors, relevant_models, parsed, cats_present,
+                        summary_key, cmap, vmin, vmax, xmin, xmax, save_path,
+                    )
+    
+    
+    def _plot_summary_heatmap_grid(self, summary_tensors, models, parsed, categories,
+                                    key, cmap, vmin, vmax, save_path):
+        n_rows, n_cols = len(models), len(categories)
+        fig, axes = plt.subplots(
+            n_rows, n_cols, squeeze=False,
+            figsize=(max(1.6 * n_cols + 1.8, 4), max(1.4 * n_rows + 1.2, 3)),
+        )
+    
+        for i, model_key in enumerate(models):
+            for j, cat in enumerate(categories):
+                ax = axes[i, j]
+                cat_dict = summary_tensors[model_key].get(cat, {})
+                if key not in cat_dict:
+                    ax.axis("off")
+                    continue
+    
+                mat = _heatmap_matrix(key, cat_dict[key])
+                masked = np.ma.masked_invalid(mat)
+                ax.imshow(masked, cmap=cmap, vmin=vmin, vmax=vmax, aspect="auto")
+                ax.set_xticks([])
+                ax.set_yticks([])
+                for spine in ax.spines.values():
+                    spine.set_visible(False)
+    
+                if i == 0:
+                    ax.set_title(cat, fontsize=9, fontweight="bold")
+                if j == 0:
+                    ax.set_ylabel(parsed[model_key]["label"], fontsize=7.5,
+                                rotation=0, ha="right", va="center")
+    
+        fig.suptitle(KEY_TITLES[key], fontsize=14, fontweight="bold", y=1.02)
+        fig.text(0.5, -0.01, "Temporal View", ha="center", fontsize=11)
+        fig.text(-0.02, 0.5, "Model", va="center", rotation=90, fontsize=11)
+    
+        fig.subplots_adjust(right=0.88, wspace=0.05, hspace=0.05)
+        cax = fig.add_axes([0.91, 0.15, 0.02, 0.7])
+        sm = ScalarMappable(norm=Normalize(vmin=vmin, vmax=vmax), cmap=cmap)
+        cbar_label = "Attention Weight" if key != "sinm" else "Feature Value"
+        fig.colorbar(sm, cax=cax, label=cbar_label)
+    
+        fig.savefig(save_path, dpi=300, bbox_inches="tight")
+        plt.close(fig)
+    
+    
+    def _plot_summary_scatter_grid(self, summary_tensors, models, parsed, categories,
+                                    key, cmap, vmin, vmax, xmin, xmax, save_path):
+        # (model, [categories that model actually has for this key]) blocks
+        rows = []
+        for model_key in models:
+            model_cats = [c for c in categories if key in summary_tensors[model_key].get(c, {})]
+            if model_cats:
+                rows.append((model_key, model_cats))
+    
+        total_rows = sum(len(cats) for _, cats in rows)
+        fig, axes = plt.subplots(
+            total_rows, 1, sharex=True, squeeze=False,
+            figsize=(8, max(0.55 * total_rows + 1.2, 3)),
+        )
+        axes = axes[:, 0]
+        fig.subplots_adjust(left=0.2, right=0.88, top=0.92, bottom=0.1, hspace=0.15)
+    
+        row_idx = 0
+        sc = None
+        for block_i, (model_key, model_cats) in enumerate(rows):
+            start_row = row_idx
+            for cat in model_cats:
+                ax = axes[row_idx]
+                tensor = summary_tensors[model_key][cat][key]  # S, N, 2
+                weights, xs = tensor[..., 0].numpy(), tensor[..., 1].numpy()
+    
+                all_x, all_y, all_c = [], [], []
+                for s in range(xs.shape[0]):
+                    x_s, w_s = xs[s], weights[s]
+                    valid = ~np.isnan(x_s)
+                    x_s, w_s = x_s[valid], w_s[valid]
+                    all_x.append(x_s)
+                    all_y.append(beeswarm_y(x_s) + s)
+                    all_c.append(w_s)
+                all_x, all_y, all_c = (np.concatenate(a) for a in (all_x, all_y, all_c))
+                perm = np.random.permutation(len(all_x))
+    
+                sc = ax.scatter(all_x[perm], all_y[perm], c=all_c[perm], s=0.25,
+                                cmap=cmap, vmin=vmin, vmax=vmax)
+                ax.set_xlim(xmin, xmax)
+                ax.set_yticks([])
+                if row_idx != total_rows - 1:
+                    ax.set_xticks([])
+                ax.set_ylabel(cat, fontsize=7, rotation=0, ha="right", va="center")
+                for spine in ("top", "right", "left"):
+                    ax.spines[spine].set_visible(False)
+                if block_i % 2 == 1:
+                    ax.set_facecolor((0.5, 0.5, 0.5, 0.06))
+                row_idx += 1
+    
+            end_row = row_idx - 1
+            top_y = axes[start_row].get_position().y1
+            bot_y = axes[end_row].get_position().y0
+            fig.text(0.16, (top_y + bot_y) / 2, parsed[model_key]["label"],
+                    fontsize=8, fontweight="bold", va="center", ha="right")
+    
+        axes[-1].set_xlabel(SCATTER_XLABELS[key], fontsize=10)
+        fig.suptitle(KEY_TITLES[key], fontsize=14, fontweight="bold")
+        fig.text(0.04, 0.5, "Model", va="center", rotation=90, fontsize=11)
+    
+        cax = fig.add_axes([0.91, 0.15, 0.02, 0.7])
+        fig.colorbar(sc, cax=cax, label="Attention Weight")
+    
+        fig.savefig(save_path, dpi=300, bbox_inches="tight")
+        plt.close(fig)
