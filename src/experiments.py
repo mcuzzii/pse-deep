@@ -368,12 +368,12 @@ class Experiment:
                 24
             )
             non_train_split = df.df.loc[df.df.index.get_level_values('local_time') > cutoff]
+            print(cutoff)
 
         else:
             non_train_split = df.df.iloc[last_train_idx - self.stock_lookback + 2:]
 
         non_test_mask = non_train_split.index.get_level_values('local_time') <= self.val_cutoff
-        print(non_test_mask.sum())
         return non_train_split.loc[non_test_mask]
 
     def _get_test_split(self, df):
