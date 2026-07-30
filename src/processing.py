@@ -11,12 +11,145 @@ import json
 import re
 from dotenv import load_dotenv
 import subprocess
+import matplotlib.pyplot as plt
+import matplotlib.colors as mcolors
+import seaborn as sns
 
 # Regex patterns.
 URL_PATTERN = r'(https?://[^\s<>"]+|www\.[^\s<>"]+|[a-zA-Z0-9.-]+\.[a-z]{2,6}/[^\s<>"]*)'
 USER_PATTERN = r'@\w+'
 HASHTAG_PATTERN = r'#(\w+)'
 CASHTAG_PATTERN = r'\$(\w+)'
+
+# ---------------------------------------------------------------------------
+# EDA plotting infrastructure.
+#
+# Kept visually consistent with the attention-analysis plots (bold 13pt
+# titles, 8pt tick labels, a purple -> yellow custom colormap, tight layouts,
+# and 300dpi bbox-tight saves). Swap the COLORS palette out for the project's
+# shared style module if/when one exists.
+# ---------------------------------------------------------------------------
+
+COLORS = {
+    'purple':  '#6C5CE7',
+    'indigo':  '#4B4FCC',
+    'teal':    '#17A2A2',
+    'seafoam': '#4FD1B5',
+    'green':   '#38A169',
+    'yellow':  '#ECC94B',
+    'red':     '#E5533D',
+    'gray':    '#718096',
+}
+
+EDA_DIR = Path('results/eda')
+
+def _eda_cmap():
+    cmap = mcolors.LinearSegmentedColormap.from_list(
+        'custom_viridis',
+        [COLORS['purple'], COLORS['indigo'], COLORS['teal'],
+         COLORS['seafoam'], COLORS['green'], COLORS['yellow']]
+    )
+    cmap.set_bad(color=(0, 0, 0, 0))
+    return cmap
+
+def _eda_out_dir(subdir: str = ''):
+    out_dir = EDA_DIR / subdir if subdir else EDA_DIR
+    out_dir.mkdir(parents=True, exist_ok=True)
+    return out_dir
+
+def _style_axis(ax, title, xlabel=None, ylabel=None, rotate_x=0):
+    ax.set_title(title, fontsize=13, fontweight='bold')
+    if xlabel is not None:
+        ax.set_xlabel(xlabel)
+    if ylabel is not None:
+        ax.set_ylabel(ylabel)
+    ax.tick_params(axis='both', labelsize=8)
+    if rotate_x:
+        plt.setp(ax.get_xticklabels(), rotation=rotate_x, ha='right' if rotate_x else 'center')
+
+def _save_fig(fig, out_dir: Path, name: str):
+    fig.tight_layout()
+    fig.savefig(out_dir / f'{name}.png', dpi=300, bbox_inches='tight')
+    plt.close(fig)
+
+def plot_price_series(df, price_col, file_name, volume_col=None, subdir='stock_price'):
+    """ Plots a raw price series (and volume, if given) before any standardization. """
+
+    out_dir = _eda_out_dir(subdir)
+
+    fig, ax = plt.subplots(figsize=(10, 5))
+    ax.plot(df.index, df[price_col].astype(float), color=COLORS['indigo'], linewidth=0.8)
+    _style_axis(ax, f'{file_name.upper()} Price (Pre-Standardization)', 'Local Time', 'Price', rotate_x=45)
+
+    if volume_col is not None and volume_col in df.columns:
+        ax2 = ax.twinx()
+        ax2.bar(df.index, df[volume_col].astype(float), color=COLORS['seafoam'], alpha=0.25, width=0.0007)
+        ax2.set_ylabel('Volume', fontsize=9)
+        ax2.tick_params(axis='y', labelsize=8)
+
+    _save_fig(fig, out_dir, f'{file_name}_price')
+
+def plot_correlation_heatmap(data, columns, title, file_name, subdir='correlation'):
+    """ Plots a lower-triangle correlation heatmap for the given set of columns. """
+
+    columns = [c for c in columns if c in data.columns]
+    if len(columns) < 2:
+        return
+
+    out_dir = _eda_out_dir(subdir)
+
+    corr = data[columns].astype(float).corr()
+    mask = np.triu(np.ones_like(corr, dtype=bool), k=1)
+
+    n = len(columns)
+    figsize = (max(6, n * 0.35), max(5, n * 0.32))
+
+    fig, ax = plt.subplots(figsize=figsize)
+    sns.heatmap(
+        corr,
+        mask=mask,
+        cmap='coolwarm',
+        vmin=-1, vmax=1, center=0,
+        linewidths=0,
+        square=True,
+        cbar_kws={'label': 'Correlation', 'shrink': 0.8},
+        ax=ax
+    )
+    _style_axis(ax, title)
+    ax.tick_params(axis='both', labelsize=7)
+    plt.setp(ax.get_xticklabels(), rotation=90)
+    plt.setp(ax.get_yticklabels(), rotation=0)
+
+    _save_fig(fig, out_dir, file_name)
+
+def plot_category_distribution(series, title, file_name, xlabel=None, subdir='distributions'):
+    """ Plots a bar chart of category counts (e.g. sentiment class or return-label balance). """
+
+    out_dir = _eda_out_dir(subdir)
+
+    counts = series.value_counts().sort_index()
+    palette = [COLORS['purple'], COLORS['indigo'], COLORS['teal'],
+               COLORS['seafoam'], COLORS['green'], COLORS['yellow']]
+    bar_colors = [palette[i % len(palette)] for i in range(len(counts))]
+
+    fig, ax = plt.subplots(figsize=(6, 4))
+    ax.bar(counts.index.astype(str), counts.values, color=bar_colors)
+    _style_axis(ax, title, xlabel, 'Count', rotate_x=45)
+
+    _save_fig(fig, out_dir, file_name)
+
+def plot_feature_relevance(relevance, selected_features, title, file_name, subdir='feature_selection', top_n=20):
+    """ Plots a horizontal bar chart of the top mRMR-relevance features. """
+
+    out_dir = _eda_out_dir(subdir)
+
+    top_features = relevance[selected_features].sort_values(ascending=False).head(top_n)
+
+    fig, ax = plt.subplots(figsize=(7, max(4, len(top_features) * 0.3)))
+    ax.barh(top_features.index[::-1], top_features.values[::-1], color=COLORS['teal'])
+    _style_axis(ax, title, 'mRMR Relevance Score')
+
+    _save_fig(fig, out_dir, file_name)
 
 # Decorator that records which methods have been called.
 def record_history(method):
@@ -459,6 +592,14 @@ class DataSource:
         # Step 1: Fast Language Detection (Row by Row is okay here, langid is fast)
         print("Detecting languages...")
         self.df[['detected_lang', 'en_score']] = self.df[self.text_col].apply(get_lang).apply(pd.Series)
+
+        # EDA: distribution of detected headline languages.
+        plot_category_distribution(
+            self.df['detected_lang'],
+            title='Detected Headline Language Distribution',
+            file_name=f'{self.file_name}_language_dist',
+            xlabel='Language'
+        )
         
         # Step 2: Group by language to batch translate efficiently
         # We ignore 'en' as it doesn't need translation
@@ -560,6 +701,14 @@ class DataSource:
             sentiment_df['finbert_combined_score'] = sentiment_df['bullish'] - sentiment_df['bearish']
         
         self.df[sentiment_df.columns] = sentiment_df.values
+
+        # EDA: class balance of the FinBERT sentiment labels.
+        plot_category_distribution(
+            self.df['sentiment'],
+            title='News Headline Sentiment Distribution',
+            file_name=f'{self.file_name}_sentiment_dist',
+            xlabel='Sentiment'
+        )
     
     def get_headline_sentiment_examples(
         self,
@@ -635,6 +784,14 @@ class DataSource:
         sentiment_df.columns = [snake_case(col) for col in sentiment_df.columns]
         for col in sentiment_df.columns:
             self.df[col] = sentiment_df[col].values
+
+        # EDA: class balance of the multilingual sentiment labels.
+        plot_category_distribution(
+            self.df['sentiment'],
+            title='Social Media Post Sentiment Distribution',
+            file_name=f'{self.file_name}_sentiment_dist',
+            xlabel='Sentiment'
+        )
     
     def get_social_sentiment_examples(
         self,
@@ -885,6 +1042,9 @@ class DataSource:
         self._ohlc_fill(c)
         self._fill(c, 'net', 'perc_chg', 'volume', value=0)
 
+        # EDA: raw close price (and volume) before any indicators or standardization touch it.
+        plot_price_series(self.df, c['close'], self.file_name, volume_col=c['volume'])
+
         self._close_indicators(c)
         self._hlc_indicators(c)
         self._cv_indicators(c)
@@ -1027,6 +1187,20 @@ class DataSource:
 
         self.df = self.df.sort_index()
 
+        # EDA: class balance of the up/down return labels for this stock.
+        plot_category_distribution(
+            self.df[f'{self.file_name}_10m_return'],
+            title=f'{self.file_name.upper()} 10-Minute Return Label Balance',
+            file_name=f'{self.file_name}_10m_return_balance',
+            xlabel='Return Direction (1 = Up)'
+        )
+        plot_category_distribution(
+            self.df[f'{self.file_name}_30m_return'],
+            title=f'{self.file_name.upper()} 30-Minute Return Label Balance',
+            file_name=f'{self.file_name}_30m_return_balance',
+            xlabel='Return Direction (1 = Up)'
+        )
+
     @record_history
     def _process_high_frequency_instruments(
         self,
@@ -1081,6 +1255,14 @@ class DataSource:
             self._process_forex()
         elif self._medium == 'oil':
             self._process_oil()
+
+        # EDA: correlation between the engineered indicators for this instrument.
+        indicator_cols = [col for col in self.df.columns if col.startswith(f'{fn}_')]
+        plot_correlation_heatmap(
+            self.df, indicator_cols,
+            title=f'{fn.upper()} Indicator Correlations',
+            file_name=f'{fn}_indicator_corr'
+        )
 
         na_counts = self.df.iloc[50:].isna().sum()
         na_cols = na_counts[na_counts > 0]
@@ -1217,6 +1399,19 @@ class DataSource:
         self.selected_features = selected_features
         self.relevance = relevance
         self.redundancy = redundancy
+
+        # EDA: relevance of the top mRMR-selected features, and how correlated they are
+        # with one another (a proxy for how much redundancy mRMR left on the table).
+        plot_feature_relevance(
+            self.relevance, self.selected_features,
+            title=f'Top mRMR Feature Relevance ({self._target}m Horizon)',
+            file_name=f'features_{self._target}m_relevance'
+        )
+        plot_correlation_heatmap(
+            self.df, self.selected_features,
+            title=f'Feature-Selected Feature Correlations ({self._target}m Horizon)',
+            file_name=f'features_{self._target}m_selected_corr'
+        )
     
     @record_history
     def save_selected_features(self, ignore_history: bool = False):
@@ -1460,6 +1655,21 @@ class DataSource:
             y=mrmr_df[f'stock_{self._target}m_return'],
             K=15,
             return_scores=True
+        )
+
+        medium_label = self._medium.replace('_', ' ').title()
+
+        # EDA: relevance of the top mRMR-selected text indicators, and their pairwise
+        # correlations (computed on the same pooled frame used for selection).
+        plot_feature_relevance(
+            self.relevance, self.selected_features,
+            title=f'Top mRMR {medium_label} Feature Relevance ({self._target}m Horizon)',
+            file_name=f'{self.file_name}_{self._target}m_relevance'
+        )
+        plot_correlation_heatmap(
+            mrmr_df, self.selected_features,
+            title=f'{medium_label} Feature-Selected Correlations ({self._target}m Horizon)',
+            file_name=f'{self.file_name}_{self._target}m_selected_corr'
         )
 
         self.df = self.df[self.selected_features]
