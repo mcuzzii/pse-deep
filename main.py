@@ -11,7 +11,7 @@ from utils import seed_everything
 
 seed_everything(42)
 
-from processing import DataSource, get_unique_instruments, get_stocks
+from processing import DataSource, get_unique_instruments, get_stocks, plot_category_distribution
 from experiments import Experiment
 from eval import Eval
 from dotenv import load_dotenv
@@ -26,8 +26,15 @@ def preprocess():
 
     print("Creating social media data...")
     social_media_data = DataSource()
-    social_media_data.create_df(raw_folder_name='social', file_name='social_media', medium='x_posts', text_col='text', date_col='createdAt', ignore_history=True)
+    social_media_data.create_df(raw_folder_name='social', file_name='social_media', medium='x_posts', text_col='text', date_col='createdAt')
     social_media_data.get_social_sentiment_examples()
+
+    plot_category_distribution(
+        social_media_data.df['sentiment'],
+        title='Social Media Post Sentiment Distribution',
+        file_name=f'{social_media_data.file_name}_sentiment_dist',
+        xlabel='Sentiment'
+    )
 
     print("Creating news data...")
     lseg_news_data = DataSource()
