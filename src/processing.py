@@ -1282,11 +1282,11 @@ class DataSource:
         ignore_history: bool = False
     ):
         self._clean_text(ignore_history=ignore_history)
-        self._cohere_embed(
-            cache_location=Path(self.processed_path) / 'cache',
-            tpm_limit=90000,
-            ignore_history=ignore_history
-        )
+        #self._cohere_embed(
+        #    cache_location=Path(self.processed_path) / 'cache',
+        #    tpm_limit=90000,
+        #    ignore_history=ignore_history
+        #)
         if self._medium == 'lseg_news':
             self._translate_headlines(ignore_history=ignore_history)
             self._get_finbert_sentiment(ignore_history=ignore_history)
@@ -1782,7 +1782,7 @@ class DataSource:
             self._load_lseg_news(ignore_history=ignore_history)
             self.text_col = 'text'
             self.date_col = 'date_time'
-            self._recover_timestamps(ignore_history=ignore_history)
+            #self._recover_timestamps(ignore_history=ignore_history)
             self._text_preprocess(ignore_history=ignore_history)
         
         elif self._medium in ['stock', 'bond', 'copper', 'oil', 'fx']:
