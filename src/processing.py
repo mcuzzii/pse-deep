@@ -731,8 +731,8 @@ class DataSource:
         device = "cuda" if torch.cuda.is_available() else "cpu"
         model.to(device)
 
-        #with open('data/raw/languages.json', 'r') as f:
-        #    LANG_MAP = json.load(f)
+        with open('data/raw/languages.json', 'r') as f:
+            LANG_MAP = json.load(f)
 
         # Create a copy to store results
         self.df['cleaned_headline'] = self.df[self.text_col].copy()
@@ -1495,11 +1495,11 @@ class DataSource:
         ignore_history: bool = False
     ):
         self._clean_text(ignore_history=ignore_history)
-        #self._cohere_embed(
-        #    cache_location=Path(self.processed_path) / 'cache',
-        #    tpm_limit=90000,
-        #    ignore_history=ignore_history
-        #)
+        self._cohere_embed(
+            cache_location=Path(self.processed_path) / 'cache',
+            tpm_limit=90000,
+            ignore_history=ignore_history
+        )
         if self._medium == 'lseg_news':
             self._translate_headlines(ignore_history=ignore_history)
             self._get_finbert_sentiment(ignore_history=ignore_history)
@@ -1995,7 +1995,7 @@ class DataSource:
             self._load_lseg_news(ignore_history=ignore_history)
             self.text_col = 'text'
             self.date_col = 'date_time'
-            #self._recover_timestamps(ignore_history=ignore_history)
+            self._recover_timestamps(ignore_history=ignore_history)
             self._text_preprocess(ignore_history=ignore_history)
         
         elif self._medium in ['stock', 'bond', 'copper', 'oil', 'fx']:
