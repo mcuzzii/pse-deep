@@ -72,23 +72,6 @@ def _save_fig(fig, out_dir: Path, name: str):
     fig.savefig(out_dir / f'{name}.png', dpi=300, bbox_inches='tight')
     plt.close(fig)
 
-def plot_price_series(df, price_col, file_name, volume_col=None, subdir='stock_price'):
-    """ Plots a raw price series (and volume, if given) before any standardization. """
-
-    out_dir = _eda_out_dir(subdir)
-
-    fig, ax = plt.subplots(figsize=(10, 5))
-    ax.plot(df.index, df[price_col].astype(float), color=COLORS['indigo'], linewidth=0.8)
-    _style_axis(ax, f'{file_name.upper()} Price (Pre-Standardization)', 'Local Time', 'Price', rotate_x=45)
-
-    if volume_col is not None and volume_col in df.columns:
-        ax2 = ax.twinx()
-        ax2.bar(df.index, df[volume_col].astype(float), color=COLORS['seafoam'], alpha=0.25, width=0.0007)
-        ax2.set_ylabel('Volume', fontsize=9)
-        ax2.tick_params(axis='y', labelsize=8)
-
-    _save_fig(fig, out_dir, f'{file_name}_price')
-
 def plot_correlation_heatmap(data, columns, title, file_name, subdir='correlation'):
     """ Plots a lower-triangle correlation heatmap for the given set of columns. """
 
@@ -360,6 +343,151 @@ def get_elapsed_time(timestamps, reference=None):
     
     num_seconds = (pd.Timestamp('2026-04-17 00:00:00') - reference).total_seconds()
     return (timestamps - reference).total_seconds() / num_seconds
+
+SECTOR_MAP = {
+    'Holding Firms': 'psho',
+    'Mining and Oil': 'psmo',
+    'Services': 'psse',
+    'Property': 'pspr',
+    'Industrial': 'psin',
+    'Financials': 'psfi',
+}
+
+BOND_TENORS = ['phgv2', 'phgv5', 'phgv7', 'phgv10', 'phgv20']
+
+# file_name -> display title, for the standalone single-instrument plots
+SINGLE_INSTRUMENTS = {
+    'lcoc1': 'Oil',
+    'xau': 'Gold (XAU)',
+    'usd': 'USD',
+    'copper': 'Copper',
+}
+
+
+def _load_instrument_df(file_name, processed_path):
+    """ Loads a cached instrument DataSource and returns its dataframe, or None if missing. """
+    path = Path(processed_path) / f'{file_name}.joblib'
+    if not path.exists():
+        print(f"WARNING: no cached data found for '{file_name}' at {path}; skipping.")
+        return None
+    return joblib.load(path).df
+
+
+def _get_price_and_volume(df, file_name):
+    """ Returns (price_series, volume_series_or_None) for an instrument dataframe.
+
+    Prefers the close price; if unavailable, falls back to the midprice of bid/ask.
+    Volume is returned only if a volume column exists.
+    """
+
+    close_col = f'{file_name}_close'
+    volume_col = f'{file_name}_volume'
+
+    if close_col in df.columns:
+        price = df[close_col].astype(float)
+    else:
+        bid_col = f'{file_name}_bid'
+        ask_col = f'{file_name}_ask'
+        price = (df[bid_col].astype(float) + df[ask_col].astype(float)) / 2
+
+    volume = df[volume_col].astype(float) if volume_col in df.columns else None
+
+    return price, volume
+
+
+def _plot_price_panel(ax, df, file_name, title):
+    """ Plots a single close-price (with optional volume overlay) panel onto the given axis. """
+
+    price, volume = _get_price_and_volume(df, file_name)
+
+    ax.plot(df.index, price, color=COLORS['indigo'], linewidth=0.8)
+    _style_axis(ax, title, xlabel='Local Time', ylabel='Price', rotate_x=45)
+
+    if volume is not None:
+        ax2 = ax.twinx()
+        ax2.bar(df.index, volume, color=COLORS['seafoam'], alpha=0.25, width=0.0007)
+        ax2.set_ylabel('Volume', fontsize=9)
+        ax2.tick_params(axis='y', labelsize=8)
+
+
+def _plot_multi_panel(panel_specs, out_dir, file_name, processed_path):
+    """ Plots a stacked multi-panel figure. panel_specs is a list of (instrument_name, title). """
+
+    fig, axes = plt.subplots(
+        len(panel_specs), 1,
+        figsize=(10, 4 * len(panel_specs)),
+        sharex=False
+    )
+    if len(panel_specs) == 1:
+        axes = [axes]
+
+    for ax, (instrument_name, title) in zip(axes, panel_specs):
+        instrument_df = _load_instrument_df(instrument_name, processed_path)
+        if instrument_df is None:
+            ax.set_visible(False)
+            continue
+        _plot_price_panel(ax, instrument_df, instrument_name, title)
+
+    _save_fig(fig, out_dir, file_name)
+
+
+def plot_price_series(processed_path='data/processed', subdir='stock_price'):
+    """ Plots raw price series (and volume, where available) before any standardization.
+
+    Produces:
+      - a single-panel plot for PSEI
+      - a multi-panel plot per sector: the sector index plus one panel per constituent stock
+      - single-panel plots for oil, gold (XAU), USD, and copper
+      - a multi-panel plot for bonds (phgv2, phgv5, phgv7, phgv10, phgv20)
+
+    Reads each instrument's cached DataSource from `processed_path`, so it should be
+    run once, after all relevant instruments have already been processed and saved.
+    """
+
+    out_dir = _eda_out_dir(subdir)
+    processed_path = Path(processed_path)
+
+    # --- PSEI ---
+    psei_df = _load_instrument_df('psei', processed_path)
+    if psei_df is not None:
+        fig, ax = plt.subplots(figsize=(10, 5))
+        _plot_price_panel(ax, psei_df, 'psei', 'PSEI Price (Pre-Standardization)')
+        _save_fig(fig, out_dir, 'psei_price')
+
+    # --- Sector indices + constituents ---
+    sectors = pd.read_excel('data/raw/info/sectors_and_subsectors.xlsx')
+    sectors.columns = [snake_case(col) for col in sectors.columns]
+    sectors['sector'] = sectors['sector'].map(SECTOR_MAP)
+    sectors['stock_symbol'] = sectors['stock_symbol'].str.lower()
+
+    for sector_index in sorted(sectors['sector'].dropna().unique()):
+        constituents = sorted(
+            sectors.loc[sectors['sector'] == sector_index, 'stock_symbol'].tolist()
+        )
+
+        panel_specs = [(sector_index, f'{sector_index.upper()} Price (Sector Index)')]
+        panel_specs += [
+            (stock, f'{stock.upper()} Price (Constituent)')
+            for stock in constituents
+        ]
+
+        _plot_multi_panel(panel_specs, out_dir, f'{sector_index}_price', processed_path)
+
+    # --- Single-instrument commodities/currency ---
+    for file_name, title in SINGLE_INSTRUMENTS.items():
+        instrument_df = _load_instrument_df(file_name, processed_path)
+        if instrument_df is None:
+            continue
+        fig, ax = plt.subplots(figsize=(10, 5))
+        _plot_price_panel(ax, instrument_df, file_name, f'{title} Price (Pre-Standardization)')
+        _save_fig(fig, out_dir, f'{file_name}_price')
+
+    # --- Bonds ---
+    bond_panel_specs = [
+        (tenor, f'{tenor.upper()} Price (Pre-Standardization)')
+        for tenor in BOND_TENORS
+    ]
+    _plot_multi_panel(bond_panel_specs, out_dir, 'bonds_price', processed_path)
 
 class DataSource:
     """A class for storing and processing a dataset."""
@@ -1129,9 +1257,6 @@ class DataSource:
 
         self._ohlc_fill(c)
         self._fill(c, 'net', 'perc_chg', 'volume', value=0)
-
-        # EDA: raw close price (and volume) before any indicators or standardization touch it.
-        plot_price_series(self.df, c['close'], self.file_name, volume_col=c['volume'])
 
         self._close_indicators(c)
         self._hlc_indicators(c)

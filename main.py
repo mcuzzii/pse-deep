@@ -11,7 +11,7 @@ from utils import seed_everything
 
 seed_everything(42)
 
-from processing import DataSource, get_unique_instruments, get_stocks, plot_category_distribution
+from processing import DataSource, get_unique_instruments, get_stocks, plot_price_series
 from experiments import Experiment
 from eval import Eval
 from dotenv import load_dotenv
@@ -34,14 +34,6 @@ def preprocess():
     lseg_news_data.create_df(raw_folder_name='news', file_name='news', medium='lseg_news')
     lseg_news_data.get_translated_examples()
     lseg_news_data.get_headline_sentiment_examples()
-
-    plot_category_distribution(
-        lseg_news_data.df['sentiment'],
-        title='News Headline Sentiment Distribution',
-        file_name=f'{lseg_news_data.file_name}_sentiment_dist',
-        xlabel='Sentiment',
-        order=['Bearish', 'Neutral', 'Bullish']
-    )
 
     for i in random.sample(lseg_news_data.df.index.tolist(), 3):
         lseg_news_data.get_similar_embeddings(index=i, n_results=10)
@@ -107,6 +99,8 @@ def preprocess():
         stock_data.create_df(file_name=stock, medium='combined')
         del stock_data
         gc.collect()
+
+    plot_price_series()
     
     print("Selecting features...")
     features_30 = DataSource()
@@ -145,22 +139,22 @@ def preprocess():
     gc.collect()
 
     std_social_media_30 = DataSource()
-    std_social_media_30.create_df(file_name='social_media', medium='final_text', target=30, ignore_history=True)
+    std_social_media_30.create_df(file_name='social_media', medium='final_text', target=30)
     del std_social_media_30
     gc.collect()
 
     std_social_media_10 = DataSource()
-    std_social_media_10.create_df(file_name='social_media', medium='final_text', target=10, ignore_history=True)
+    std_social_media_10.create_df(file_name='social_media', medium='final_text', target=10)
     del std_social_media_10
     gc.collect()
 
     social_indicators_30 = DataSource()
-    social_indicators_30.create_df('social_media', medium='social_indicators', target=30, ignore_history=True)
+    social_indicators_30.create_df('social_media', medium='social_indicators', target=30)
     del social_indicators_30
     gc.collect()
 
     social_indicators_10 = DataSource()
-    social_indicators_10.create_df('social_media', medium='social_indicators', target=10, ignore_history=True)
+    social_indicators_10.create_df('social_media', medium='social_indicators', target=10)
     del social_indicators_10
     gc.collect()
 
