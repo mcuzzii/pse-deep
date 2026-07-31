@@ -122,12 +122,22 @@ def plot_correlation_heatmap(data, columns, title, file_name, subdir='correlatio
 
     _save_fig(fig, out_dir, file_name)
 
-def plot_category_distribution(series, title, file_name, xlabel=None, subdir='distributions'):
-    """ Plots a bar chart of category counts (e.g. sentiment class or return-label balance). """
+def plot_category_distribution(series, title, file_name, xlabel=None, subdir='distributions', order=None):
+    """ Plots a bar chart of category counts (e.g. sentiment class or return-label balance).
+
+    order: optional list of category labels specifying the left-to-right bar order.
+           Categories in `order` but missing from the data are shown with count 0;
+           categories in the data but not in `order` are dropped.
+    """
 
     out_dir = _eda_out_dir(subdir)
 
-    counts = series.value_counts().sort_index()
+    counts = series.value_counts()
+    if order is not None:
+        counts = counts.reindex(order, fill_value=0)
+    else:
+        counts = counts.sort_index()
+
     palette = [COLORS['purple'], COLORS['indigo'], COLORS['teal'],
                COLORS['seafoam'], COLORS['green'], COLORS['yellow']]
     bar_colors = [palette[i % len(palette)] for i in range(len(counts))]
@@ -707,7 +717,8 @@ class DataSource:
             self.df['sentiment'],
             title='News Headline Sentiment Distribution',
             file_name=f'{self.file_name}_sentiment_dist',
-            xlabel='Sentiment'
+            xlabel='Sentiment',
+            order=['Bearish', 'Neutral', 'Bullish']
         )
     
     def get_headline_sentiment_examples(
@@ -790,7 +801,8 @@ class DataSource:
             self.df['sentiment'],
             title='Social Media Post Sentiment Distribution',
             file_name=f'{self.file_name}_sentiment_dist',
-            xlabel='Sentiment'
+            xlabel='Sentiment',
+            order=['Very Negative', 'Negative', 'Neutral', 'Positive', 'Very Positive']
         )
     
     def get_social_sentiment_examples(
