@@ -603,8 +603,8 @@ class DataSource:
         device = "cuda" if torch.cuda.is_available() else "cpu"
         model.to(device)
 
-        with open('data/raw/languages.json', 'r') as f:
-            LANG_MAP = json.load(f)
+        #with open('data/raw/languages.json', 'r') as f:
+        #    LANG_MAP = json.load(f)
 
         # Create a copy to store results
         self.df['cleaned_headline'] = self.df[self.text_col].copy()
