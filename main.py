@@ -39,7 +39,7 @@ def preprocess():
 
     print("Creating news data...")
     lseg_news_data = DataSource()
-    lseg_news_data.create_df(raw_folder_name='news', file_name='news', medium='lseg_news', ignore_history=True)
+    lseg_news_data.create_df(raw_folder_name='news', file_name='news', medium='lseg_news')
     lseg_news_data.get_translated_examples()
     lseg_news_data.get_headline_sentiment_examples()
 
