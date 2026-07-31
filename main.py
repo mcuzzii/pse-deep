@@ -26,12 +26,12 @@ def preprocess():
 
     print("Creating social media data...")
     social_media_data = DataSource()
-    social_media_data.create_df(raw_folder_name='social', file_name='social_media', medium='x_posts', text_col='text', date_col='createdAt')
+    social_media_data.create_df(raw_folder_name='social', file_name='social_media', medium='x_posts', text_col='text', date_col='createdAt', ignore_history=True)
     social_media_data.get_social_sentiment_examples()
 
     print("Creating news data...")
     lseg_news_data = DataSource()
-    lseg_news_data.create_df(raw_folder_name='news', file_name='news', medium='lseg_news')
+    lseg_news_data.create_df(raw_folder_name='news', file_name='news', medium='lseg_news', ignore_history=True)
     lseg_news_data.get_translated_examples()
     lseg_news_data.get_headline_sentiment_examples()
 
@@ -235,4 +235,4 @@ def main():
     evaluator.plot_summary_grids()
 
 if __name__ == '__main__':
-    run_experiments()
+    preprocess()
