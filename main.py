@@ -33,7 +33,8 @@ def preprocess():
         social_media_data.df['sentiment'],
         title='Social Media Post Sentiment Distribution',
         file_name=f'{social_media_data.file_name}_sentiment_dist',
-        xlabel='Sentiment'
+        xlabel='Sentiment',
+        order=['Very Negative', 'Negative', 'Neutral', 'Positive', 'Very Positive']
     )
 
     print("Creating news data...")
