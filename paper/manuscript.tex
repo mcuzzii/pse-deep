@@ -3,6 +3,7 @@
 
 \usepackage[american]{babel}
 \usepackage{csquotes}
+\usepackage{tocloft}
 \usepackage{longtable}
 \usepackage{booktabs}
 \usepackage{float}
@@ -32,7 +33,7 @@
 \DeclareMathOperator*{\argtopk}{arg\,topk}
 
 \title{Evaluating NLP and Deep Learning Approaches for Forecasting of Intraday Philippine Stock Market Reactions Using Heterogeneous Data Sources}
-\shorttitle{Evaluating NLP and Deep Learning Approaches}
+\shorttitle{}
 
 \author{Marcus Joshua T. Tornea}
 \affiliation{University of Asia and the Pacific}
@@ -50,7 +51,255 @@
 
 \begin{document}
 
-\maketitle
+% =====================================================================
+% UA&P BSDS CAPSTONE FRONT MATTER
+% -----------------------------------------------------------------
+% HOW TO USE
+% 1. Add \usepackage{tocloft} to your preamble (needed for the
+%    List of Maps / Pictures / Appendices, only if you use them).
+% 2. In your main .tex file, DELETE the line \maketitle.
+% 3. Paste everything below, right after \begin{document}.
+% 4. Delete the \section{Chapter 1: Introduction} line you already
+%    have -- it's reproduced below inside the arabic-numbered part,
+%    so you don't get it twice.
+% =====================================================================
+
+% ---------------------------------------------------------------
+% FRONT MATTER PAGE NUMBERING (lowercase roman numerals)
+% ---------------------------------------------------------------
+\pagenumbering{roman}
+
+% ---------------------------------------------------------------
+% TITLE PAGE  (p. i)
+% ---------------------------------------------------------------
+\begin{titlepage}
+\thispagestyle{empty}
+\begin{center}
+\vspace*{1in}
+
+{\bfseries EVALUATING NLP AND DEEP LEARNING APPROACHES FOR FORECASTING
+OF INTRADAY PHILIPPINE STOCK MARKET REACTIONS USING HETEROGENEOUS
+DATA SOURCES}
+
+\vspace{0.5in}
+Presented to the\\
+Faculty of the Data Science Program\\
+Department of Mathematics\\
+School of Sciences and Engineering\\
+University of Asia and the Pacific
+
+\vspace{0.5in}
+In Partial Fulfillment of the\\
+Requirements for the Degree of\\
+Bachelor of Science in Data Science
+
+\vspace{0.75in}
+By\\
+\vspace{0.15in}
+Marcus Joshua T. Tornea
+
+\vspace{0.75in}
+July 2026
+
+\end{center}
+\end{titlepage}
+
+% ---------------------------------------------------------------
+% APPROVAL SHEET  (p. ii)
+% ---------------------------------------------------------------
+\newpage
+\thispagestyle{empty}
+\begin{center}
+{\bfseries APPROVAL SHEET}
+\end{center}
+\vspace{0.3in}
+
+\noindent The capstone entitled EVALUATING NLP AND DEEP LEARNING
+APPROACHES FOR FORECASTING OF INTRADAY PHILIPPINE STOCK MARKET
+REACTIONS USING HETEROGENEOUS DATA SOURCES, prepared and submitted
+by Marcus Joshua T. Tornea in partial fulfillment of the requirements
+of the degree of BACHELOR OF SCIENCE IN DATA SCIENCE, is approved.
+
+\vspace{0.3in}
+\begin{center}
+\rule{2.8in}{0.4pt}\\
+{\bfseries MS. KIMBERLY MAY M. VALLESTEROS}\\
+Faculty in-charge\\
+School of Sciences and Engineering\\
+University of Asia and the Pacific
+
+\vspace{0.3in}
+{\bfseries PANEL}
+
+\vspace{0.3in}
+\rule{2.8in}{0.4pt}\\
+{\bfseries MR. ELMER C. PERAMO} \\
+Capstone Adviser
+
+\vspace{0.3in}
+\rule{2.8in}{0.4pt}\\
+{\bfseries MS. MILLICENT H. SINGSON}\\
+Panelist
+
+\vspace{0.3in}
+\rule{2.8in}{0.4pt}\\
+{\bfseries MR. CAMILO CARLO B. MENDIOLA}\\
+Panelist
+\end{center}
+
+\vfill
+
+% ---------------------------------------------------------------
+% DEDICATION (p. iii) -- optional; delete this page if you skip it
+% ---------------------------------------------------------------
+\newpage
+\thispagestyle{empty}
+\begin{center}
+{\bfseries DEDICATION}
+\end{center}
+\vspace{0.5in}
+\noindent
+To my parents and my family,
+for their support, love, and guidance.
+
+To my partner,
+who was there when this work began as a simple idea over a coffee table, and never stopped believing in me until the very end.
+
+% ---------------------------------------------------------------
+% ABSTRACT  (p. iv) -- max 2.5 pages, own heading (not apa7's
+% built-in structured abstract, since the school wants a plain one)
+% ---------------------------------------------------------------
+\newpage
+\thispagestyle{empty}
+\begin{center}
+{\bfseries ABSTRACT}
+\end{center}
+\vspace{0.3in}
+\noindent
+Predicting the stock market is a challenging task, given by constantly shifting market volatility regimes, market efficiency, and overall low signal. Even a small capacity at predicting the stock market is already a significant advantage; thus, using fast, automated predictive methods has been researched thoroughly for the possibility of gaining a competitive edge in the market. Uniquely engineered deep learning and NLP (natural language processing) methods have become common pathways of novel research, exploiting the flexibility of deep learning architectures to support unique data configurations, which opens questions about the general advantage of certain kinds of deep learning solutions from others. In this study, certain design factors in building an intraday (per-minute) stock return direction classifier using deep learning and NLP methods, such as \textit{overall pipeline complexity} (transformed-based vs. MLP-based pipelines) and \textit{prediction horizon}, as well as text modality inclusions such as the \textit{inclusion of news data} and \textit{inclusion of social media data} are analyzed by quantifying their main and interaction effects on three model evaluation metrics—raw machine learning performance, stock confidence ranking behavior, and temporal stability of prediction confidence—through a factorial experiment. Prediction horizons have the single strongest effect, showcasing that a switch from 10-minute to 30-minute returns as the prediction target diminishes prediction capacity. Overall pipeline complexity and the inclusions of news data and social media data do not exhibit dominating main effects, but have significant interacting mechanisms, showcasing that combinations of design configurations matter more than individually varying settings.\textit{}
+% State the business problem, analytics questions, methodology,
+% assumptions/hypotheses (if any), and major findings/recommendations.
+
+% ---------------------------------------------------------------
+% ACKNOWLEDGMENT (p. v) -- optional
+% ---------------------------------------------------------------
+\newpage
+\thispagestyle{empty}
+\begin{center}
+{\bfseries ACKNOWLEDGMENT}
+\end{center}
+\vspace{0.3in}
+\noindent
+I would like to express my deepest gratitude to my parents, for providing me the motivation, guidance, and the required financial support for proprietary data collection and access to cloud computing services. I would also like to thank my institution for providing an avenue for collecting the required financial intraday data across a vast range of financial markets both locally and internationally. I also thank my panel, professor, and thesis adviser for their patience and guidance in identifying the strengths and weaknesses of my overall work. Finally, I would like to express my most heartfelt gratitude to my partner for her emotional and moral support, and for her company, both in times of greatest need and in celebration of success.
+
+% ---------------------------------------------------------------
+% TABLE OF CONTENTS (p. vi)
+% ---------------------------------------------------------------
+\newpage
+\tableofcontents
+\thispagestyle{empty}
+
+% ---------------------------------------------------------------
+% LIST OF TABLES (p. vii) -- only include if you actually have tables
+% ---------------------------------------------------------------
+\newpage
+\listoftables
+\thispagestyle{empty}
+
+% ---------------------------------------------------------------
+% LIST OF FIGURES (p. viii) -- only include if you have figures
+% ---------------------------------------------------------------
+\newpage
+\listoffigures
+\thispagestyle{empty}
+
+% ---------------------------------------------------------------
+% LIST OF MAPS / LIST OF PICTURES (pp. ix-x) -- OPTIONAL
+% These aren't native LaTeX float types, so they need tocloft.
+% Uncomment the block below (and add \usepackage{tocloft} to your
+% preamble) only if your thesis actually contains maps or pictures
+% as a category distinct from "figures".
+% ---------------------------------------------------------------
+% \newpage
+% \newlistof{maps}{lom}{List of Maps}
+% \newfloat{map}{htbp}{lom}
+% \listofmaps
+% \thispagestyle{empty}
+%
+% \newpage
+% \newlistof{pictures}{lop}{List of Pictures}
+% \newfloat{picture}{htbp}{lop}
+% \listofpictures
+% \thispagestyle{empty}
+%
+% To use them in the body:
+% \begin{map}[htbp] ... \caption{...} \end{map}
+% \begin{picture}[htbp] ... \caption{...} \end{picture}
+% (rename \newfloat{picture}... to avoid clashing with LaTeX's
+% built-in `picture` environment if you don't use it elsewhere)
+
+% ---------------------------------------------------------------
+% LIST OF APPENDICES (p. xi) -- simple manual version
+% (only needed if you have more than one appendix)
+% ---------------------------------------------------------------
+% \newpage
+% \thispagestyle{empty}
+% \begin{center}
+% {\bfseries LIST OF APPENDICES}
+% \end{center}
+% \vspace{0.3in}
+% \begin{center}
+% \begin{tabular}{@{}ll@{}}
+% \toprule
+% Appendix & Page \\
+% \midrule
+% A & \textless title of appendix A\textgreater \dotfill \# \\
+% B & \textless title of appendix B\textgreater \dotfill \# \\
+% \bottomrule
+% \end{tabular}
+% \end{center}
+
+% ---------------------------------------------------------------
+% LIST OF ABBREVIATIONS AND ACRONYMS (p. xii) -- manual table
+% ---------------------------------------------------------------
+\newpage
+\thispagestyle{empty}
+\begin{center}
+{\bfseries LIST OF ABBREVIATIONS AND ACRONYMS}
+\end{center}
+\vspace{0.3in}
+\begin{center}
+\begin{tabular}{@{}ll@{}}
+NLP & Natural Language Processing \\
+LLM & Large Language Model \\
+ML & Machine Learning \\
+DL & Deep Learning \\
+GRU & Gated Recurrent Unit \\
+GDP & Gross Domestic Product \\
+LSTM & Long Short Term Memory \\
+PSE & Philippine Stock Exchange \\
+AI & Artificial Intelligence \\
+MCC & Matthew's Correlation Coefficient \\
+PHP & Philippine Peso \\
+USD & United States Dollar \\
+LSEG & London Stock Exchange Group \\
+BERT & Bidirectional Encoded Representations from Transformers \\
+SHAP & SHapley Additive exPlanations \\
+LIME & Local Interpretable Model-agnostic Explanations \\ 
+EMH & Efficient Market Hypothesis \\
+CLOB & Central Limit Order Book \\
+OHLCV & Open High Low Close Volume \\
+ARIMA & Autoregressive Integrated Moving Average
+% Add more rows as needed
+\end{tabular}
+\end{center}
+
+% =====================================================================
+% MAIN BODY -- switch to arabic numbering, restart at 1
+% =====================================================================
+\clearpage
+\pagenumbering{arabic}
+\setcounter{page}{1}
 
 \section{Chapter 1: Introduction}
 \subsection{Background of the Study}
@@ -93,10 +342,10 @@ Why do overall pipeline complexity, prediction horizon, inclusion of news data, 
 Why does each one of overall pipeline complexity, prediction horizon, inclusion of news data, and inclusion of social media interact with or not affect model drift?
 \end{enumerate}
 
-In line with each of these questions are the following research objectives to tackle, concretizing the tangibility of the directions to which the study is taken.
+In line with each of these questions are the research objectives in Table \ref{tab:objectives} to tackle, concretizing the tangibility of the directions to which the study is taken.
 
 \begin{longtable}{p{7cm}p{8cm}}
-\caption{Objectives matrix}
+\caption{Objectives Matrix}
 \label{tab:objectives} \\
 
 \toprule
@@ -104,7 +353,7 @@ Research Question & Objective \\
 \midrule
 \endfirsthead
 
-\caption[]{Objectives matrix (continued)} \\
+\caption[]{Objectives Matrix (Continued)} \\
 \toprule
 Research Question & Objective \\
 \midrule
@@ -179,6 +428,7 @@ The study only focuses on predicting the Philippine stock market. While stock an
 
 In summary, the study does not aim to create a ``state-of-the-art'' model or aim to ``beat'' performance metrics established in the literature, since the main goal is only comparison between models. Moreover, the study also does not aim to investigate the profitability of models; only performance metrics core to the model are analyzed independent of any trading strategy. However, this does not prohibit the study from borrowing trading simulation methodologies to achieve the goal of studying model behaviors, but in doing so, only claims about model behavior (and not portfolio optimization strategies) are made.
 
+\newpage
 \section{Chapter 2: Review of Related Works}
 
 \subsection{Predictability in Efficient Markets}
@@ -566,6 +816,7 @@ The overall study on model interpretability is underdeveloped. Some studies have
 
 All in all, even with an extensive list of references from the most recent years of literature, there are still a number of quite interesting directions of study that are rarely, if not never exposed in the literature, that the current study mostly aims to achieve. This establishes the main rationalization behind the current study's research objectives, using methods that are also guided by the literature in order to maintain relevance with current practices in the field of deep-learning-based stock return prediction. These methods have been carefully crafted, and are summarized in the following chapter.
 
+\newpage
 \section{Chapter 3: Methodology}
 
 \subsection{Research Design}
@@ -609,14 +860,17 @@ The data requirements for this research are highly specific, and mostly require 
 
 The financial time-series datasets are multivariable datasets that update at a minute-level or daily frequency, composed of the stock prices of each blue-chip company in the PSE (the top 30 most highly recognized and most actively-traded stocks), the six sectoral indices, the PSEi (composite index), 1-minute-frequency economic indicators such as the PHP to USD exchange rate, the PHP to gold exchange rate, continuous front-month Commodity Exchange (COMEX) High-grade Copper futures (with ``continuous front-month'' meaning the nearest active contract, rolling over to the next month whenever such contract reaches expiration), continuous front-month Intercontinental Exchange (ICE) Brent Crude Oil futures, and daily-frequency Philippine government bonds maturing in approximately 20 years, 10 years, 7 years, 5 years, and 2 years respectively, at the time of data collection.
 
+Table \ref{tab:financial_datasets} showcases all of the financial time-series datasets used in the study.
+
 \begin{longtable}{@{}l p{3.5in}@{}}
-\caption{All financial datasets constituting all technical time-series data} \\
+\caption{All Financial Datasets Constituting All Technical Time-series Data}
+\label{tab:financial_datasets} \\
 \toprule
 Abbrev. & Name \\
 \midrule
 \endfirsthead
  
-\caption[]{All financial datasets constituting all technical time-series data (continued)} \\
+\caption[]{All Financial Datasets Constituting All Technical Time-series Data (Continued)} \\
 \toprule
 Abbrev. & Name \\
 \midrule
@@ -699,16 +953,17 @@ HGc1 & Continuous Front-month COMEX High-grade Copper Future Contracts \\
 
 \end{longtable}
 
-These datasets comprise of the following data columns, which mainly consist of full or partial OHLCV data, and/or bid and ask prices, net change variables, or refresh frequencies.
+These datasets is composed of the data columns found in Table \ref{tab:financial_features}, which mainly consist of full or partial OHLCV data, and/or bid and ask prices, net change variables, or refresh frequencies.
 
 \begin{longtable}{@{}l p{3.5in}@{}}
-\caption{Relevant raw variable columns for all time-series datasets} \\
+\caption{Relevant Raw Variable Columns for All Time-series Datasets}
+\label{tab:financial_features} \\
 \toprule
 Column & Description \\
 \midrule
 \endfirsthead
  
-\caption[]{Relevant raw variable columns for all time-series datasets (continued)} \\
+\caption[]{Relevant Raw Variable Columns for All Time-series Datasets (Continued)} \\
 \toprule
 Column & Description \\
 \midrule
@@ -782,16 +1037,17 @@ Data inspection revealed that the timestamps collected from LSEG are not fully a
 
 \subsubsection{Social Media Data}
 
-Social media data from X were collected, queried using search terms that describe investor sentiment, commentary, and news updates within the Philippine financial domain (namely on stocks), as well as macroeconomically relevant international events. X posts are structured by a hierarchy: a single thread contains posts and replies, each of which may consist of one or multiple sentences, but a single unit/data observation for this modality is only a single post, not a thread. Each observation contains the following relevant raw columns:
+Social media data from X were collected, queried using search terms that describe investor sentiment, commentary, and news updates within the Philippine financial domain (namely on stocks), as well as macroeconomically relevant international events. X posts are structured by a hierarchy: a single thread contains posts and replies, each of which may consist of one or multiple sentences, but a single unit/data observation for this modality is only a single post, not a thread. Table \ref{tab:social_media_data} showcases the relevant columns found in the raw social media datasets.
 
 \begin{longtable}{@{}l p{3.5in}@{}}
-\caption{Relevant raw variable columns for social media data} \\
+\caption{Relevant Raw Variable Columns for Social Media Data}
+\label{tab:social_media_data} \\
 \toprule
 Column & Description \\
 \midrule
 \endfirsthead
  
-\caption[]{Relevant raw variable columns for social media data (continued)} \\
+\caption[]{Relevant Raw Variable Columns for Social Media Data (Continued)} \\
 \toprule
 Column & Description \\
 \midrule
@@ -842,16 +1098,17 @@ Constructing the models involves rigorous pipelines, which are specific for each
 
 \begin{enumerate}
 \item For experimental settings where the model architecture is transformer-based, a time-series transformer layer accepts as input all the economic data features. This serves as the sequential time-series component of the model to predict stock prices and indices. The time-series transformer has a lookback window of 60 trading minutes—in order to leverage intermediate price momentum effects as well as still be able to capture market microstructure-driven movements. The time-series transformer is equipped with a Time2Vec module for learning temporal positional embeddings. For experimental settings where the model architecture is an MLP, there is no time-series processing component other than summarized rolling technical indicators—input neurons accept the most recent timestamp's feature vector. Preprocessing includes the creation of the aforementioned economic features; however, before doing so, missing data are dealt with through a forward-fill in the case of closing price features, bid and ask prices, and bid and ask yields, zero-fill for volumes, stock returns, refresh rates, and net bid change (absolute and percentage) features, and a fill with the latest available closing price/bid price for opening, high, and low price features. These imputation methods are used since missing trading minutes in LSEG simply indicate zero liquidity, hence zero volumes, rates of change, and also therefore constant price data. The transformed features are standardized on the training split. Care is taken to prevent test data leakage into standardization scaling.
-\item In all experimental settings including news data, an encoder is used based on the architecture. For transformers, \textit{Cohere's embed v4.0}, an LLM embedding model, was used to transform news headlines into 1024-dim Matryoshka embeddings (only the first 256 dimensions are used by truncating the originally requested 1024-dim Matryoshka embeddings in order to reduce dimensionality while prioritizing the most informative dimensions without increasing model parameter count). For MLPs, the \textit{facebook/nllb-200-distilled-600M} neural translation model was used to translate headlines into English first, and \textit{tabularisai/ModernFinBERT} was used to obtain sentiment scores. The NLLB-200 model is a machine translation model with a mean chrF++ performance of 52.33 across all languages for translation to English \parencite{facebook_nllb_600m}, whereas ModernFinBERT is an improvement over the FinBERT model, achieving a sentiment analysis accuracy score of 80\% on the FiQA (Financial Opinion Mining and Question Answering) dataset, with an F1 score of 61\%,	precision of 64\%, and recall of 88\% \parencite{tabularisai_modernfinbert}.
+\item In all experimental settings including news data, an encoder is used based on the architecture. For transformers, \textit{Cohere's embed v4.0}, an LLM embedding model, was used to transform news headlines into 1024-dim Matryoshka embeddings (only the first 256 dimensions are used by truncating the originally requested 1024-dim Matryoshka embeddings in order to reduce dimensionality while prioritizing the most informative dimensions without increasing model parameter count). For MLPs, the \textit{facebook/nllb-200-distilled-600M} neural translation model was used to translate headlines into English first, and \textit{tabularisai/ModernFinBERT} was used to obtain sentiment scores. The NLLB-200 model is a machine translation model with a mean chrF++ performance of 52.33 across all languages for translation to English \parencite{facebook_nllb_600m}, whereas ModernFinBERT is an improvement over the FinBERT model, achieving a sentiment analysis accuracy score of 80\% on the FiQA (Financial Opinion Mining and Question Answering) dataset, with an F1 score of 61\%,	precision of 64\%, and recall of 88\% \parencite{tabularisai_modernfinbert}. Table \ref{tab:translation} showcases the chrF++ translation quality scores of the 19 most widely spoken languages (plus Tagalog) to English using the Facebook NLLB model. Scores are taken from the model card of \textit{facebook/nllb-200-distilled-600M} \parencite{facebook_nllb_600m}.
 
 \begin{longtable}{@{}l c@{}}
-\caption{chrF++ translation quality scores of the 19 most widely spoken languages (plus Tagalog) to English using the Facebook NLLB model. Scores are taken from the model card of \textit{facebook/nllb-200-distilled-600M} \parencite{facebook_nllb_600m}} \\
+\caption{chrF++ Translation Quality Scores (to English)}
+\label{tab:translation} \\
 \toprule
 Language & chrF++ \\
 \midrule
 \endfirsthead
 
-\caption[]{chrF++ translation quality scores of the 19 most widely spoken languages (plus Tagalog) to English using the Facebook NLLB model. Scores are taken from the model card of \textit{facebook/nllb-200-distilled-600M} \parencite{facebook_nllb_600m} (continued)} \\
+\caption[]{chrF++ Translation Quality Scores (to English) (Continued)} \\
 \toprule
 Language & chrF++ \\
 \midrule
@@ -914,11 +1171,10 @@ As mentioned in the previous section, the MCC scores, model drift scores, and tr
 
 After ascertaining the best-performing model out of the sixteen settings for each of the three dependent variables (highest MCC, lowest drift, and highest cumulative trading profits), resulting in three potentially different deep learning models, each are compared to trained machine learning baselines (Logistic Regression, Random Forest, XGBoost, and Support Vector Classifiers) on the same tests (MCC comparison, model drift comparison, and trading simulations), using OLS regression with cluster-robust standard errors to determine statistical significance as well.
 
-
-
+\newpage
 \section{Chapter 4: Results and Discussion}
 
-The below table summarizes the result of the entire experiment, for all deep learning models in each experimental condition. The specification of an experimental setting is by inclusion of each independent variable's keyword within the name, or by the value of such variable (``30'' means that the model predicts 30-minute returns, whereas ``10'' corresponds to 10-minute return models)
+Table \ref{tab:model_descriptives} summarizes the result of the entire experiment, for all deep learning models in each experimental condition. The specification of an experimental setting is by inclusion of each independent variable's keyword within the name, or by the value of such variable (``30'' means that the model predicts 30-minute returns, whereas ``10'' corresponds to 10-minute return models).
 
 \begin{table}[htbp]
 \centering
@@ -958,6 +1214,8 @@ Drift scores are generally higher for the MLP-based and 30-minute models. Stock 
 
 \subsection{MCC Model Performance}
 
+Table \ref{tab:mcc_results} showcases the coefficients of an OLS regression model fitted on MCC scores per stock for every experimental setting. The OLS regression model predicts MCC (Matthew's Correlation Coefficient) per stock as a function of four categorical predictors---\textit{transformer}, \textit{social}, and \textit{news} and \textit{pred\_30}---and all pairwise interactions among these variables.
+
 \begin{table}[htbp]
 \centering
 \caption{Regression Results (DV: MCC)}
@@ -984,8 +1242,6 @@ transformer $\times$ news  & $0.000$  & $0.007$ & $0.06$  & $0.950$             
 \textit{Note:} $^{*}p<0.05$; $^{**}p<0.01$; $^{***}p<0.001$.
 \end{flushleft}
 \end{table}
-
-The OLS regression model predicts MCC (Matthew's Correlation Coefficient) per stock as a function of four categorical predictors---\textit{transformer}, \textit{social}, and \textit{news} and \textit{pred\_30}---and all pairwise interactions among these variables.
 
 The intercept is $0.135$ (SE $= 0.005$, $p < .001$), representing the baseline MCC---that is, the expected MCC when all predictors are at their reference level. This indicates a small positive baseline correlation, reflecting modest predictive performance in the reference condition.
 
@@ -1026,6 +1282,8 @@ Overall, below is a summary of the above main and interaction effects:
     \item \textbf{Effect sizes are modest in absolute terms} (all coefficients $< 0.04$ relative to a $0.135$ baseline), though precisely estimated given the small standard errors. Statistical significance here reflects estimation \textit{precision}, not necessarily practical importance; effect magnitudes should be contextualized against the overall variance of MCC in the data.
 \end{enumerate}
 
+Table \ref{tab:model_comparison_mean} reveals a comparison between the best deep learning model and the machine learning baselines according to MCC scores.
+
 \begin{table}[htbp]
 \centering
 \caption{Mean MCC of Best Deep Learning Model vs. Machine Learning Baselines}
@@ -1045,7 +1303,7 @@ XGBoost                & 0.133 \\
 
 The best deep learning model (Stock News MLP 10) achieves the highest mean MCC (0.137) across the sample, though it is nearly indistinguishable from logistic regression, which posts an almost identical mean MCC of 0.137. This suggests that, on average, the additional complexity of the deep learning architecture does not yield a meaningful performance advantage over a simple linear baseline in this setting. XGBoost follows closely behind with a mean MCC of 0.133, indicating that a well-tuned gradient-boosted tree ensemble remains competitive with both the deep learning model and logistic regression.
 
-Random forest (0.112) and linear SVC (0.108) trail the other three models by a more noticeable margin, each falling roughly 0.02--0.03 below the top-performing models. This gap suggests that these two approaches are comparatively less well-suited to the structure of the underlying prediction task, though they still achieve positive mean MCC values, indicating some degree of predictive signal above chance.
+Random forest (0.112) and linear SVC (0.108) trail the other three models by a more noticeable margin, each falling roughly 0.02--0.03 below the top-performing models. This gap suggests that these two approaches are comparatively less well-suited to the structure of the underlying prediction task, though they still achieve positive mean MCC values, indicating some degree of predictive signal above chance. Table \ref{tab:mcc_baseline_regression} supports these results with an OLS regression fitted on MCC scores per ML baseline and the best deep learning architecture.
 
 \begin{table}[htbp]
 \centering
@@ -1077,6 +1335,8 @@ In contrast, XGBoost and logistic regression show coefficients that are not stat
 Taken together, these results formalize the pattern seen in the descriptive statistics: the deep learning model does not significantly outperform logistic regression or XGBoost, but it does significantly outperform linear SVC and random forest. This indicates that the practical benefit of using a deep learning approach over simpler baselines depends heavily on which baseline is being considered, with tree-ensemble and linear-classifier baselines like XGBoost and logistic regression offering statistically comparable performance, while margin-based and bagged-tree methods like linear SVC and random forest fall meaningfully short.
 
 \subsection{Model Drift}
+
+Table \ref{tab:drift_results} shows a summary of an OLS regression model fitted on the drit scores of every stock for each experimental setting.
 
 \begin{table}[htbp]
 \centering
@@ -1117,6 +1377,8 @@ Finally, \textit{pred\_30} alone shows no significant main effect on drift ($-0.
 
 Overall, these results suggest that \textit{news} is the primary lever for reducing combined drift, but its benefit is context-dependent: it is strongest in isolation and weakens when paired with pred\_30 or social. \textit{Social} contributes a smaller independent drift-reducing effect, while \textit{transformer} and \textit{pred\_30} influence drift only through their interactions rather than as standalone predictors, a notably different pattern from what was observed in the MCC regression, where transformer and pred\_30 were among the strongest main effects.
 
+Table \ref{tab:drift_descriptives} reveals a summary of the drift scores for each machine learning model trained with the same data modalities as the deep learning model with the lowest drift.
+
 \begin{table}[htbp]
 \centering
 \caption{Mean Combined Drift Score by Model Type: Best Deep Learning Model vs. Machine Learning Baselines}
@@ -1136,7 +1398,7 @@ XGBoost                 & 0.096 \\
 
 The best deep learning model (model with the lowest drift—Stock Social MLP 30) shows a mean drift score of 0.036, placing it toward the lower end of the five models but not the lowest. Random forest achieves the lowest mean drift score overall (0.024), followed closely by linear SVC (0.033) and then the deep learning model (0.036). This ordering suggests that, contrary to the framing of Stock Social MLP 30 as the ``least drift'' deep learning variant, both random forest and linear SVC actually exhibit less drift on average within this comparison set.
 
-Logistic regression (0.070) and, in particular, XGBoost (0.096) show substantially higher mean drift scores than the other three models. XGBoost's mean drift score is roughly 2.7 times that of Stock Social MLP 30 and nearly 4 times that of random forest, making it the clear outlier in terms of drift instability. This pattern is notable given that XGBoost and logistic regression were among the strongest performers in the earlier MCC comparison, suggesting a potential trade-off between predictive performance and drift stability for these two baselines.
+Logistic regression (0.070) and, in particular, XGBoost (0.096) show substantially higher mean drift scores than the other three models. XGBoost's mean drift score is roughly 2.7 times that of Stock Social MLP 30 and nearly 4 times that of random forest, making it the clear outlier in terms of drift instability. This pattern is notable given that XGBoost and logistic regression were among the strongest performers in the earlier MCC comparison, suggesting a potential trade-off between predictive performance and drift stability for these two baselines. Table \ref{tab:drift_baseline_regression} shows these results further with OLS regression coefficients for each machine learning model with the reference best deep learning model.
 
 \begin{table}[htbp]
 \centering
@@ -1169,6 +1431,8 @@ Taken together, these results indicate a clear ordering of drift behavior across
 
 \subsection{Trading Simulation Model Performance}
 
+Figure \ref{fig:trading_sim_overall} presents cumulative trading profit over time across four panels, cross-cutting model architecture (Transformer vs. MLP) and prediction horizon (10-minute vs. 30-minute return target), with each panel further disaggregating results by the presence of news (line color) and social media (line style) features.
+
 \begin{figure}[htbp]
 \centering
 \includegraphics[width=\textwidth]{../experiments/results/trading_sim/overall.png}
@@ -1176,11 +1440,13 @@ Taken together, these results indicate a clear ordering of drift behavior across
 \label{fig:trading_sim_overall}
 \end{figure}
 
-Figure~\ref{fig:trading_sim_overall} presents cumulative trading profit over time across four panels, cross-cutting model architecture (Transformer vs. MLP) and prediction horizon (10-minute vs. 30-minute return target), with each panel further disaggregating results by the presence of news (line color) and social media (line style) features. The most striking pattern is the divergence between the two horizons: at the 10-minute horizon (top row), all model and feature configurations produce steadily increasing cumulative profit, ending between roughly 1.27 and 1.35 times the initial value, whereas at the 30-minute horizon (bottom row), all configurations produce steadily \textit{declining} cumulative profit, ending between roughly 0.80 and 0.89. This indicates that the 30-minute-ahead prediction target is fundamentally unprofitable as a trading signal in this simulation, regardless of architecture or auxiliary features, consistent with the earlier regression finding that pred\_30 was associated with significantly lower MCC.
+The most striking pattern is the divergence between the two horizons: at the 10-minute horizon (top row), all model and feature configurations produce steadily increasing cumulative profit, ending between roughly 1.27 and 1.35 times the initial value, whereas at the 30-minute horizon (bottom row), all configurations produce steadily \textit{declining} cumulative profit, ending between roughly 0.80 and 0.89. This indicates that the 30-minute-ahead prediction target is fundamentally unprofitable as a trading signal in this simulation, regardless of architecture or auxiliary features, consistent with the earlier regression finding that pred\_30 was associated with significantly lower MCC.
 
 Within the 10-minute horizon, the Transformer model (top left) shows a clearer separation between feature configurations than the MLP model (top right): the ``no news'' condition (green) outperforms the ``with news'' condition (purple) by a small but visible margin, while social media inclusion (solid vs. dashed lines) makes little difference within each news condition. The MLP model at the 10-minute horizon, by contrast, shows all four line configurations nearly overlapping, suggesting that MLP trading performance at this horizon is largely insensitive to both news and social media inputs.
 
 Within the 30-minute horizon, the pattern reverses in terms of which configuration performs best: the ``with news'' condition (purple) now clearly outperforms the ``no news'' condition (green) in both the Transformer and MLP panels, with the gap widening over the course of the simulation. The ``without social media'' dashed lines also tend to sit above the ``with social media'' solid lines within each news condition at this horizon, particularly toward the end of the simulation window, suggesting that excluding social media data is mildly beneficial for the 30-minute target. Overall, the figure suggests that the value of news and social media inputs is horizon-dependent: they appear mildly detrimental to profit at the 10-minute horizon but mildly protective (i.e., reducing losses) at the 30-minute horizon.
+
+To support these findings further, Table \ref{tab:trading_sim_regression} showcases the OLS regression coefficients of every experimental setting's cumulative profit scores.
 
 \begin{table}[htbp]
 \centering
@@ -1209,13 +1475,15 @@ news                       & $-0.003$ & $0.008$ & $-0.32$  & $0.751$            
 \end{flushleft}
 \end{table}
 
-The intercept of 1.407 represents the baseline cumulative profit when all predictors are at their reference level, and is highly significant ($p < .001$). By far the largest and most significant effect in the model is \textit{pred\_30}, with a coefficient of $-0.487$ ($t = -25.98$, $p < .001$), confirming what is visually apparent in Figure~\ref{fig:trading_sim_overall}: the 30-minute prediction horizon is associated with a dramatic reduction in cumulative trading profit relative to the 10-minute horizon, holding other factors constant. This is by far the dominant driver of cumulative profit in the simulation, dwarfing every other coefficient in the model by an order of magnitude.
+The intercept of 1.407 represents the baseline cumulative profit when all predictors are at their reference level, and is highly significant ($p < .001$). By far the largest and most significant effect in the model is \textit{pred\_30}, with a coefficient of $-0.487$ ($t = -25.98$, $p < .001$), confirming what is visually apparent in Figure \ref{fig:trading_sim_overall}: the 30-minute prediction horizon is associated with a dramatic reduction in cumulative trading profit relative to the 10-minute horizon, holding other factors constant. This is by far the dominant driver of cumulative profit in the simulation, dwarfing every other coefficient in the model by an order of magnitude.
 
 Three interaction terms involving \textit{pred\_30} are also significant and provide insight into the horizon-dependent patterns observed in the figure. The \textit{news} $\times$ \textit{pred\_30} interaction is positive and highly significant ($0.080$, $p < .001$), indicating that news partially offsets the severe profit penalty associated with the 30-minute horizon---consistent with the figure showing the ``with news'' lines sitting above the ``no news'' lines in the bottom row. Conversely, the \textit{social} $\times$ \textit{pred\_30} interaction is negative and significant ($-0.045$, $p < .001$), indicating that social media inclusion \textit{worsens} the 30-minute horizon penalty rather than mitigating it, consistent with the ``without social media'' dashed lines outperforming the ``with social media'' solid lines in the bottom-row panels.
 
 The \textit{news} $\times$ \textit{social} interaction is also significant and negative ($-0.034$, $p = .001$), suggesting that combining both news and social media inputs together yields lower profit than would be expected from summing their individual effects---these two feature sources appear to work against each other rather than compounding positively when used jointly.
 
-None of the remaining terms reach statistical significance at conventional thresholds, including the main effects of \textit{social} ($0.021$, $p = .107$), \textit{transformer} ($-0.013$, $p = .238$), and \textit{news} ($-0.003$, $p = .751$), nor the \textit{transformer} interactions with \textit{pred\_30}, \textit{news}, or \textit{social} (all $p > .18$). This indicates that, unlike prediction horizon and the horizon-dependent feature interactions, model architecture (Transformer vs. MLP) does not have a statistically detectable independent effect on cumulative trading profit in this simulation, nor does it significantly interact with the other predictors---consistent with the relatively similar overall shapes of the Transformer and MLP panels within each horizon in Figure~\ref{fig:trading_sim_overall}.
+None of the remaining terms reach statistical significance at conventional thresholds, including the main effects of \textit{social} ($0.021$, $p = .107$), \textit{transformer} ($-0.013$, $p = .238$), and \textit{news} ($-0.003$, $p = .751$), nor the \textit{transformer} interactions with \textit{pred\_30}, \textit{news}, or \textit{social} (all $p > .18$). This indicates that, unlike prediction horizon and the horizon-dependent feature interactions, model architecture (Transformer vs. MLP) does not have a statistically detectable independent effect on cumulative trading profit in this simulation, nor does it significantly interact with the other predictors---consistent with the relatively similar overall shapes of the Transformer and MLP panels within each horizon in Figure \ref{fig:trading_sim_overall}.
+
+On one hand, Figure \ref{fig:trading_sim_baseline} compares cumulative trading profit over time for the best deep learning model (Stock Social MLP 10) against four machine learning baselines.
 
 \begin{figure}[htbp]
 \centering
@@ -1224,9 +1492,9 @@ None of the remaining terms reach statistical significance at conventional thres
 \label{fig:trading_sim_baseline}
 \end{figure}
 
-Figure~\ref{fig:trading_sim_baseline} compares cumulative trading profit over time for the best deep learning model (Stock Social MLP 10) against four machine learning baselines. All five models produce positive cumulative profit over the simulation window, but they separate into two distinct clusters. The best deep learning model, XGBoost, linear SVC, and logistic regression track closely together throughout the simulation, ending in the range of roughly 1.28 to 1.31, with the deep learning model holding a slight and fairly consistent lead over this cluster from around time 100 onward. Random forest, by contrast, diverges sharply from the other four models beginning around time 100 and remains the clear laggard for the remainder of the simulation, ending at approximately 1.21---noticeably below the rest of the cluster.
+All five models produce positive cumulative profit over the simulation window, but they separate into two distinct clusters. The best deep learning model, XGBoost, linear SVC, and logistic regression track closely together throughout the simulation, ending in the range of roughly 1.28 to 1.31, with the deep learning model holding a slight and fairly consistent lead over this cluster from around time 100 onward. Random forest, by contrast, diverges sharply from the other four models beginning around time 100 and remains the clear laggard for the remainder of the simulation, ending at approximately 1.21---noticeably below the rest of the cluster.
 
-Within the top cluster, the ordering among the deep learning model, XGBoost, linear SVC, and logistic regression is relatively stable but close, with XGBoost briefly tracking near or even above the deep learning model between roughly time 550 and 650 before the deep learning model regains the lead toward the end of the series. Logistic regression consistently sits at or near the bottom of this top cluster, though it remains far closer to the other three models than to random forest. This visual pattern suggests that random forest is the clear outlier among the baselines in terms of trading profitability, while the deep learning model's advantage over the remaining baselines, though present, is comparatively modest.
+Within the top cluster, the ordering among the deep learning model, XGBoost, linear SVC, and logistic regression is relatively stable but close, with XGBoost briefly tracking near or even above the deep learning model between roughly time 550 and 650 before the deep learning model regains the lead toward the end of the series. Logistic regression consistently sits at or near the bottom of this top cluster, though it remains far closer to the other three models than to random forest. This visual pattern suggests that random forest is the clear outlier among the baselines in terms of trading profitability, while the deep learning model's advantage over the remaining baselines, though present, is comparatively modest. These results are supported further by Table \ref{tab:trading_sim_baseline_regression}, which shows that the machine learning models exhibit lower scores than the best deep learning model, only some of which although are statistically significant.
 
 \begin{table}[htbp]
 \centering
@@ -1249,7 +1517,7 @@ XGBoost                  & $0.001$  & $0.007$ & $0.14$   & $0.885$              
 \end{flushleft}
 \end{table}
 
-The intercept of 1.405 represents the mean cumulative profit for the best deep learning model, the omitted reference category, and is highly significant ($p < .001$), consistent with its position at or near the top of the cluster in Figure~\ref{fig:trading_sim_baseline}. Each baseline coefficient reflects the average difference in cumulative profit between that baseline and the deep learning model.
+The intercept of 1.405 represents the mean cumulative profit for the best deep learning model, the omitted reference category, and is highly significant ($p < .001$), consistent with its position at or near the top of the cluster in Figure \ref{fig:trading_sim_baseline}. Each baseline coefficient reflects the average difference in cumulative profit between that baseline and the deep learning model.
 
 Random forest shows by far the largest and most significant negative coefficient ($-0.098$, $t = -11.62$, $p < .001$), confirming that it underperforms the deep learning model substantially and consistently, matching its clear visual separation from the other four series in the figure. Logistic regression also shows a significant, though considerably smaller, negative coefficient ($-0.024$, $t = -4.26$, $p < .001$), indicating that it too underperforms the deep learning model on average, consistent with its position at the lower edge of the top cluster in the figure.
 
@@ -1257,7 +1525,8 @@ In contrast, linear SVC and XGBoost are not statistically distinguishable from t
 
 Taken together, these results indicate a two-tier structure among the baselines: random forest and, to a lesser extent, logistic regression underperform the deep learning model by a statistically reliable margin, while linear SVC and XGBoost achieve trading performance that is statistically comparable to the deep learning model. This mirrors the earlier MCC baseline regression, where XGBoost and logistic regression were statistically indistinguishable from the deep learning model in classification performance; here, however, it is linear SVC and XGBoost that emerge as the closest competitors in terms of realized trading profit, suggesting that MCC and trading-simulation profit do not rank the baselines in exactly the same order.
 
-\section{Conclusions}
+\newpage
+\section{Chapter 5: Conclusions}
 
 This study examined the performance, robustness, and economic value of deep learning models for short-horizon stock return prediction, benchmarking them against standard machine learning baselines across three complementary analyses: predictive performance (MCC), model drift, and trading simulation profitability, both across deep learning configurations and against baseline models.
 
@@ -1273,6 +1542,13 @@ Finally, the drift analysis revealed an important \textbf{performance-stability 
 
 Taken as a whole, these findings suggest that no single model, architecture, or feature configuration dominates uniformly across performance, drift, and profitability. The clearest and most robust conclusion is that \textbf{prediction horizon fundamentally constrains what is achievable}, and that the value of additional architectural complexity or auxiliary data sources is realized unevenly and often only in interaction with other design choices. Future work could usefully extend this analysis by examining a wider range of horizons to determine whether the sharp 10-minute/30-minute divide observed here reflects a genuine discontinuity in predictability or a smoother degradation that these two horizons happen to bracket, and by incorporating transaction costs and slippage into the trading simulation to assess whether the profit differences observed here would survive more realistic execution assumptions.
 
-\printbibliography
-
+% =====================================================================
+% APPENDICES AND REFERENCES go at the very END of the document,
+% right before \end{document}. Example skeleton:
+% =====================================================================
+% \newpage
+% \begin{center}{\bfseries APPENDICES}\end{center}
+% ... appendix content ...
+\newpage
+\printbibliography[title={REFERENCES}]
 \end{document}
