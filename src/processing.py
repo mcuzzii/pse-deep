@@ -122,12 +122,17 @@ def plot_correlation_heatmap(data, columns, title, file_name, subdir='correlatio
 
     _save_fig(fig, out_dir, file_name)
 
-def plot_category_distribution(series, title, file_name, xlabel=None, subdir='distributions', order=None):
+def plot_category_distribution(series, title, file_name, xlabel=None, subdir='distributions',
+                                order=None, keys=None, top=None):
     """ Plots a bar chart of category counts (e.g. sentiment class or return-label balance).
 
     order: optional list of category labels specifying the left-to-right bar order.
            Categories in `order` but missing from the data are shown with count 0;
-           categories in the data but not in `order` are dropped.
+           categories in the data but not in `order` are dropped. Takes precedence over `top`.
+    keys:  optional dict mapping raw category values to display labels for the x-axis
+           (e.g. language codes -> language names). Defaults to raw category names.
+    top:   optional int. When `order` is not given, plot only the top n most frequent
+           categories, sorted from highest to lowest frequency.
     """
 
     out_dir = _eda_out_dir(subdir)
@@ -135,15 +140,20 @@ def plot_category_distribution(series, title, file_name, xlabel=None, subdir='di
     counts = series.value_counts()
     if order is not None:
         counts = counts.reindex(order, fill_value=0)
+    elif top is not None:
+        counts = counts.sort_values(ascending=False).head(top)
     else:
         counts = counts.sort_index()
 
-    palette = [COLORS['purple'], COLORS['indigo'], COLORS['teal'],
-               COLORS['seafoam'], COLORS['green'], COLORS['yellow']]
+    palette = [COLORS['purple']]
     bar_colors = [palette[i % len(palette)] for i in range(len(counts))]
 
+    labels = counts.index.astype(str)
+    if keys is not None:
+        labels = [keys.get(label, label) for label in labels]
+
     fig, ax = plt.subplots(figsize=(6, 4))
-    ax.bar(counts.index.astype(str), counts.values, color=bar_colors)
+    ax.bar(labels, counts.values, color=bar_colors)
     _style_axis(ax, title, xlabel, 'Count', rotate_x=45)
 
     _save_fig(fig, out_dir, file_name)
@@ -593,8 +603,8 @@ class DataSource:
         device = "cuda" if torch.cuda.is_available() else "cpu"
         model.to(device)
 
-        #with open('data/raw/languages.json', 'r') as f:
-        #    LANG_MAP = json.load(f)
+        with open('data/raw/languages.json', 'r') as f:
+            LANG_MAP = json.load(f)
 
         # Create a copy to store results
         self.df['cleaned_headline'] = self.df[self.text_col].copy()
@@ -603,12 +613,78 @@ class DataSource:
         print("Detecting languages...")
         self.df[['detected_lang', 'en_score']] = self.df[self.text_col].apply(get_lang).apply(pd.Series)
 
+        language_codes = {
+            'af': 'Afrikaans',
+            'an': 'Aragonese',
+            'ar': 'Arabic',
+            'bg': 'Bulgarian',
+            'br': 'Breton',
+            'ca': 'Catalan',
+            'cs': 'Czech',
+            'cy': 'Welsh',
+            'da': 'Danish',
+            'de': 'German',
+            'eo': 'Esperanto',
+            'es': 'Spanish',
+            'et': 'Estonian',
+            'eu': 'Basque',
+            'fi': 'Finnish',
+            'fr': 'French',
+            'ga': 'Irish',
+            'gl': 'Galician',
+            'hr': 'Croatian',
+            'ht': 'Haitian Creole',
+            'hu': 'Hungarian',
+            'id': 'Indonesian',
+            'is': 'Icelandic',
+            'it': 'Italian',
+            'ja': 'Japanese',
+            'jv': 'Javanese',
+            'ko': 'Korean',
+            'la': 'Latin',
+            'lb': 'Luxembourgish',
+            'lt': 'Lithuanian',
+            'ly': 'Latvian',
+            'mg': 'Malagasy',
+            'ms': 'Malay',
+            'mt': 'Maltese',
+            'nb': 'Norwegian Bokmål',
+            'nl': 'Dutch',
+            'nn': 'Norwegian Nynorsk',
+            'no': 'Norwegian',
+            'oc': 'Occitan',
+            'pl': 'Polish',
+            'pt': 'Portuguese',
+            'qu': 'Quechua',
+            'ro': 'Romanian',
+            'ru': 'Russian',
+            'rw': 'Kinyarwanda',
+            'se': 'Northern Sami',
+            'sk': 'Slovak',
+            'sl': 'Slovenian',
+            'sq': 'Albanian',
+            'sv': 'Swedish',
+            'sw': 'Swahili',
+            'th': 'Thai',
+            'tl': 'Tagalog',
+            'tr': 'Turkish',
+            'ur': 'Urdu',
+            'vi': 'Vietnamese',
+            'vo': 'Volapük',
+            'wa': 'Walloon',
+            'xh': 'Xhosa',
+            'zh': 'Chinese',
+            'zu': 'Zulu',
+        }
+
         # EDA: distribution of detected headline languages.
         plot_category_distribution(
-            self.df['detected_lang'],
+            self.df.loc[self.df['detected_lang'] != 'en', 'detected_lang'],
             title='Detected Headline Language Distribution',
             file_name=f'{self.file_name}_language_dist',
-            xlabel='Language'
+            xlabel='Language',
+            keys = language_codes,
+            top = 20
         )
         
         # Step 2: Group by language to batch translate efficiently
