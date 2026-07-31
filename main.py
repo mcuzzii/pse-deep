@@ -30,9 +30,9 @@ def preprocess():
     social_media_data.get_social_sentiment_examples()
 
     plot_category_distribution(
-        self.df['sentiment'],
+        social_media_data.df['sentiment'],
         title='Social Media Post Sentiment Distribution',
-        file_name=f'{self.file_name}_sentiment_dist',
+        file_name=f'{social_media_data.file_name}_sentiment_dist',
         xlabel='Sentiment',
         order=['Very Negative', 'Negative', 'Neutral', 'Positive', 'Very Positive']
     )
@@ -44,9 +44,9 @@ def preprocess():
     lseg_news_data.get_headline_sentiment_examples()
 
     plot_category_distribution(
-        self.df['sentiment'],
+        lseg_news_data.df['sentiment'],
         title='News Headline Sentiment Distribution',
-        file_name=f'{self.file_name}_sentiment_dist',
+        file_name=f'{lseg_news_data.file_name}_sentiment_dist',
         xlabel='Sentiment',
         order=['Bearish', 'Neutral', 'Bullish']
     )
