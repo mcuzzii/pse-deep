@@ -237,4 +237,4 @@ def main():
     evaluator.plot_summary_grids()
 
 if __name__ == '__main__':
-    preprocess()
+    plot_price_series()
