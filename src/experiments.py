@@ -1256,8 +1256,10 @@ class Experiment:
                             i < len(self.loaders[split]) - 1
                         ):
                             with torch.enable_grad():
-                                shap_wrapper.args = [a.detach() for a in args]
-                                gates = torch.ones(args[0].shape[0], num_groups, device=device)
+                                shap_wrapper.args = [a[:1].detach() for a in args]
+                                gates = torch.ones(1, num_groups, device=device)
+
+                                print("Computing SHAP")
 
                                 explainer    = shap.GradientExplainer(
                                     shap_wrapper,
