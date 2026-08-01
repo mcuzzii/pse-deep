@@ -1249,12 +1249,7 @@ class Experiment:
                             out_dict[f'{split}_all_targets'].append(target)
 
                         # --- SHAP: test split only ---
-                        if (
-                            split == 'test' and
-                            evaluator is None and
-                            i % 6 == 0 and
-                            i < len(self.loaders[split]) - 1
-                        ):
+                        if split == 'test' and evaluator is None:
                             with torch.enable_grad():
                                 shap_wrapper.args = [a[:1].detach() for a in args]
                                 gates = torch.ones(1, num_groups, device=device)
@@ -1262,9 +1257,9 @@ class Experiment:
                                 explainer    = shap.GradientExplainer(
                                     shap_wrapper,
                                     background,
-                                    batch_size=128
+                                    batch_size=256
                                 )
-                                sv = explainer.shap_values(gates, nsamples=128)
+                                sv = explainer.shap_values(gates, nsamples=256)
 
                                 if isinstance(sv, list):
                                     assert len(sv) == 1
