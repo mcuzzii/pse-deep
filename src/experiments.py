@@ -1232,8 +1232,8 @@ class Experiment:
                         # --- standard inference ---
                         with torch.no_grad():
                             if self.transformer and split == 'test':
-                                results = model(*args, return_weights=True)
-                                logits = results[0]
+                                results = model(*args, return_weights=evaluator is not None)
+                                logits = results[0] if evaluator is not None else results
 
                                 if evaluator is not None and i % 10 == 0:
                                     evaluator.interpret_attention_scores(results[1:], i)
@@ -1252,7 +1252,7 @@ class Experiment:
                         if (
                             split == 'test' and
                             evaluator is None and
-                            i % (6 if 'mlp' in self.experiment_name else 44) == 0 and
+                            i % 6 == 0 and
                             i < len(self.loaders[split]) - 1
                         ):
                             with torch.enable_grad():
@@ -1262,9 +1262,9 @@ class Experiment:
                                 explainer    = shap.GradientExplainer(
                                     shap_wrapper,
                                     background,
-                                    batch_size=30 if self.transformer else 128
+                                    batch_size=128
                                 )
-                                sv = explainer.shap_values(gates, nsamples=100 if self.transformer else 128)
+                                sv = explainer.shap_values(gates, nsamples=128)
 
                                 if isinstance(sv, list):
                                     assert len(sv) == 1
