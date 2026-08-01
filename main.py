@@ -170,7 +170,7 @@ def preprocess():
 
 def run_experiments():
 
-    for transformer in (False,):
+    for transformer in (True,):
         for social in (True, False):
             for news in (True, False):
                 for pred_30 in (False, True):
@@ -237,4 +237,4 @@ def main():
     evaluator.plot_summary_grids()
 
 if __name__ == '__main__':
-    plot_price_series()
+    run_experiments()
