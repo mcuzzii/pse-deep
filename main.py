@@ -11,7 +11,7 @@ from utils import seed_everything
 
 seed_everything(42)
 
-from processing import DataSource, get_unique_instruments, get_stocks, plot_price_series, plot_category_distribution
+from processing import DataSource, get_unique_instruments, get_stocks, plot_price_series
 from experiments import Experiment
 from eval import Eval
 from dotenv import load_dotenv
@@ -29,27 +29,11 @@ def preprocess():
     social_media_data.create_df(raw_folder_name='social', file_name='social_media', medium='x_posts', text_col='text', date_col='createdAt')
     social_media_data.get_social_sentiment_examples()
 
-    plot_category_distribution(
-        social_media_data.df['sentiment'],
-        title='Social Media Post Sentiment Distribution',
-        file_name=f'{social_media_data.file_name}_sentiment_dist',
-        xlabel='Sentiment',
-        order=['Very Negative', 'Negative', 'Neutral', 'Positive', 'Very Positive']
-    )
-
     print("Creating news data...")
     lseg_news_data = DataSource()
     lseg_news_data.create_df(raw_folder_name='news', file_name='news', medium='lseg_news')
     lseg_news_data.get_translated_examples()
     lseg_news_data.get_headline_sentiment_examples()
-
-    plot_category_distribution(
-        lseg_news_data.df['sentiment'],
-        title='News Headline Sentiment Distribution',
-        file_name=f'{lseg_news_data.file_name}_sentiment_dist',
-        xlabel='Sentiment',
-        order=['Bearish', 'Neutral', 'Bullish']
-    )
 
     for i in random.sample(lseg_news_data.df.index.tolist(), 3):
         lseg_news_data.get_similar_embeddings(index=i, n_results=10)
@@ -253,4 +237,4 @@ def main():
     evaluator.plot_summary_grids()
 
 if __name__ == '__main__':
-    run_experiments()
+    plot_price_series()

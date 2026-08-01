@@ -456,13 +456,18 @@ def plot_price_series(processed_path='data/processed', subdir='stock_price'):
 
     # --- Sector indices + constituents ---
     sectors = pd.read_excel('data/raw/info/sectors_and_subsectors.xlsx')
+    stocks = get_stocks()
     sectors.columns = [snake_case(col) for col in sectors.columns]
     sectors['sector'] = sectors['sector'].map(SECTOR_MAP)
     sectors['stock_symbol'] = sectors['stock_symbol'].str.lower()
 
     for sector_index in sorted(sectors['sector'].dropna().unique()):
         constituents = sorted(
-            sectors.loc[sectors['sector'] == sector_index, 'stock_symbol'].tolist()
+            [
+                stock
+                for stock in sectors.loc[sectors['sector'] == sector_index, 'stock_symbol'].tolist()
+                if stock in stocks
+            ]
         )
 
         panel_specs = [(sector_index, f'{sector_index.upper()} Price (Sector Index)')]
