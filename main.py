@@ -189,7 +189,7 @@ def run_experiments():
     for transformer in (True, False):
         for social in (True, False):
             for news in (True, False):
-                for pred_30 in (True, False):
+                for pred_30 in (False, True):
 
                     news_prefix = 'news_' if news else ''
                     social_prefix = 'social_' if social else ''
@@ -253,4 +253,4 @@ def main():
     evaluator.plot_summary_grids()
 
 if __name__ == '__main__':
-    preprocess()
+    run_experiments()
