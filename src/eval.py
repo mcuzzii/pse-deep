@@ -1612,6 +1612,9 @@ class Eval:
             if dir.name in ('data', 'experiments', 'results'):
                 continue
 
+            test_outputs = dir / 'test_outputs.pt'
+            out = torch.load(test_outputs, map_location=device, weights_only=False)
+
             if 'combined_drift_scores' not in out:
 
                 test_outputs = dir / 'test_outputs.pt'
