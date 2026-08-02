@@ -231,10 +231,10 @@ def main():
     evaluator.run_attn_analysis()
     evaluator.plot_shap_scores()
     evaluator.plot_summary_grids()
-    #evaluator.train_baseline_models()
-    #evaluator.main_baseline_comparison()
-    #evaluator.baseline_models_trading_sim()
-    #evaluator.interpret_baseline_models_trading_sim()
+    evaluator.train_baseline_models()
+    evaluator.main_baseline_comparison()
+    evaluator.baseline_models_trading_sim()
+    evaluator.interpret_baseline_models_trading_sim()
 
 if __name__ == '__main__':
     run_experiments()
