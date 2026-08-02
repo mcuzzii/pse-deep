@@ -255,4 +255,4 @@ def main():
     evaluator.interpret_baseline_models_trading_sim()
 
 if __name__ == '__main__':
-    main()
+    run_experiments()

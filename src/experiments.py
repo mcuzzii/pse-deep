@@ -1096,7 +1096,7 @@ class Experiment:
         plt.plot(x, train_losses, label="Train Loss", color=COLORS['purple'], linewidth=1.8)
         plt.plot(x, val_losses, label="Validation Loss", color=COLORS['teal'], linewidth=1.8)
 
-        plt.xlabel(f"Batch ({2 if self.transformer else 32} Samples per Batch)")
+        plt.xlabel(f"Batch (32 Samples per Batch)")
         plt.ylabel("Loss")
         plt.title("Training and Validation Loss")
         plt.legend()
