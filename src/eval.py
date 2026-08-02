@@ -1520,7 +1520,7 @@ class Eval:
 
             overall_scores[dir.name] = dict()
 
-            if 'mcc_scores' in out:
+            if 'mcc_scores' not in out:
 
                 val_calib_thresholds = model['best_threshold']                                  # (S,)
                 val_logit_scores = model['val_logit_scores']
@@ -1586,7 +1586,7 @@ class Eval:
                     'test_f1_neg_rolling': f1_score(1 - targets_np, 1 - preds_np),
                 })
             
-            if 'width_histories' in out:
+            if 'width_histories' not in out:
 
                 if dir.name not in overall_scores:
                     overall_scores[dir.name] = dict()
@@ -1615,7 +1615,7 @@ class Eval:
             test_outputs = dir / 'test_outputs.pt'
             out = torch.load(test_outputs, map_location=device, weights_only=False)
 
-            if 'combined_drift_scores' in out:
+            if 'combined_drift_scores' not in out:
 
                 msd = out['msd']
                 width_histories = out['width_histories']
