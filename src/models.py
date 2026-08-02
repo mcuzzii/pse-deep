@@ -40,6 +40,7 @@ class PerturbedTopKFunction(torch.autograd.Function):
             perturbed_x = x_flat[:, None, :] + noise * sigma          # (N, s, d)               # B*S*Ts, s, Tn
 
             indices = torch.topk(perturbed_x, k=k, dim=-1, sorted=False).indices   # (N, s, K)  # B*S*Ts, s, K
+            indices = torch.sort(indices, dim=-1).values
             gathered = torch.gather(noise, dim=2, index=indices)                    # (N, s, K) — the only part of noise we need
 
             idx_for_scatter = indices.permute(0, 2, 1).reshape(N * k, s)            # (N*K, s)
@@ -127,9 +128,7 @@ class SelfAttentionBlock(nn.Module):
     def forward(self, x, return_weights=False):
         orig_shape = x.shape
 
-        norm_x = self.norm_qkv(x.flatten(0, 1))
-
-        print(f'norm_x: {norm_x.shape}')
+        norm_x = self.norm_qkv(x)
 
         attn_out, attn_weights = self.attention(
             norm_x, norm_x, norm_x,
@@ -137,13 +136,9 @@ class SelfAttentionBlock(nn.Module):
             average_attn_weights=return_weights
         )
 
-        print(f'attn_out: {attn_out.shape}')
-        print(f'attn_weights: {attn_weights.shape}')
-
         attn_out = self.dropout(attn_out)
         
-        out = x.flatten(0, 1) + attn_out
-        out = out.contiguous().view(orig_shape)
+        out = x + attn_out
 
         if attn_weights is not None:
             attn_weights = attn_weights.reshape(orig_shape[0], orig_shape[1], orig_shape[1])

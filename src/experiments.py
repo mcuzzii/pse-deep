@@ -297,31 +297,58 @@ class EarlyStopping:
             return False      # No improvement
 
 class SigmaAnnealer:
-    def __init__(self, model, sigma_start=0.05, sigma_end=1e-5, num_batches=500):
-
-        self.null = False
-        if not isinstance(model, (
-            StockNewsTransformer,
-            StockSocialTransformer,
-            StockNewsSocialTransformer
-        )):
-            self.null = True
-            return
-        
-        self.topk = model.topk
-        self.sigma_start = sigma_start
-        self.sigma_end = sigma_end
-        self.num_batches = num_batches
-
-    def __call__(self, batches: int):
-
+    def __init__(self, model, sigma_start=0.05, sigma_min=1e-5, decay_factor=0.5, patience=3, min_delta=0.0):
+        self.null = not isinstance(model, (
+            StockNewsTransformer, StockSocialTransformer, StockNewsSocialTransformer
+        ))
         if self.null:
             return
 
-        t = batches / self.num_batches
-        sigma = self.sigma_start * (self.sigma_end / self.sigma_start) ** t
-        self.topk.set_sigma(sigma)
-        return sigma
+        self.topk = model.topk
+        self.sigma = sigma_start
+        self.sigma_min = sigma_min
+        self.decay_factor = decay_factor
+        self.patience = patience
+        self.min_delta = min_delta
+        self.best_val_loss = float('inf')
+        self.counter = 0
+        self.topk.set_sigma(self.sigma)
+
+    def state_dict(self):
+        if self.null:
+            return {'null': True}
+        return {
+            'null': False, 'sigma': self.sigma, 'best_val_loss': self.best_val_loss,
+            'counter': self.counter, 'sigma_min': self.sigma_min,
+            'decay_factor': self.decay_factor, 'patience': self.patience,
+        }
+
+    def load_state_dict(self, state):
+        if state.get('null', True):
+            return
+        self.sigma = state['sigma']
+        self.best_val_loss = state['best_val_loss']
+        self.counter = state['counter']
+        self.sigma_min = state['sigma_min']
+        self.decay_factor = state['decay_factor']
+        self.patience = state['patience']
+        self.topk.set_sigma(self.sigma)
+
+    def __call__(self, val_loss):
+        if self.null:
+            return None
+
+        if val_loss < self.best_val_loss - self.min_delta:
+            self.best_val_loss = val_loss
+            self.counter = 0
+        else:
+            self.counter += 1
+            if self.counter >= self.patience:
+                self.sigma = max(self.sigma * self.decay_factor, self.sigma_min)
+                self.topk.set_sigma(self.sigma)
+                self.counter = 0
+
+        return self.sigma
 
 class Experiment:
     def __init__(
@@ -883,6 +910,9 @@ class Experiment:
             if early_stopper.stop:
                 print(f"Model already saved in {best_path}. Skipping..")
                 return
+
+            sigma_annealer = SigmaAnnealer(model)
+            sigma_annealer.load_state_dict(sigma_annealer_args)
         
         else:
             resume_step = None
@@ -892,32 +922,37 @@ class Experiment:
             early_stopper = EarlyStopping(patience=patience)
             sigma_annealer_args = {
                 'sigma_start': sigma_start,
-                'sigma_end': sigma_end,
-                'num_batches': num_batches
+                'sigma_min': sigma_end,
+                'patience': 4
             }
+
+            sigma_annealer = SigmaAnnealer(model, **sigma_annealer_args)
 
             print("Calculating class weights from training set...")
             train_dataset = self.loaders['train'].dataset
-            
-            all_targets = []
-            for i in range(min(len(train_dataset), 5000)): # Scan a large sample or full dataset
-                *_, tgt = train_dataset[i]                              # (B, S, 2)
-                all_targets.append(torch.tensor(tgt).argmax(dim=-1))    # (B, S)
-            
-            flat_targets = torch.cat(all_targets)                       # (B*S,)
+
+            # unwrap to the base StockTransformerDataset regardless of subclass
+            base = train_dataset
+            tgt = 'target' if self.transformer else 'y'
+            target_tensor = (
+                base.stock_data[tgt]                                                    # (S, 2, N_valid)
+                if self.transformer else
+                torch.eye(2)[base.stock_data[tgt].long()].unsqueeze(0).transpose(1, 2)  # (1, 2, N)
+            )
+            flat_targets = target_tensor.argmax(dim=1).reshape(-1)                      # (S*N_valid,)
+
             count_0 = (flat_targets == 0).sum().item()
             count_1 = (flat_targets == 1).sum().item()
             total_counts = count_0 + count_1
-            
+
             weight_0 = total_counts / (2.0 * count_0)
             weight_1 = total_counts / (2.0 * count_1)
-            
+
             class_weights = torch.tensor([weight_0, weight_1], dtype=torch.float, device=device)
             print(f"Computed Class Weights: Class 0: {weight_0:.4f}, Class 1: {weight_1:.4f}")
         
         accumulation_loss = 0
 
-        sigma_annealer = SigmaAnnealer(model, **sigma_annealer_args)
         pbar = tqdm(total=num_batches, desc="Training")
 
         criterion = nn.CrossEntropyLoss(weight=class_weights)
@@ -980,7 +1015,7 @@ class Experiment:
                         print(f'train_loss: {train_loss}, val_loss: {val_loss}')
 
                         is_best = early_stopper(val_loss)
-                        sigma_annealer(global_step)
+                        sigma_annealer(val_loss)
 
                         checkpoint_data = {
                             "model": model.state_dict(),
@@ -991,11 +1026,7 @@ class Experiment:
                             "val_losses": val_losses,
                             "total_loss": total_loss,
                             "early_stopper": early_stopper,
-                            "sigma_annealer": {
-                                'sigma_start': sigma_start,
-                                'sigma_end': sigma_end,
-                                'num_batches': num_batches
-                            }
+                            "sigma_annealer": sigma_annealer.state_dict()
                         }
 
                         # optional checkpoint on validation
@@ -1038,11 +1069,7 @@ class Experiment:
                 "val_losses": val_losses,
                 "total_loss": total_loss,
                 "early_stopper": early_stopper,
-                "sigma_annealer": {
-                    'sigma_start': sigma_start,
-                    'sigma_end': sigma_end,
-                    'num_batches': num_batches
-                }
+                "sigma_annealer": sigma_annealer.state_dict()
             }, path)
             
             pbar.close()
@@ -1055,13 +1082,11 @@ class Experiment:
             weights_only=False
         )
         train_losses = model['train_losses']
-        if self.experiment_name == 'stock_social_transformer_10':
-            train_losses[-16] = (train_losses[-17] + train_losses[-15]) / 2
         val_losses = model['val_losses']
 
         x = self.val_periods[:len(train_losses)]
         
-        topk = getattr(model, 'topk', None)
+        topk = getattr(self.model, 'topk', None)
 
         if topk:
             print(topk.sigma)
