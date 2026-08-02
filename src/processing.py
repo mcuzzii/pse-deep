@@ -14,6 +14,7 @@ import subprocess
 import matplotlib.pyplot as plt
 import matplotlib.colors as mcolors
 import seaborn as sns
+import math
 
 # Regex patterns.
 URL_PATTERN = r'(https?://[^\s<>"]+|www\.[^\s<>"]+|[a-zA-Z0-9.-]+\.[a-z]{2,6}/[^\s<>"]*)'
@@ -372,127 +373,82 @@ def _load_instrument_df(file_name, processed_path):
         return None
     return joblib.load(path).df
 
-
-def _get_price_and_volume(df, file_name):
-    """ Returns (price_series, volume_series_or_None) for an instrument dataframe.
-
-    Prefers the close price; if unavailable, falls back to the midprice of bid/ask.
-    Volume is returned only if a volume column exists.
-    """
-
-    close_col = f'{file_name}_close'
-    volume_col = f'{file_name}_volume'
-
-    if close_col in df.columns:
-        price = df[close_col].astype(float)
-    else:
-        bid_col = f'{file_name}_bid'
-        ask_col = f'{file_name}_ask'
-        price = (df[bid_col].astype(float) + df[ask_col].astype(float)) / 2
-
-    volume = df[volume_col].astype(float) if volume_col in df.columns else None
-
-    return price, volume
+def _bar_width_days(index):
+    """ Estimates a bar width (in days, matplotlib's date-axis unit) from the median
+    spacing between consecutive timestamps in the index, so volume bars stay visible
+    regardless of the instrument's data frequency or date range — instead of relying
+    on a single hardcoded width that becomes invisible on long time spans. """
+    diffs = index.to_series().diff().dropna()
+    if diffs.empty:
+        return 0.0007  # fallback: ~1 minute
+    median_seconds = diffs.dt.total_seconds().median()
+    return (median_seconds / 86400) * 0.8  # 80% of spacing, so bars don't touch
 
 
-def _plot_price_panel(ax, df, file_name, title):
+def _style_axis(ax, title, xlabel=None, ylabel=None, rotate_x=0,
+                 title_fontsize=13, label_fontsize=10, tick_fontsize=8):
+    ax.set_title(title, fontsize=title_fontsize, fontweight='bold')
+    if xlabel is not None:
+        ax.set_xlabel(xlabel, fontsize=label_fontsize)
+    if ylabel is not None:
+        ax.set_ylabel(ylabel, fontsize=label_fontsize)
+    ax.tick_params(axis='both', labelsize=tick_fontsize)
+    if rotate_x:
+        plt.setp(ax.get_xticklabels(), rotation=rotate_x, ha='right' if rotate_x else 'center')
+
+
+def _plot_price_panel(ax, df, file_name, title,
+                       title_fontsize=13, label_fontsize=10, tick_fontsize=8):
     """ Plots a single close-price (with optional volume overlay) panel onto the given axis. """
 
     price, volume = _get_price_and_volume(df, file_name)
 
-    ax.plot(df.index, price, color=COLORS['indigo'], linewidth=0.8)
-    _style_axis(ax, title, xlabel='Local Time', ylabel='Price', rotate_x=45)
+    ax.plot(df.index, price, color=COLORS['indigo'], linewidth=0.9, zorder=3)
+    _style_axis(ax, title, xlabel='Local Time', ylabel='Price', rotate_x=45,
+                title_fontsize=title_fontsize, label_fontsize=label_fontsize,
+                tick_fontsize=tick_fontsize)
+    ax.patch.set_visible(False)  # so the twinx bars behind it aren't hidden by ax's own background
 
     if volume is not None:
         ax2 = ax.twinx()
-        ax2.bar(df.index, volume, color=COLORS['seafoam'], alpha=0.25, width=0.0007)
-        ax2.set_ylabel('Volume', fontsize=9)
-        ax2.tick_params(axis='y', labelsize=8)
+        width = _bar_width_days(df.index)
+        ax2.bar(df.index, volume, color=COLORS['seafoam'], alpha=0.4, width=width, zorder=1)
+        ax2.set_ylabel('Volume', fontsize=label_fontsize)
+        ax2.tick_params(axis='y', labelsize=tick_fontsize)
+        ax.set_zorder(ax2.get_zorder() + 1)  # keep price line drawn above the volume bars
 
 
-def _plot_multi_panel(panel_specs, out_dir, file_name, processed_path):
-    """ Plots a stacked multi-panel figure. panel_specs is a list of (instrument_name, title). """
+def _plot_multi_panel(panel_specs, out_dir, file_name, processed_path, ncols=2):
+    """ Plots a multi-panel figure arranged in a grid of up to `ncols` columns, so panel
+    groups with many constituents (e.g. a large sector) don't produce an excessively
+    long single-column figure. """
+
+    n = len(panel_specs)
+    ncols = min(ncols, n)
+    nrows = -(-n // ncols)  # ceil division
 
     fig, axes = plt.subplots(
-        len(panel_specs), 1,
-        figsize=(10, 4 * len(panel_specs)),
-        sharex=False
+        nrows, ncols,
+        figsize=(9 * ncols, 4.5 * nrows),
+        squeeze=False
     )
-    if len(panel_specs) == 1:
-        axes = [axes]
+    axes = axes.flatten()
 
     for ax, (instrument_name, title) in zip(axes, panel_specs):
         instrument_df = _load_instrument_df(instrument_name, processed_path)
         if instrument_df is None:
             ax.set_visible(False)
             continue
-        _plot_price_panel(ax, instrument_df, instrument_name, title)
-
-    _save_fig(fig, out_dir, file_name)
-
-
-def plot_price_series(processed_path='data/processed', subdir='stock_price'):
-    """ Plots raw price series (and volume, where available) before any standardization.
-
-    Produces:
-      - a single-panel plot for PSEI
-      - a multi-panel plot per sector: the sector index plus one panel per constituent stock
-      - single-panel plots for oil, gold (XAU), USD, and copper
-      - a multi-panel plot for bonds (phgv2, phgv5, phgv7, phgv10, phgv20)
-
-    Reads each instrument's cached DataSource from `processed_path`, so it should be
-    run once, after all relevant instruments have already been processed and saved.
-    """
-
-    out_dir = _eda_out_dir(subdir)
-    processed_path = Path(processed_path)
-
-    # --- PSEI ---
-    psei_df = _load_instrument_df('psei', processed_path)
-    if psei_df is not None:
-        fig, ax = plt.subplots(figsize=(10, 5))
-        _plot_price_panel(ax, psei_df, 'psei', 'PSEI Price (Pre-Standardization)')
-        _save_fig(fig, out_dir, 'psei_price')
-
-    # --- Sector indices + constituents ---
-    sectors = pd.read_excel('data/raw/info/sectors_and_subsectors.xlsx')
-    stocks = get_stocks()
-    sectors.columns = [snake_case(col) for col in sectors.columns]
-    sectors['sector'] = sectors['sector'].map(SECTOR_MAP)
-    sectors['stock_symbol'] = sectors['stock_symbol'].str.lower()
-
-    for sector_index in sorted(sectors['sector'].dropna().unique()):
-        constituents = sorted(
-            [
-                stock
-                for stock in sectors.loc[sectors['sector'] == sector_index, 'stock_symbol'].tolist()
-                if stock in stocks
-            ]
+        _plot_price_panel(
+            ax, instrument_df, instrument_name, title,
+            title_fontsize=15, label_fontsize=11, tick_fontsize=10
         )
 
-        panel_specs = [(sector_index, f'{sector_index.upper()} Price (Sector Index)')]
-        panel_specs += [
-            (stock, f'{stock.upper()} Price (Constituent)')
-            for stock in constituents
-        ]
+    # Hide any unused trailing cells (e.g. odd panel count leaving a blank slot).
+    for ax in axes[n:]:
+        ax.set_visible(False)
 
-        _plot_multi_panel(panel_specs, out_dir, f'{sector_index}_price', processed_path)
-
-    # --- Single-instrument commodities/currency ---
-    for file_name, title in SINGLE_INSTRUMENTS.items():
-        instrument_df = _load_instrument_df(file_name, processed_path)
-        if instrument_df is None:
-            continue
-        fig, ax = plt.subplots(figsize=(10, 5))
-        _plot_price_panel(ax, instrument_df, file_name, f'{title} Price (Pre-Standardization)')
-        _save_fig(fig, out_dir, f'{file_name}_price')
-
-    # --- Bonds ---
-    bond_panel_specs = [
-        (tenor, f'{tenor.upper()} Price (Pre-Standardization)')
-        for tenor in BOND_TENORS
-    ]
-    _plot_multi_panel(bond_panel_specs, out_dir, 'bonds_price', processed_path)
+    _save_fig(fig, out_dir, file_name)
 
 class DataSource:
     """A class for storing and processing a dataset."""

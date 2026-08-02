@@ -170,8 +170,8 @@ def preprocess():
 
 def run_experiments():
 
-    for transformer in (True, False):
-        for social in (True, False):
+    for transformer in (True,):
+        for social in (True,):
             for news in (True, False):
                 for pred_30 in (True, False):
 
@@ -202,7 +202,7 @@ def run_experiments():
                         dropout=0.1,
                         K=5,
                         num_samples=500,
-                        sigma=5e-2,
+                        sigma=0.2,
                     )
                     experiment.train(
                         num_epochs=50,
