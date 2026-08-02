@@ -11,7 +11,7 @@ from utils import seed_everything
 
 seed_everything(42)
 
-from processing import DataSource, get_unique_instruments, get_stocks, plot_class_balance_per_stock
+from processing import DataSource, get_unique_instruments, get_stocks, plot_feature_relevance, plot_correlation_heatmap
 from experiments import Experiment
 from eval import Eval
 from dotenv import load_dotenv
@@ -99,19 +99,37 @@ def preprocess():
         stock_data.create_df(file_name=stock, medium='combined')
         del stock_data
         gc.collect()
-
-    plot_price_series()
     
     print("Selecting features...")
     features_30 = DataSource()
     features_30.create_df(file_name='features_30m', medium='features', target=30, stocks=stocks)
     features_30.save_selected_features()
+    plot_feature_relevance(
+        features_30.relevance, features_30.selected_features,
+        title=f'Top mRMR Feature Relevance ({features_30._target}m Horizon)',
+        file_name=f'features_{features_30._target}m_relevance'
+    )
+    plot_correlation_heatmap(
+        features_30.df, features_30.selected_features,
+        title=f'Feature-Selected Feature Correlations ({features_30._target}m Horizon)',
+        file_name=f'features_{features_30._target}m_selected_corr'
+    )
     del features_30
     gc.collect()
 
     features_10 = DataSource()
     features_10.create_df(file_name='features_10m', medium='features', target=10, stocks=stocks)
     features_10.save_selected_features()
+    plot_feature_relevance(
+        features_10.relevance, features_10.selected_features,
+        title=f'Top mRMR Feature Relevance ({features_10._target}m Horizon)',
+        file_name=f'features_{features_10._target}m_relevance'
+    )
+    plot_correlation_heatmap(
+        features_10.df, features_10.selected_features,
+        title=f'Feature-Selected Feature Correlations ({features_10._target}m Horizon)',
+        file_name=f'features_{features_10._target}m_selected_corr'
+    )
     del features_10
     gc.collect()
 
@@ -237,4 +255,36 @@ def main():
     evaluator.interpret_baseline_models_trading_sim()
 
 if __name__ == '__main__':
-    main()
+    stocks = get_unique_instruments('data/raw/stock')
+    print("Selecting features...")
+    features_30 = DataSource()
+    features_30.create_df(file_name='features_30m', medium='features', target=30, stocks=stocks)
+    features_30.save_selected_features()
+    plot_feature_relevance(
+        features_30.relevance, features_30.selected_features,
+        title=f'Top mRMR Feature Relevance ({features_30._target}m Horizon)',
+        file_name=f'features_{features_30._target}m_relevance'
+    )
+    plot_correlation_heatmap(
+        features_30.df, features_30.selected_features,
+        title=f'Feature-Selected Feature Correlations ({features_30._target}m Horizon)',
+        file_name=f'features_{features_30._target}m_selected_corr'
+    )
+    del features_30
+    gc.collect()
+
+    features_10 = DataSource()
+    features_10.create_df(file_name='features_10m', medium='features', target=10, stocks=stocks)
+    features_10.save_selected_features()
+    plot_feature_relevance(
+        features_10.relevance, features_10.selected_features,
+        title=f'Top mRMR Feature Relevance ({features_10._target}m Horizon)',
+        file_name=f'features_{features_10._target}m_relevance'
+    )
+    plot_correlation_heatmap(
+        features_10.df, features_10.selected_features,
+        title=f'Feature-Selected Feature Correlations ({features_10._target}m Horizon)',
+        file_name=f'features_{features_10._target}m_selected_corr'
+    )
+    del features_10
+    gc.collect()
