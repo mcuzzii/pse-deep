@@ -1518,9 +1518,9 @@ class Eval:
             logit_scores = out['test_logit_scores']
             targets = out['test_all_targets']                                                   # N, S
 
-            if 'mcc_scores' not in out:
+            overall_scores[dir.name] = dict()
 
-                overall_scores[dir.name] = dict()
+            if 'mcc_scores' not in out:
 
                 val_calib_thresholds = model['best_threshold']                                  # (S,)
                 val_logit_scores = model['val_logit_scores']
