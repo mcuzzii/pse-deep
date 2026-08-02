@@ -222,18 +222,7 @@ def run_experiments():
                         num_samples=500,
                         sigma=0.2,
                     )
-                    experiment.train(
-                        num_epochs=50,
-                        batch_size=32,
-                        accumulation_steps=1,
-                        lr=1e-4,
-                        val_every=lambda x: ((8 * x) ** 2) / 16,
-                        patience=20,
-                        sigma_end=1e-5
-                    )
                     experiment.plot_loss_curves()
-                    experiment.threshold_optimize()
-                    experiment.run_testing()
 
 def main():
     evaluator = Eval()
