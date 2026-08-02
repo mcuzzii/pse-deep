@@ -11,7 +11,7 @@ from utils import seed_everything
 
 seed_everything(42)
 
-from processing import DataSource, get_unique_instruments, get_stocks, plot_price_series
+from processing import DataSource, get_unique_instruments, get_stocks, plot_class_balance_per_stock
 from experiments import Experiment
 from eval import Eval
 from dotenv import load_dotenv
@@ -106,12 +106,14 @@ def preprocess():
     features_30 = DataSource()
     features_30.create_df(file_name='features_30m', medium='features', target=30, stocks=stocks)
     features_30.save_selected_features()
+    plot_class_balance_per_stock(features_30.df.reset_index()[f'stock_30m_return'], features_30.df.reset_index()['stock'])
     del features_30
     gc.collect()
 
     features_10 = DataSource()
     features_10.create_df(file_name='features_10m', medium='features', target=10, stocks=stocks)
     features_10.save_selected_features()
+    plot_class_balance_per_stock(features_10.df.reset_index()[f'stock_10m_return'], features_10.df.reset_index()['stock'])
     del features_10
     gc.collect()
 
@@ -237,4 +239,19 @@ def main():
     evaluator.interpret_baseline_models_trading_sim()
 
 if __name__ == '__main__':
-    plot_price_series()
+    stocks = get_unique_instruments('data/raw/stock')
+
+    print("Selecting features...")
+    features_30 = DataSource()
+    features_30.create_df(file_name='features_30m', medium='features', target=30, stocks=stocks)
+    features_30.save_selected_features()
+    plot_class_balance_per_stock(features_30.df.reset_index()[f'stock_30m_return'], features_30.df.reset_index()['stock'], features_30.file_name)
+    del features_30
+    gc.collect()
+
+    features_10 = DataSource()
+    features_10.create_df(file_name='features_10m', medium='features', target=10, stocks=stocks)
+    features_10.save_selected_features()
+    plot_class_balance_per_stock(features_10.df.reset_index()[f'stock_10m_return'], features_10.df.reset_index()['stock'], features_10.file_name)
+    del features_10
+    gc.collect()

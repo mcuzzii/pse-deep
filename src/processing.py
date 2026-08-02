@@ -155,6 +155,80 @@ def plot_feature_relevance(relevance, selected_features, title, file_name, subdi
 
     _save_fig(fig, out_dir, file_name)
 
+def plot_class_balance_per_stock(tgt, stock, name, figsize=(14, 6)):
+    """
+    Plots the class balance (Down vs Up) for each stock.
+
+    Parameters
+    ----------
+    tgt : array-like
+        Binary target labels (0/1).
+    stock : array-like
+        Stock ticker symbols (lowercase).
+    figsize : tuple, optional
+        Figure size.
+    """
+    import pandas as pd
+    import matplotlib.pyplot as plt
+    import numpy as np
+
+    df = pd.DataFrame({
+        "stock": stock,
+        "target": tgt.astype(int)
+    })
+
+    counts = (
+        df.groupby(["stock", "target"])
+          .size()
+          .unstack(fill_value=0)
+          .rename(columns={0: "Down", 1: "Up"})
+          .sort_index()
+    )
+
+    # Ensure both columns exist
+    for col in ["Down", "Up"]:
+        if col not in counts.columns:
+            counts[col] = 0
+
+    counts = counts[["Down", "Up"]]
+
+    x = np.arange(len(counts))
+    width = 0.38
+
+    fig, ax = plt.subplots(figsize=figsize)
+
+    bars1 = ax.bar(
+        x - width / 2,
+        counts["Down/Zero"],
+        width,
+        label="Down",
+        color=COLORS["purple"]
+    )
+
+    bars2 = ax.bar(
+        x + width / 2,
+        counts["Up"],
+        width,
+        label="Up",
+        color=COLORS["seafoam"] if "seafoam" in COLORS else "tab:green"
+    )
+
+    ax.set_xticks(x)
+    ax.set_xticklabels([s.upper() for s in counts.index], rotation=45, ha="right")
+    ax.set_ylabel("Number of Samples")
+    ax.set_xlabel("Stock")
+    ax.set_title("Class Balance per Stock", fontsize=13, fontweight='bold')
+    ax.legend()
+
+    # Display percentages above each pair of bars
+    totals = counts.sum(axis=1)
+
+    plt.tight_layout()
+    out_dir = EDA_DIR / 'class_imbalances'
+    out_dir.mkdir(parents=True, exist_ok=True)
+    plt.savefig(out_dir / f'{name}.png', dpi=300, bbox_inches='tight')
+    plt.close()
+
 # Decorator that records which methods have been called.
 def record_history(method):
 
@@ -1682,6 +1756,8 @@ class DataSource:
             title=f'Feature-Selected Feature Correlations ({self._target}m Horizon)',
             file_name=f'features_{self._target}m_selected_corr'
         )
+
+        plot_class_balance_per_stock(self.df.reset_index()[f'stock_{self._target}m_return'], self.df.reset_index()['stock'], self.file_name)
     
     @record_history
     def save_selected_features(self, ignore_history: bool = False):
