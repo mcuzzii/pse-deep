@@ -106,14 +106,12 @@ def preprocess():
     features_30 = DataSource()
     features_30.create_df(file_name='features_30m', medium='features', target=30, stocks=stocks)
     features_30.save_selected_features()
-    plot_class_balance_per_stock(features_30.df.reset_index()[f'stock_30m_return'], features_30.df.reset_index()['stock'])
     del features_30
     gc.collect()
 
     features_10 = DataSource()
     features_10.create_df(file_name='features_10m', medium='features', target=10, stocks=stocks)
     features_10.save_selected_features()
-    plot_class_balance_per_stock(features_10.df.reset_index()[f'stock_10m_return'], features_10.df.reset_index()['stock'])
     del features_10
     gc.collect()
 
@@ -221,15 +219,15 @@ def run_experiments():
 
 def main():
     evaluator = Eval()
-    #evaluator.overall_metrics()
-    #evaluator.compute_experiment_data()
-    #evaluator.get_closing_prices()
-    #evaluator.trading_simulations()
+    evaluator.overall_metrics()
+    evaluator.compute_experiment_data()
+    evaluator.get_closing_prices()
+    evaluator.trading_simulations()
     evaluator.main_and_interaction_effects()
-    #evaluator.interpret_trading_sim()
-    #evaluator.interpret_shap_values()
-    #evaluator.get_embeddings()
-    #evaluator.add_umap()
+    evaluator.interpret_trading_sim()
+    evaluator.interpret_shap_values()
+    evaluator.get_embeddings()
+    evaluator.add_umap()
     evaluator.run_attn_analysis()
     evaluator.plot_shap_scores()
     evaluator.plot_summary_grids()
@@ -239,19 +237,4 @@ def main():
     evaluator.interpret_baseline_models_trading_sim()
 
 if __name__ == '__main__':
-    stocks = get_unique_instruments('data/raw/stock')
-
-    print("Selecting features...")
-    features_30 = DataSource()
-    features_30.create_df(file_name='features_30m', medium='features', target=30, stocks=stocks)
-    features_30.save_selected_features()
-    plot_class_balance_per_stock(features_30.df.reset_index()[f'stock_30m_return'], features_30.df.reset_index()['stock'], features_30.file_name)
-    del features_30
-    gc.collect()
-
-    features_10 = DataSource()
-    features_10.create_df(file_name='features_10m', medium='features', target=10, stocks=stocks)
-    features_10.save_selected_features()
-    plot_class_balance_per_stock(features_10.df.reset_index()[f'stock_10m_return'], features_10.df.reset_index()['stock'], features_10.file_name)
-    del features_10
-    gc.collect()
+    main()
