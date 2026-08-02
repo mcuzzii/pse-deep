@@ -1235,7 +1235,7 @@ class Experiment:
                                 results = model(*args, return_weights=evaluator is not None)
                                 logits = results[0] if evaluator is not None else results
 
-                                if evaluator is not None and i % 10 == 0:
+                                if evaluator is not None:
                                     evaluator.interpret_attention_scores(results[1:], i)
                                 
                             else:

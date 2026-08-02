@@ -2644,10 +2644,10 @@ class Eval:
                     self.experiments_path / 'data' / f'stock_transformer_{pred_horizon}m_test.pt',
                     map_location=device,
                     weights_only=False
-                )['target']
+                )['target']                                                     # S, 2, N
 
-                y_id = torch.arange(test_y.shape[2], device=device)
-                mask = (y_id % 88.0) < 2
+                y_id = torch.arange(test_y.shape[2], device=device)             # N
+                mask = (y_id % 32) == 0                                         # N
 
                 ts = ts[mask.cpu().numpy()]
 
@@ -2662,14 +2662,12 @@ class Eval:
 
                 y_id = torch.arange(len(test_y), device=device)
 
-                mask = (y_id % 192.0) < 32
-                if mask[-1]:
-                    mask = mask & (y_id < len(test_y) - 32)
+                mask = (y_id % 32) == 0
 
-                reshuffled_sv = torch.full((test_y.shape[0], sv.shape[1]), float('nan'), device=device)
-                reshuffled_sv[mask] = sv.squeeze(-1)
-                reshuffled_sv = reshuffled_sv.reshape(30, reshuffled_sv.shape[0] // 30, -1)
-                sv = reshuffled_sv.permute(1, 2, 0)
+                reshuffled_sv = torch.full((test_y.shape[0], sv.shape[1]), float('nan'), device=device) # N, g
+                reshuffled_sv[mask] = sv.squeeze(-1)                                                    # N, g
+                reshuffled_sv = reshuffled_sv.reshape(30, reshuffled_sv.shape[0] // 30, -1)             # N/30, 30, g
+                sv = reshuffled_sv.permute(1, 2, 0)                                                     # 30, g, N/30
 
                 model_prefix = 'mlp'
             
@@ -2748,7 +2746,6 @@ class Eval:
                 f"elapsed_time + "
                 f"time_of_day + "
                 f"time_of_week + "
-                f"{factor_terms} + "
                 f"elapsed_time:({factor_terms}) + "
                 f"time_of_day:({factor_terms}) + "
                 f"time_of_week:({factor_terms}) + "
@@ -2784,7 +2781,7 @@ class Eval:
                 experiment.build_model(
                     input_dim=100 if transformer else 110,
                     news_input_dim=15,
-                    social_input_dim=(7 if not pred_30 else 5) if transformer else 15,
+                    social_input_dim=(6 if not pred_30 else 5) if transformer else 15,
                     text_input_dim=1024,
                     social_embedding_dim=16,
                     hidden_dim=384,
@@ -2905,7 +2902,7 @@ class Eval:
             if self.news:
                 news_data = torch.load(
                     self.results_path / 'attn_analysis' / 'embeds' / f'{self.dir_name}_news.pt',
-                    map_location=torch.device('cpu'),
+                    map_location=device,
                     weights_only=False
                 )
                 self.news_embeds = news_data['out']
@@ -2914,7 +2911,7 @@ class Eval:
             if self.social:
                 social_data = torch.load(
                     self.results_path / 'attn_analysis' / 'embeds' / f'{self.dir_name}_social.pt',
-                    map_location=torch.device('cpu'),
+                    map_location=device,
                     weights_only=False
                 )
                 self.social_embeds = social_data['out']
@@ -3009,7 +3006,7 @@ class Eval:
             experiment.build_model(
                 input_dim=100 if transformer else 110,
                 news_input_dim=15,
-                social_input_dim=(7 if not pred_30 else 5) if transformer else 15,
+                social_input_dim=(6 if not pred_30 else 5) if transformer else 15,
                 text_input_dim=1024,
                 social_embedding_dim=16,
                 hidden_dim=384,
@@ -3023,10 +3020,10 @@ class Eval:
             )
             experiment.train(
                 num_epochs=50,
-                batch_size=2 if transformer else 32,
-                accumulation_steps=16 if transformer else 1,
+                batch_size=32,
+                accumulation_steps=1,
                 lr=1e-4,
-                val_every=lambda x: (8 * x) ** 2,
+                val_every=lambda x: ((8 * x) ** 2) / 16,
                 patience=20,
                 sigma_end=1e-5
             )
@@ -3117,7 +3114,7 @@ class Eval:
             
             snapshot = {
                 k: v[s]
-                for k, v in zip(self.keys, (a.cpu() for a in tensors))
+                for k, v in zip(self.keys, (a for a in tensors))
             }
 
             if self.social or self.news:
@@ -3146,7 +3143,7 @@ class Eval:
                 mask = (cutoff_scaled < text_ts) & (text_ts <= ts_scaled)
                 sample = text_embeds[mask]             # Tn, En
 
-                snapshot[ind] = snapshot[ind][:, -1, :, :mask.sum()]                      # S, K, d
+                snapshot[ind] = snapshot[ind][:, :, :mask.sum()]                      # S, K, d
 
                 selected = torch.einsum("skn,ne->ske", snapshot[ind], sample)      # S, K, En
 
@@ -3168,26 +3165,24 @@ class Eval:
                     else ['social_media_umap'] + self.impact_features
                 ]
                 text['minutes_ago'] = (self.ts[i] - text.index).total_seconds() / 60
-                text = torch.from_numpy(text.values.astype(np.float32))                                         # S, K, 1+E+1
+                text = torch.from_numpy(text.values.astype(np.float32)).to(device)                              # S, K, 1+E+1
 
-                txt_attn = snapshot[attn][:, -1, :].unsqueeze(-1)                       # S, K, 1
+                txt_attn = snapshot[attn].unsqueeze(-1)                       # S, K, 1
 
                 snapshot[ind] = torch.cat([txt_attn, text[closest_idx, :-1]], dim=-1)                           # S, K, 1+1+E
                 snapshot[f"{ind}tr"] = torch.cat([txt_attn, text[closest_idx, -1].unsqueeze(-1)], dim=-1)       # S, K, 2
 
-                reorder = torch.argmax(self.stock_map[self.dir_name]['stock_map'], dim=-1).cpu()
+                reorder = torch.argmax(self.stock_map[self.dir_name]['stock_map'], dim=-1)
                 snapshot[ind] = snapshot[ind][reorder]
                 snapshot[f"{ind}tr"] = snapshot[f"{ind}tr"][reorder]
 
             for ind in ('tst', 'sft', 'nft', 'ist'):
                 if ind not in snapshot:
                     continue
-                reorder = torch.argmax(self.stock_map[self.dir_name]['stock_map'], dim=-1).cpu()
+                reorder = torch.argmax(self.stock_map[self.dir_name]['stock_map'], dim=-1)
                 if ind == 'ist':
-                    snapshot[ind] = snapshot[ind][-1, :, :]                                 # S, S
                     snapshot[ind] = snapshot[ind][reorder][:, reorder]
                 else:
-                    snapshot[ind] = snapshot[ind][:, -1, :]                                 # S, Ts or K
                     snapshot[ind] = snapshot[ind][reorder]
             
             if self.ts[i].time() <= pd.Timestamp('10:00').time():
