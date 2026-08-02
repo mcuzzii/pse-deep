@@ -129,11 +129,16 @@ class SelfAttentionBlock(nn.Module):
 
         norm_x = self.norm_qkv(x.flatten(0, 1))
 
+        print(f'norm_x: {norm_x.shape}')
+
         attn_out, attn_weights = self.attention(
             norm_x, norm_x, norm_x,
             need_weights=return_weights,
             average_attn_weights=return_weights
         )
+
+        print(f'attn_out: {attn_out.shape}')
+        print(f'attn_weights: {attn_weights.shape}')
 
         attn_out = self.dropout(attn_out)
         
@@ -141,7 +146,6 @@ class SelfAttentionBlock(nn.Module):
         out = out.contiguous().view(orig_shape)
 
         if attn_weights is not None:
-            print(attn_weights.shape)
             attn_weights = attn_weights.reshape(orig_shape[0], orig_shape[1], orig_shape[1])
             return out, attn_weights.to(torch.float32)
         else:
