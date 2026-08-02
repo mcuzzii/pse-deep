@@ -1468,7 +1468,7 @@ class Eval:
 
         for dir in self.experiments_path.iterdir():
 
-            if dir.name in ('data', 'experiments', 'results'):
+            if dir.name in ('data', 'experiments', 'results', '.ipynb_checkpoints'):
                 continue
 
             test_outputs = dir / 'test_outputs.pt'
@@ -1506,7 +1506,7 @@ class Eval:
 
         for dir in self.experiments_path.iterdir():
 
-            if dir.name in ('data', 'experiments', 'results'):
+            if dir.name in ('data', 'experiments', 'results', '.ipynb_checkpoints'):
                 continue
 
             model_path = dir / f'{dir.name}.pt'
@@ -1609,7 +1609,7 @@ class Eval:
         
         for dir in self.experiments_path.iterdir():
 
-            if dir.name in ('data', 'experiments', 'results'):
+            if dir.name in ('data', 'experiments', 'results', '.ipynb_checkpoints'):
                 continue
 
             test_outputs = dir / 'test_outputs.pt'
@@ -1667,7 +1667,7 @@ class Eval:
 
         for dir in self.experiments_path.iterdir():
 
-            if dir.name in ('data', 'experiments', 'results'):
+            if dir.name in ('data', 'experiments', 'results', '.ipynb_checkpoints'):
                 continue
             
             test_outputs = dir / 'test_outputs.pt'
@@ -2229,7 +2229,7 @@ class Eval:
 
         for dir in self.experiments_path.iterdir():
 
-            if dir.name in ('data', 'experiments', 'results'):
+            if dir.name in ('data', 'experiments', 'results', '.ipynb_checkpoints'):
                 continue
                 
             print(f'Simulating for {dir.name}...')
@@ -2628,7 +2628,7 @@ class Eval:
             
             ts = ts_30 if pred_30 else ts_10
 
-            if dir.name in ('data', 'results'):
+            if dir.name in ('data', 'results', '.ipynb_checkpoints'):
                 continue
 
             out = torch.load(
@@ -2761,7 +2761,7 @@ class Eval:
 
         for mode in ('news', 'social'):
             for dir in self.experiments_path.iterdir():
-                if dir.name in ('data', 'results') or 'mlp' in dir.name or mode not in dir.name:
+                if dir.name in ('data', 'results', '.ipynb_checkpoints') or 'mlp' in dir.name or mode not in dir.name:
                     continue
 
                 news = 'news' in dir.name
@@ -2885,7 +2885,7 @@ class Eval:
         self.counters = dict()
 
         for dir in self.experiments_path.iterdir():
-            if dir.name in ('data', 'results') or 'mlp' in dir.name:
+            if dir.name in ('data', 'results', '.ipynb_checkpoints') or 'mlp' in dir.name:
                 continue
 
             self.dir_name = dir.name
@@ -3030,7 +3030,7 @@ class Eval:
             experiment.run_testing(force=True, evaluator=self)
 
         for dir in self.experiments_path.iterdir():
-            if dir.name in ('data', 'results') or 'mlp' in dir.name:
+            if dir.name in ('data', 'results', '.ipynb_checkpoints') or 'mlp' in dir.name:
                 continue
 
             pred_30 = '30' in dir.name
