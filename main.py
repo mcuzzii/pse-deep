@@ -171,8 +171,8 @@ def preprocess():
 def run_experiments():
 
     for transformer in (True,):
-        for social in (True,):
-            for news in (True, False):
+        for social in (False,):
+            for news in (False,):
                 for pred_30 in (True, False):
 
                     news_prefix = 'news_' if news else ''
@@ -237,4 +237,4 @@ def main():
     evaluator.interpret_baseline_models_trading_sim()
 
 if __name__ == '__main__':
-    run_experiments()
+    plot_price_series()

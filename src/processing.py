@@ -384,6 +384,26 @@ def _bar_width_days(index):
     median_seconds = diffs.dt.total_seconds().median()
     return (median_seconds / 86400) * 0.8  # 80% of spacing, so bars don't touch
 
+def _get_price_and_volume(df, file_name):
+    """ Returns (price_series, volume_series_or_None) for an instrument dataframe.
+
+    Prefers the close price; if unavailable, falls back to the midprice of bid/ask.
+    Volume is returned only if a volume column exists.
+    """
+
+    close_col = f'{file_name}_close'
+    volume_col = f'{file_name}_volume'
+
+    if close_col in df.columns:
+        price = df[close_col].astype(float)
+    else:
+        bid_col = f'{file_name}_bid'
+        ask_col = f'{file_name}_ask'
+        price = (df[bid_col].astype(float) + df[ask_col].astype(float)) / 2
+
+    volume = df[volume_col].astype(float) if volume_col in df.columns else None
+
+    return price, volume
 
 def _style_axis(ax, title, xlabel=None, ylabel=None, rotate_x=0,
                  title_fontsize=13, label_fontsize=10, tick_fontsize=8):
@@ -411,11 +431,24 @@ def _plot_price_panel(ax, df, file_name, title,
 
     if volume is not None:
         ax2 = ax.twinx()
-        width = _bar_width_days(df.index)
-        ax2.bar(df.index, volume, color=COLORS['seafoam'], alpha=0.4, width=width, zorder=1)
-        ax2.set_ylabel('Volume', fontsize=label_fontsize)
-        ax2.tick_params(axis='y', labelsize=tick_fontsize)
-        ax.set_zorder(ax2.get_zorder() + 1)  # keep price line drawn above the volume bars
+
+        # Aggregate volume per calendar day
+        daily_volume = volume.resample("D").sum()
+
+        # Width = 0.8 days (80% of a day's width)
+        ax2.bar(
+            daily_volume.index,
+            daily_volume.values,
+            width=0.8,
+            color=COLORS["seafoam"],
+            alpha=0.4,
+            align="center",
+            zorder=1,
+        )
+
+        ax2.set_ylabel("Volume", fontsize=label_fontsize)
+        ax2.tick_params(axis="y", labelsize=tick_fontsize)
+        ax.set_zorder(ax2.get_zorder() + 1)
 
 
 def _plot_multi_panel(panel_specs, out_dir, file_name, processed_path, ncols=2):
@@ -449,6 +482,69 @@ def _plot_multi_panel(panel_specs, out_dir, file_name, processed_path, ncols=2):
         ax.set_visible(False)
 
     _save_fig(fig, out_dir, file_name)
+
+def plot_price_series(processed_path='data/processed', subdir='stock_price'):
+    """ Plots raw price series (and volume, where available) before any standardization.
+
+    Produces:
+      - a single-panel plot for PSEI
+      - a multi-panel plot per sector: the sector index plus one panel per constituent stock
+      - single-panel plots for oil, gold (XAU), USD, and copper
+      - a multi-panel plot for bonds (phgv2, phgv5, phgv7, phgv10, phgv20)
+
+    Reads each instrument's cached DataSource from `processed_path`, so it should be
+    run once, after all relevant instruments have already been processed and saved.
+    """
+
+    out_dir = _eda_out_dir(subdir)
+    processed_path = Path(processed_path)
+
+    # --- PSEI ---
+    psei_df = _load_instrument_df('psei', processed_path)
+    if psei_df is not None:
+        fig, ax = plt.subplots(figsize=(10, 5))
+        _plot_price_panel(ax, psei_df, 'psei', 'PSEI Price (Pre-Standardization)')
+        _save_fig(fig, out_dir, 'psei_price')
+
+    # --- Sector indices + constituents ---
+    sectors = pd.read_excel('data/raw/info/sectors_and_subsectors.xlsx')
+    stocks = get_stocks()
+    sectors.columns = [snake_case(col) for col in sectors.columns]
+    sectors['sector'] = sectors['sector'].map(SECTOR_MAP)
+    sectors['stock_symbol'] = sectors['stock_symbol'].str.lower()
+
+    for sector_index in sorted(sectors['sector'].dropna().unique()):
+        constituents = sorted(
+            [
+                stock
+                for stock in sectors.loc[sectors['sector'] == sector_index, 'stock_symbol'].tolist()
+                if stock in stocks
+            ]
+        )
+
+        panel_specs = [(sector_index, f'{sector_index.upper()} Price (Sector Index)')]
+        panel_specs += [
+            (stock, f'{stock.upper()} Price (Constituent)')
+            for stock in constituents
+        ]
+
+        _plot_multi_panel(panel_specs, out_dir, f'{sector_index}_price', processed_path)
+
+    # --- Single-instrument commodities/currency ---
+    for file_name, title in SINGLE_INSTRUMENTS.items():
+        instrument_df = _load_instrument_df(file_name, processed_path)
+        if instrument_df is None:
+            continue
+        fig, ax = plt.subplots(figsize=(10, 5))
+        _plot_price_panel(ax, instrument_df, file_name, f'{title} Price (Pre-Standardization)')
+        _save_fig(fig, out_dir, f'{file_name}_price')
+
+    # --- Bonds ---
+    bond_panel_specs = [
+        (tenor, f'{tenor.upper()} Price (Pre-Standardization)')
+        for tenor in BOND_TENORS
+    ]
+    _plot_multi_panel(bond_panel_specs, out_dir, 'bonds_price', processed_path)
 
 class DataSource:
     """A class for storing and processing a dataset."""
