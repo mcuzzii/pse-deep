@@ -1617,9 +1617,6 @@ class Eval:
 
             if 'combined_drift_scores' not in out:
 
-                test_outputs = dir / 'test_outputs.pt'
-                out = torch.load(test_outputs, map_location=device, weights_only=False)
-
                 msd = out['msd']
                 width_histories = out['width_histories']
 
