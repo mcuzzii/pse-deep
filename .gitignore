@@ -39,6 +39,7 @@ __pycache__/
 *.ttt
 *.fff
 /paper/update-tlmgr-latest.sh
+/paper/Annex*
 
 # -- Hidden files --
 .DS_Store

@@ -6,6 +6,7 @@
 \usepackage{longtable}
 \usepackage{booktabs}
 \usepackage{float}
+\usepackage{pdfpages}
 \usepackage{amsmath}
 \usepackage{amssymb}
 \usepackage{amsthm}
@@ -19,6 +20,13 @@
 \usepackage[T1]{fontenc}
 \usepackage{csquotes}
 \usepackage[style=apa,sortcites=true,sorting=nyt,backend=biber]{biblatex}
+\usepackage{fancyhdr}
+
+\fancypagestyle{plain}{
+    \fancyhf{}
+    \fancyhead[R]{\thepage}
+    \renewcommand{\headrulewidth}{0pt}
+}
 \DeclareLanguageMapping{american}{american-apa}
 \addbibresource{bibliography.bib}
 
@@ -117,7 +125,8 @@ July 2026
 % APPROVAL SHEET  (p. ii)
 % ---------------------------------------------------------------
 \newpage
-\thispagestyle{empty}
+\phantomsection
+\addcontentsline{toc}{section}{Approval Sheet}
 \begin{center}
 {\bfseries APPROVAL SHEET}
 \end{center}
@@ -152,11 +161,27 @@ Panelist
 
 \vfill
 
+\newpage
+\phantomsection
+\addcontentsline{toc}{section}{Annex 1: Declaration of Authenticity by Thesis Writer}
+\includepdf[pages=-, pagecommand={\thispagestyle{plain}}]{Annex 1 Declaration of Authenticity by Thesis Writer.pdf}
+
+\newpage
+\phantomsection
+\addcontentsline{toc}{section}{Annex 2: Authorization by Author}
+\includepdf[pages=-, pagecommand={\thispagestyle{plain}}]{Annex 2 Authorization by Author.pdf}
+
+\newpage
+\phantomsection
+\addcontentsline{toc}{section}{Annex 3: Terms of Use}
+\includepdf[pages=-, pagecommand={\thispagestyle{plain}}]{Annex 3 Terms of Use.pdf}
+
 % ---------------------------------------------------------------
 % DEDICATION (p. iii) -- optional; delete this page if you skip it
 % ---------------------------------------------------------------
 \newpage
-\thispagestyle{empty}
+\phantomsection
+\addcontentsline{toc}{section}{Dedication}
 \begin{center}
 {\bfseries DEDICATION}
 \end{center}
@@ -172,7 +197,8 @@ To my partner, Liah, who was there when this work began as a simple idea over a 
 % built-in structured abstract, since the school wants a plain one)
 % ---------------------------------------------------------------
 \newpage
-\thispagestyle{empty}
+\phantomsection
+\addcontentsline{toc}{section}{Abstract}
 \begin{center}
 {\bfseries ABSTRACT}
 \end{center}
@@ -186,7 +212,8 @@ Predicting the stock market is a challenging task, given by constantly shifting 
 % ACKNOWLEDGMENT (p. v) -- optional
 % ---------------------------------------------------------------
 \newpage
-\thispagestyle{empty}
+\phantomsection
+\addcontentsline{toc}{section}{Acknowledgement}
 \begin{center}
 {\bfseries ACKNOWLEDGMENT}
 \end{center}
@@ -199,21 +226,23 @@ I would like to express my deepest gratitude to my parents, for providing me the
 % ---------------------------------------------------------------
 \newpage
 \tableofcontents
-\thispagestyle{empty}
+\thispagestyle{headings}
 
 % ---------------------------------------------------------------
 % LIST OF TABLES (p. vii) -- only include if you actually have tables
 % ---------------------------------------------------------------
 \newpage
+\phantomsection
+\addcontentsline{toc}{section}{List of Tables}
 \listoftables
-\thispagestyle{empty}
 
 % ---------------------------------------------------------------
 % LIST OF FIGURES (p. viii) -- only include if you have figures
 % ---------------------------------------------------------------
 \newpage
+\phantomsection
+\addcontentsline{toc}{section}{List of Figures}
 \listoffigures
-\thispagestyle{empty}
 
 % ---------------------------------------------------------------
 % LIST OF MAPS / LIST OF PICTURES (pp. ix-x) -- OPTIONAL
@@ -265,7 +294,8 @@ I would like to express my deepest gratitude to my parents, for providing me the
 % LIST OF ABBREVIATIONS AND ACRONYMS (p. xii) -- manual table
 % ---------------------------------------------------------------
 \newpage
-\thispagestyle{empty}
+\phantomsection
+\addcontentsline{toc}{section}{List of Abbreviations and Acronyms}
 \begin{center}
 {\bfseries LIST OF ABBREVIATIONS AND ACRONYMS}
 \end{center}
@@ -915,6 +945,8 @@ The data requirements for this research are highly specific, and mostly require 
 The financial time-series datasets are multivariable datasets that update at a minute-level or daily frequency, composed of the stock prices of each blue-chip company in the PSE (the top 30 most highly recognized and most actively-traded stocks), the six sectoral indices, the PSEi (composite index), 1-minute-frequency economic indicators such as the PHP to USD exchange rate, the PHP to gold exchange rate, continuous front-month Commodity Exchange (COMEX) High-grade Copper futures (with ``continuous front-month'' meaning the nearest active contract, rolling over to the next month whenever such contract reaches expiration), continuous front-month Intercontinental Exchange (ICE) Brent Crude Oil futures, and daily-frequency Philippine government bonds maturing in approximately 20 years, 10 years, 7 years, 5 years, and 2 years respectively, at the time of data collection.
 
 Table \ref{tab:financial_datasets} showcases all of the financial time-series datasets used in the study.
+\medskip
+\medskip
 
 \begin{longtable}{@{}l p{3.5in}@{}}
 \caption{All Financial Datasets Constituting All Technical Time-series Data}
@@ -1009,7 +1041,13 @@ HGc1 & Continuous Front-month COMEX High-grade Copper Future Contracts \\
 
 These datasets is composed of the data columns found in Table \ref{tab:financial_features}, which mainly consist of full or partial OHLCV data, and/or bid and ask prices, net change variables, or refresh frequencies.
 
-\begin{longtable}{@{}l p{3.5in}@{}}
+Price and volume charts of every involved financial time-series instrument are given in the following. Figure \ref{fig:psei_price_and_vol} shows the evolution of the PSEi closing prices and volumes over time.
+
+The PSEi generally has no overall growth or decline over the entire year; however, a drop in the index value occurs during the latter half of 2025, rebounding up during the first two months of 2026, before dropping again starting at the boundary between February and March 2026 due to Iran war shocks. This general pattern is shared across all market indices, starting with financials (Figure \ref{fig:psfi_price_and_vol}), where the overall pattern is shared as well among all constituent banking companies.
+\medskip
+\medskip
+
+\begin{longtable}{@{}l p{5in}@{}}
 \caption{Relevant Raw Variable Columns for All Time-series Datasets}
 \label{tab:financial_features} \\
 \toprule
@@ -1081,113 +1119,111 @@ BidYChg & Net change in bond yield implied by the best bidding price between the
 
 \end{longtable}
 
-Price and volume charts of every involved financial time-series instrument are given in the following. Figure \ref{fig:psei_price_and_vol} shows the evolution of the PSEi closing prices and volumes over time.
-
 \begin{figure}[!htbp]
+\caption{PSEi Price and Volume}
 \centering
 \includegraphics[width=\textwidth]{../data/results/eda/stock_price/psei_price.png}
-\caption{PSEi Price and Volume}
 \label{fig:psei_price_and_vol}
 \end{figure}
 
-The PSEi generally has no overall growth or decline over the entire year; however, a drop in the index value occurs during the latter half of 2025, rebounding up during the first two months of 2026, before dropping again starting at the boundary between February and March 2026 due to Iran war shocks. This general pattern is shared across all market indices, starting with financials (Figure \ref{fig:psfi_price_and_vol}), where the overall pattern is shared as well among all constituent banking companies.
-
 \begin{figure}[!htbp]
+\caption{PSFI and Constituent Stocks' Price and Volume}
 \centering
 \includegraphics[width=\textwidth]{../data/results/eda/stock_price/psfi_price.png}
-\caption{PSFI and Constituent Stocks' Price and Volume}
 \label{fig:psfi_price_and_vol}
 \end{figure}
 
 Figure \ref{fig:psho_price_and_vol} shows a more varied sector (holding companies), where some stocks generally rise while others fall or remain stagnant, in deviation from the main downtrend and uptrend patterns of the PSEi.
 
 \begin{figure}[!htbp]
+\caption{PSHO and Constituent Stocks' Price and Volume}
 \centering
 \includegraphics[width=0.9\textwidth]{../data/results/eda/stock_price/psho_price.png}
-\caption{PSHO and Constituent Stocks' Price and Volume}
 \label{fig:psho_price_and_vol}
 \end{figure}
 
 The industry sector also has varied behaviors among constituent stocks, as shown in Figure \ref{fig:psin_price_and_vol}. The sector index itself (PSIN) retains some of the downtrend and uptrend regimes present in the PSEi, albeit constituent stocks individually having unique behaviors.
 
 \begin{figure}[!htbp]
+\caption{PSIN and Constituent Stocks' Price and Volume}
 \centering
 \includegraphics[width=0.9\textwidth]{../data/results/eda/stock_price/psin_price.png}
-\caption{PSIN and Constituent Stocks' Price and Volume}
 \label{fig:psin_price_and_vol}
 \end{figure}
 
 The mining idustry (PSMO) index is shown in Figure \ref{fig:psmo_price_and_vol}, and is one of the sectoral indices that exhibit the least similarity with the trends found in the PSEi. This is probably due to the fact that PSMO companies are less actively traded—no PSMO-listed company is among the 30 blue chip stocks of the PSEi.
 
 \begin{figure}[!htbp]
+\caption{PSMO Price and Volume}
 \centering
 \includegraphics[width=0.9\textwidth]{../data/results/eda/stock_price/psmo_price.png}
-\caption{PSMO Price and Volume}
 \label{fig:psmo_price_and_vol}
 \end{figure}
 
 Property companies, as shown in Figure \ref{fig:pspr_price_and_vol}, are similar with financial sector companies in that they all share similar trending behaviors with the PSEi and the sector index PSPR.
 
 \begin{figure}[!htbp]
+\caption{PSPR and Constituent Stocks' Price and Volume}
 \centering
 \includegraphics[width=0.9\textwidth]{../data/results/eda/stock_price/pspr_price.png}
-\caption{PSPR and Constituent Stocks' Price and Volume}
 \label{fig:pspr_price_and_vol}
 \end{figure}
 
 The services industry most distinguishably deviates from the overall trending behaviors founds in the PSEi, as seen in Figure \ref{fig:psse_price_and_vol}; each company has unique growth/decline/stagnation behaviors that do not line up with the sectoral index.
 
 \begin{figure}[!htbp]
+\caption{PSSE and Constituent Stocks' Price and Volume}
 \centering
 \includegraphics[width=0.9\textwidth]{../data/results/eda/stock_price/psse_price.png}
-\caption{PSSE and Constituent Stocks' Price and Volume}
 \label{fig:psse_price_and_vol}
 \end{figure}
 
 These datasets are indexed by minute-level timestamps, or daily timestamps that can be recast into minute-level scales (shown in the preprocessing steps detailed later on). The only timestamps in the final data frame, which are thus the data observations, are the trading minutes—from 9:31 AM to 12:00 PM, and 1:01 PM to 3:00 PM, on Monday to Friday, with the exception of non-working days—which are the only minutes with data available from the stock price and index datasets. Other financial datasets (commodities, gold, etc.) actually contain data that exceeds just the trading minutes, but only data within the trading minutes are used. The chosen source for this data is the London Stock Exchange Group (LSEG) Workspace, a world-class provider of real-time and historical financial data, licensed to the University of Asia and the Pacific (UA\&P), and available for use in the UA\&P Public Access Computing lab. While the source is greatly encompassing, availability restrictions with the current license allow only for one year of minute-level data. With data collection done in multiple iterations, data from March 12, 2025 to April 15, 2026 were successfully collected—as such, only data from this range are used for training, validation, and evaluation of models. Dataset sizes vary due to different missing data patterns—a uniform dataset size after preprocessing is reported in the next chapter.
 
 Other financial datasets generally behave uniquely, where the only main similarity with the PSEi, for some of the financial datasets, is the presence of market shocks during the onset of the 2026 US-Iran war. Government bond prices, shown in Figure \ref{fig:bond_price} for example, reflect a significant drop in value during the event, similar to stocks.
+\medskip
+\medskip
 
 \begin{figure}[!htbp]
+\caption{Government Bonds' Prices}
 \centering
 \includegraphics[width=0.9\textwidth]{../data/results/eda/stock_price/bonds_price.png}
-\caption{Government Bonds' Prices}
 \label{fig:bond_price}
 \end{figure}
 
 Copper prices interestingly, however, seem unaffected by the 2026 war shocks, as seen in Figure \ref{fig:copper_price}. 
 
 \begin{figure}[!htbp]
+\caption{COMEX Continuous Copper Futures' Prices}
 \centering
 \includegraphics[width=0.9\textwidth]{../data/results/eda/stock_price/copper_price.png}
-\caption{COMEX Continuous Copper Futures' Prices}
 \label{fig:copper_price}
 \end{figure}
 
 Oil prices, intuitively, receive the greatest shock due to the mentioned geopolitical conflict, as shown in Figure \ref{fig:lcoc1_price}.
 
 \begin{figure}[!htbp]
+\caption{Brent Crude Oil Continuous Futures' Prices}
 \centering
 \includegraphics[width=0.9\textwidth]{../data/results/eda/stock_price/lcoc1_price.png}
-\caption{Brent Crude Oil Continuous Futures' Prices}
 \label{fig:lcoc1_price}
 \end{figure}
 
 The PHP-USD exchange rate reflects the Philippines' ongoing rising inflation levels, with a consistent uptrend of USD prices, that may have also been amplified by the US-Iran war, shown in Figure \ref{fig:usd_price}.
 
 \begin{figure}[!htbp]
+\caption{PHP to USD Exchange Rate}
 \centering
 \includegraphics[width=0.9\textwidth]{../data/results/eda/stock_price/usd_price.png}
-\caption{PHP to USD Exchange Rate}
 \label{fig:usd_price}
 \end{figure}
 
 Finally, gold prices fluctuate with the least volatility, shown in Figure \ref{fig:xau_price}, receiving minimal shocks for the second half of 2025, and experiencing higher volatility, albeit retaining much of its stability, during the first three months of 2026.
 
 \begin{figure}[htbp]
+\caption{PHP to Gold Exchange Rate}
 \centering
 \includegraphics[width=0.9\textwidth]{../data/results/eda/stock_price/xau_price.png}
-\caption{PHP to Gold Exchange Rate}
 \label{fig:xau_price}
 \end{figure}
 
@@ -1196,9 +1232,9 @@ Finally, gold prices fluctuate with the least volatility, shown in Figure \ref{f
 News data were collected from both Philippine-based and international sources filtered down only to the ones that describe the Philippine financial domain and macroeconomically relevant international events. Each data observation consists only of an article headline indexed by its timestamp in local time (UTC+08). The date range of the news dataset mirrors that of the financial time-series datasets for training, validation, and testing requirements. The main source of this data is also LSEG Workspace, particularly its News Monitor 2.0 feature, where a consolidated, comprehensive search query was used to collect only the most important headlines. Only journalistic news headlines about real world events were included, and other kinds of news updates (such as corporate filings and stock commentary) were excluded. Because the LSEG News Monitor is a global source of news articles, a portion of the dataset comes from news outlets in other countries, resulting in non-English news headlines of varied languages. Figure \ref{fig:news_languages} shows the frequency of the most common non-English languages found in the dataset.
 
 \begin{figure}[!htbp]
+\caption{Top Non-English News Headline Languages}
 \centering
 \includegraphics[width=0.9\textwidth]{../data/results/eda/distributions/news_language_dist.png}
-\caption{Top Non-English News Headline Languages}
 \label{fig:news_languages}
 \end{figure}
 
@@ -1207,9 +1243,9 @@ Data inspection revealed that the timestamps collected from LSEG are not fully a
 Figure \ref{fig:news_sentiment} showcases the distribution of investor sentiment classifications of the news article headlines from the Modern-FinBERT model. News stories are varied in sentiment, corresponding to a high concentration of financially relevant news articles.
 
 \begin{figure}[!htbp]
+\caption{News Sentiment Distribution}
 \centering
 \includegraphics[width=0.9\textwidth]{../data/results/eda/distributions/news_sentiment_dist.png}
-\caption{News Sentiment Distribution}
 \label{fig:news_sentiment}
 \end{figure}
 
@@ -1220,13 +1256,13 @@ Social media data from X were collected, queried using search terms that describ
 Figure \ref{fig:social_sentiment} showcases the distribution of sentiment classifications of the social media posts from the \textit{tabularisai/multilingual-sentiment-analysis} model. As can be seen, majority of the posts are in the neutral category, showing a higher concentration of posts with less relevance to the financial domain as compared to news data.
 
 \begin{figure}[!htbp]
+\caption{Social Media Sentiment Distribution}
 \centering
 \includegraphics[width=0.9\textwidth]{../data/results/eda/distributions/social_media_sentiment_dist.png}
-\caption{Social Media Sentiment Distribution}
 \label{fig:social_sentiment}
 \end{figure}
 
-Table \ref{tab:social_media_data} showcases the relevant columns found in the raw social media datasets.
+Table \ref{tab:social_media_data} showcases the relevant columns found in the raw social media datasets. The variables RetweetCount, ReplyCount, LikeCount, QuoteCount, ViewCount, and BookmarkCount are the \textit{post impact features}, whereas the variables prefixed by ``Author'' are the \textit{influence features}. The current source for social media data is the Twitter Scraper V2 Apify Actor, which is an online pre-built web scraper with event-based pricing. The total dataset size is to be reported in the next chapter.
 
 \begin{longtable}{@{}l p{3.5in}@{}}
 \caption{Relevant Raw Variable Columns for Social Media Data}
@@ -1265,8 +1301,6 @@ AuthorMediaCount & Number of media items (photo and video) posted by the author 
 AuthorStatusesCount & Number of statuses of the post author \\
 \end{longtable}
 
-The variables RetweetCount, ReplyCount, LikeCount, QuoteCount, ViewCount, and BookmarkCount are the \textit{post impact features}, whereas the variables prefixed by ``Author'' are the \textit{influence features}. The current source for social media data is the Twitter Scraper V2 Apify Actor, which is an online pre-built web scraper with event-based pricing. The total dataset size is to be reported in the next chapter.
-
 \clearpage
 \section{Chapter 5: Data Preprocessing}
 
@@ -1285,18 +1319,18 @@ The experimental setup consists of the completed models per experimental setting
 These features make up the economic features of the model data input. Among these features, an mRMR model is used to select the 100 most relevant and least redundant technical features. Since the datasets for the 30-minute and 10-minute prediction horizon models differ, separate mRMR feature selections are done for each. Figure \ref{fig:relevant_10m} shows the most relevant financial time-series features for the 10-minute horizon models.
 
 \begin{figure}[!htbp]
+\caption{Top Relevant Features from mRMR for 10-minute Prediction Horizon Models}
 \centering
 \includegraphics[width=0.9\textwidth]{../data/results/eda/feature_selection/features_10m_relevance.png}
-\caption{Top Relevant Features from mRMR for 10-minute Prediction Horizon Models}
 \label{fig:relevant_10m}
 \end{figure}
 
 The top features are mostly stock technical indicators with some features from the government bond datasets. Similar features were selected for the 30-minute horizons, as shown in Figure \ref{fig:relevant_30m}. 
 
 \begin{figure}[!htbp]
+\caption{Top Relevant Features from mRMR for 30-minute Prediction Horizon Models}
 \centering
 \includegraphics[width=0.9\textwidth]{../data/results/eda/feature_selection/features_30m_relevance.png}
-\caption{Top Relevant Features from mRMR for 30-minute Prediction Horizon Models}
 \label{fig:relevant_30m}
 \end{figure}
 
@@ -1311,7 +1345,7 @@ The discussion in the following describes in full mathematical detail all the ne
 
 \subsection{Notation}
 
-Throughout, tensors are written with explicit index sets to make batching unambiguous. The following items are either model design hyperparameters (when values are specified) whose values are the same across all experimental settings, or intermediately derived tensor dimension sizes.
+Throughout, tensors are written with explicit index sets to make batching unambiguous. The following items are either model design hyperparameters (when values are specified) whose values are \textit{the same} across all experimental settings unless otherwise specified in the following, or intermediately derived tensor dimension sizes.
 
 \begin{itemize}[leftmargin=2em]
   \item $B=32$ — batch size. Both transformers and MLP models use the same batch size ($32$).
@@ -1887,7 +1921,7 @@ Training every deep learning model from each experimental setting is performed b
   \item Maxumim number of epochs ($\mathcal E$): $50$
   \item Batch size ($B$): $2$ for transformer models; $32$ for MLP models
   \item Accumulation steps ($A$): $16$ for transformer models; $1$ for MLP models
-  \item Validation checkpoints (by batch number): $(8b)^2,\qquad k=1,2,...$
+  \item Validation checkpoints (by batch number): $(8k)^2,\qquad k=1,2,...$
   \item EarlyStopping patience: $10$ for transformer models; $20$ for MLP models
   \item ReduceLROnPlateau patience: $4$ (for MLP models only)
   \item Minimum $\sigma$: $10^{-5}$
@@ -2073,6 +2107,8 @@ configuration maximizing marginal-mean $\mathrm{cum\_profit}$ from a factorial f
 \section{Chapter 8: Results and Discussion}
 
 Table \ref{tab:model_descriptives} summarizes the result of the entire experiment, for all deep learning models in each experimental condition. The specification of an experimental setting is by inclusion of each independent variable's keyword within the name, or by the value of such variable (``30'' means that the model predicts 30-minute returns, whereas ``10'' corresponds to 10-minute return models).
+\medskip
+\medskip
 
 \begin{table}[htbp]
 \centering
@@ -2113,6 +2149,8 @@ Drift scores are generally higher for the MLP-based and 30-minute models. Stock 
 \subsection{MCC Model Performance}
 
 Table \ref{tab:mcc_results} showcases the coefficients of an OLS regression model fitted on MCC scores per stock for every experimental setting. The OLS regression model predicts MCC (Matthew's Correlation Coefficient) per stock as a function of four categorical predictors---\textit{transformer}, \textit{social}, and \textit{news} and \textit{pred\_30}---and all pairwise interactions among these variables.
+\medskip
+\medskip
 
 \begin{table}[htbp]
 \centering
@@ -2198,6 +2236,8 @@ XGBoost                & 0.133 \\
 \bottomrule
 \end{tabular}
 \end{table}
+\medskip
+\medskip
 
 The best deep learning model (Stock News MLP 10) achieves the highest mean MCC (0.137) across the sample, though it is nearly indistinguishable from logistic regression, which posts an almost identical mean MCC of 0.137. This suggests that, on average, the additional complexity of the deep learning architecture does not yield a meaningful performance advantage over a simple linear baseline in this setting. XGBoost follows closely behind with a mean MCC of 0.133, indicating that a well-tuned gradient-boosted tree ensemble remains competitive with both the deep learning model and logistic regression.
 
@@ -2235,6 +2275,8 @@ Taken together, these results formalize the pattern seen in the descriptive stat
 \subsection{Model Drift}
 
 Table \ref{tab:drift_results} shows a summary of an OLS regression model fitted on the drit scores of every stock for each experimental setting.
+\medskip
+\medskip
 
 \begin{table}[htbp]
 \centering
@@ -2276,6 +2318,8 @@ Finally, \textit{pred\_30} alone shows no significant main effect on drift ($-0.
 Overall, these results suggest that \textit{news} is the primary lever for reducing combined drift, but its benefit is context-dependent: it is strongest in isolation and weakens when paired with pred\_30 or social. \textit{Social} contributes a smaller independent drift-reducing effect, while \textit{transformer} and \textit{pred\_30} influence drift only through their interactions rather than as standalone predictors, a notably different pattern from what was observed in the MCC regression, where transformer and pred\_30 were among the strongest main effects.
 
 Table \ref{tab:drift_descriptives} reveals a summary of the drift scores for each machine learning model trained with the same data modalities as the deep learning model with the lowest drift.
+\medskip
+\medskip
 
 \begin{table}[htbp]
 \centering
@@ -2297,6 +2341,8 @@ XGBoost                 & 0.096 \\
 The best deep learning model (model with the lowest drift—Stock Social MLP 30) shows a mean drift score of 0.036, placing it toward the lower end of the five models but not the lowest. Random forest achieves the lowest mean drift score overall (0.024), followed closely by linear SVC (0.033) and then the deep learning model (0.036). This ordering suggests that, contrary to the framing of Stock Social MLP 30 as the ``least drift'' deep learning variant, both random forest and linear SVC actually exhibit less drift on average within this comparison set.
 
 Logistic regression (0.070) and, in particular, XGBoost (0.096) show substantially higher mean drift scores than the other three models. XGBoost's mean drift score is roughly 2.7 times that of Stock Social MLP 30 and nearly 4 times that of random forest, making it the clear outlier in terms of drift instability. This pattern is notable given that XGBoost and logistic regression were among the strongest performers in the earlier MCC comparison, suggesting a potential trade-off between predictive performance and drift stability for these two baselines. Table \ref{tab:drift_baseline_regression} shows these results further with OLS regression coefficients for each machine learning model with the reference best deep learning model.
+\medskip
+\medskip
 
 \begin{table}[htbp]
 \centering
@@ -2332,9 +2378,9 @@ Taken together, these results indicate a clear ordering of drift behavior across
 Figure \ref{fig:trading_sim_overall} presents cumulative trading profit over time across four panels, cross-cutting model architecture (Transformer vs. MLP) and prediction horizon (10-minute vs. 30-minute return target), with each panel further disaggregating results by the presence of news (line color) and social media (line style) features.
 
 \begin{figure}[htbp]
+\caption{Cumulative Trading Profit over Time per Experimental Setting}
 \centering
 \includegraphics[width=\textwidth]{../experiments/results/trading_sim/overall.png}
-\caption{Cumulative Trading Profit over Time per Experimental Setting}
 \label{fig:trading_sim_overall}
 \end{figure}
 
@@ -2345,6 +2391,8 @@ Within the 10-minute horizon, the Transformer model (top left) shows a clearer s
 Within the 30-minute horizon, the pattern reverses in terms of which configuration performs best: the ``with news'' condition (purple) now clearly outperforms the ``no news'' condition (green) in both the Transformer and MLP panels, with the gap widening over the course of the simulation. The ``without social media'' dashed lines also tend to sit above the ``with social media'' solid lines within each news condition at this horizon, particularly toward the end of the simulation window, suggesting that excluding social media data is mildly beneficial for the 30-minute target. Overall, the figure suggests that the value of news and social media inputs is horizon-dependent: they appear mildly detrimental to profit at the 10-minute horizon but mildly protective (i.e., reducing losses) at the 30-minute horizon.
 
 To support these findings further, Table \ref{tab:trading_sim_regression} showcases the OLS regression coefficients of every experimental setting's cumulative profit scores.
+\medskip
+\medskip
 
 \begin{table}[htbp]
 \centering
@@ -2384,15 +2432,17 @@ None of the remaining terms reach statistical significance at conventional thres
 On one hand, Figure \ref{fig:trading_sim_baseline} compares cumulative trading profit over time for the best deep learning model (Stock Social MLP 10) against four machine learning baselines.
 
 \begin{figure}[htbp]
+\caption{Cumulative Trading Profit over Time for The Best DL Model Compared against ML Baselines}
 \centering
 \includegraphics[width=\textwidth]{../experiments/results/trading_sim/baseline.png}
-\caption{Cumulative Trading Profit over Time for The Best DL Model Compared against ML Baselines}
 \label{fig:trading_sim_baseline}
 \end{figure}
 
 All five models produce positive cumulative profit over the simulation window, but they separate into two distinct clusters. The best deep learning model, XGBoost, linear SVC, and logistic regression track closely together throughout the simulation, ending in the range of roughly 1.28 to 1.31, with the deep learning model holding a slight and fairly consistent lead over this cluster from around time 100 onward. Random forest, by contrast, diverges sharply from the other four models beginning around time 100 and remains the clear laggard for the remainder of the simulation, ending at approximately 1.21---noticeably below the rest of the cluster.
 
 Within the top cluster, the ordering among the deep learning model, XGBoost, linear SVC, and logistic regression is relatively stable but close, with XGBoost briefly tracking near or even above the deep learning model between roughly time 550 and 650 before the deep learning model regains the lead toward the end of the series. Logistic regression consistently sits at or near the bottom of this top cluster, though it remains far closer to the other three models than to random forest. This visual pattern suggests that random forest is the clear outlier among the baselines in terms of trading profitability, while the deep learning model's advantage over the remaining baselines, though present, is comparatively modest. These results are supported further by Table \ref{tab:trading_sim_baseline_regression}, which shows that the machine learning models exhibit lower scores than the best deep learning model, only some of which although are statistically significant.
+\medskip
+\medskip
 
 \begin{table}[htbp]
 \centering
@@ -2461,7 +2511,7 @@ A subtle limitation also mildly affects the validity of the OLS regression model
 
 Given the results, it is the case that designing models with shorter prediction horizons rather than longer horizons is the most beneficial change among the possible changes to other independent variables for optimizing raw model performance and stock ranking capacity. In that case, retail investors and algorithmic traders should carefully consider this variable and test different short prediction horizons (instead of potentially wasting resources on attempting to tune long prediction horizons).
 
-Given the fact that news and social media do not necessarily offer overall advantages consistent in all experimental settings, their application must be guided by the design goals. If the goal of the model designer is to prioritize temporal stability of model confidence, especially across longer prediction horizons, the recommendation would to incorporate news data into the study. For the addition of social media data, which shines more in moderative effects due to its context-dependent property, the model designer is recommended to evaluate through ablation the effect of adding social media instead of taking the main and interaction effects values presented at face value—which is recommended all the more given the limitation mentioned about social media data effects.
+Given the fact that news and social media do not necessarily offer overall advantages consistent in all experimental settings, their application must be guided by the design goals. If the goal of the model designer is to prioritize temporal stability of model confidence, especially across longer prediction horizons, the recommendation would be to incorporate news data into the study. For the addition of social media data, which shines more in moderative effects due to its context-dependent property, the model designer is recommended to evaluate through ablation the effect of adding social media instead of taking the main and interaction effects values presented at face value—which is recommended all the more given the limitation mentioned about social media data effects.
 
 Deployment objectives must be taken into account in order to choose among the models, given that the results show no evidence of a single clear winning model, even when comparing against the machine learning baselines. Based on the conclusions above, practitioners would be recommended to prioritize deep learning models when robustness to drift is valuable—namely in order to minimize model retraining. That said, predictive performance should not be the only factor for choosing models, as model drift can provide practical insight through assessing retraining frequency needs.
 
