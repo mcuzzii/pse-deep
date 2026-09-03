@@ -16,9 +16,7 @@ from experiments import Experiment
 from eval import Eval
 from dotenv import load_dotenv
 import gc
-import warnings
-
-warnings.filterwarnings("ignore")
+import logging
 
 load_dotenv()
 
@@ -236,6 +234,12 @@ def run_experiments():
                     experiment.run_testing()
 
 def main():
+    logging.basicConfig(
+        filename="activity.log",
+        level=logging.DEBUG,
+        format="%(asctime)s [%(levelname)s] %(name)s: %(message)s"
+    )
+    
     evaluator = Eval()
     evaluator.overall_metrics()
     evaluator.compute_experiment_data()

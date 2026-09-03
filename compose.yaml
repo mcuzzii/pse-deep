@@ -1,0 +1,19 @@
+services:
+  app:
+    build: .
+    image: pydev:latest
+    working_dir: /project
+
+    volumes:
+      - .:/project
+      - venv:/project/.venv
+
+    command:
+      - sh
+      - -c
+      - |
+        uv sync --frozen &&
+        exec bash
+
+volumes:
+  venv:

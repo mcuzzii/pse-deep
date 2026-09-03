@@ -1,31 +1,31 @@
-# .gitignore
-
-# -- Environment --
+# Python environment / caches
 .venv/
 *.egg-info/
-
-# -- Data --
-data/
-
-# -- Experiments --
-experiments/
-
-# -- Python Cache --
 __pycache__/
 *.py[cod]
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
 
-# -- Secrets --
+# Git
+.git/
+
+# Data and experiment outputs
+data/
+experiments/
+
+# Secrets
 .env
 .env.*
 
-# -- Jupyter Notebooks --
+# Jupyter
 *.ipynb
 .ipynb_checkpoints/
 
-# -- Paper --
+# macOS
+.DS_Store
+
+# LaTeX generated files
 *.aux
 *.bbl
 *.bbl-SAVE-ERROR
@@ -42,8 +42,7 @@ __pycache__/
 *.toc
 *.ttt
 *.fff
+
+# Thesis-specific generated/unwanted files
 /paper/update-tlmgr-latest.sh
 /paper/Annex*
-
-# -- macOS --
-.DS_Store

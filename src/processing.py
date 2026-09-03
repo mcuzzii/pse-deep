@@ -15,6 +15,11 @@ import matplotlib.pyplot as plt
 import matplotlib.colors as mcolors
 import seaborn as sns
 import math
+import hashlib
+import inspect
+import logging
+
+logger = logging.getLogger(__name__)
 
 # Regex patterns.
 URL_PATTERN = r'(https?://[^\s<>"]+|www\.[^\s<>"]+|[a-zA-Z0-9.-]+\.[a-z]{2,6}/[^\s<>"]*)'
@@ -234,6 +239,7 @@ def record_history(method):
 
     @functools.wraps(method)
     def wrapper(self, *args, **kwargs):
+        
         if method.__qualname__ in self._history and not kwargs.get('ignore_history', False):
             return
         
@@ -633,20 +639,37 @@ class DataSource:
         self,
         ignore_history: bool = False
     ):
-        """ Loads JSON data from files in a folder. """
+        """ Loads JSON data from files in the raw path. """
 
         master_json = []
-        for file_path in self.raw_path.iterdir():
-            if file_path.is_file():
-                with open(file_path, 'r') as f:
-                    json_loaded = json.load(f)
-                
-                master_json.extend(json_loaded)
+
+        json_dir = self.raw_path.glob('*.json')
+
+        logger.info(f"Found {len(list(json_dir))} json files.")
+
+        for file_path in json_dir:
+            
+            logger.info(f"Loading data from {file_path.name}")
+
+            with open(file_path, 'r') as f:
+                json_loaded = json.load(f)
+            
+            master_json.extend(json_loaded)
+
+            logger.info(
+                f"Finished loading {len(json_loaded)} entries "
+                f"from {file_path.name}. Running total: {len(master_json)} entries."
+            )
         
         df = pd.json_normalize(master_json)
         df.columns = [snake_case(col) for col in df.columns]
 
         self.df = df
+
+        logger.info(
+            f"Stored all entries in a data frame of shape {df.shape}.\n"
+            f"Missing data counts per column:\n{df.isna().sum()}"
+        )
     
     @record_history
     def _load_lseg_news(
