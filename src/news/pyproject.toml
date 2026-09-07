@@ -11,6 +11,7 @@ dependencies = [
     "dateparser>=1.4.1",
     "dotenv>=0.9.9",
     "htmldate>=1.10.0",
+    "huggingface-hub>=1.30.0",
     "pytz>=2026.2",
     "rapidfuzz>=3.14.5",
     "refinitiv-data>=1.6.2",
